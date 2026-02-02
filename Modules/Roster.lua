@@ -38,7 +38,9 @@ function Roster:ShowRoster()
     
     -- MATERIAL SKINNING: Main Window
     local f = frame.frame
-    f:SetBackdrop(nil) -- Remove Blizzard Frame
+    if f.SetBackdrop then
+        f:SetBackdrop(nil) -- Remove Blizzard Frame
+    end
     -- Create flat background
     if not f.bg then
         f.bg = f:CreateTexture(nil, "BACKGROUND")
