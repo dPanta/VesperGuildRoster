@@ -71,6 +71,7 @@ function KeystoneSync:BroadcastKeystone()
         VesperGuild:Print(string.format("Broadcasting keystone: %s +%d", self:GetDungeonAbbrev(mapID), level))
     else
         message = "0:0" -- No keystone
+        VesperGuild:Print("Broadcasting: No keystone")
     end
     
     -- Send to guild channel
@@ -78,6 +79,7 @@ function KeystoneSync:BroadcastKeystone()
     
     -- Also update our own database
     local playerName = UnitName("player") .. "-" .. GetRealmName()
+    VesperGuild:Print("Storing keystone for: " .. playerName) -- Debug
     self:StoreKeystone(playerName, mapID or 0, level or 0)
 end
 

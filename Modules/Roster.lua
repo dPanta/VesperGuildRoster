@@ -91,6 +91,20 @@ function Roster:ShowRoster()
     resizeBtn:SetScript("OnDragStart", function() frame:StartSizing("BOTTOMRIGHT") end)
     resizeBtn:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
     
+    -- Sync Button
+    local syncBtn = CreateFrame("Button", nil, titlebar, "UIPanelButtonTemplate")
+    syncBtn:SetPoint("RIGHT", closeBtn, "LEFT", -5, 0)
+    syncBtn:SetSize(80, 22)
+    syncBtn:SetText("Sync")
+    syncBtn:SetScript("OnClick", function()
+        local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
+        if KeystoneSync then
+            KeystoneSync:BroadcastKeystone()
+            Roster:UpdateRosterList()
+            VesperGuild:Print("Keystone sync requested")
+        end
+    end)
+    
     -- Content Container (using AceGUI ScrollFrame inside our custom frame)
     local contentFrame = CreateFrame("Frame", nil, frame)
     contentFrame:SetPoint("TOPLEFT", titlebar, "BOTTOMLEFT", 5, -5)
@@ -223,7 +237,13 @@ function Roster:UpdateRosterList()
             local keyLabel = AceGUI:Create("Label")
             local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
             if KeystoneSync then
-                local fullName = name .. "-" .. GetRealmName()
+                -- Normalize player name: remove realm if it's the same realm
+                local playerRealm = GetRealmName()
+                local fullName = name
+                -- If name doesn't have realm, add it
+                if not string.find(name, "-") then
+                    fullName = name .. "-" .. playerRealm
+                end
                 local keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName) or "-"
                 keyLabel:SetText(keystoneText)
             else
