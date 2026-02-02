@@ -112,17 +112,18 @@ function Roster:UpdateRosterList()
             
             nameLabel:SetCallback("OnClick", function(widget, event, button) 
                 if button == "RightButton" then
-                     local menu = {
-                        { text = name, isTitle = true, notCheckable = true },
-                        { text = "Whisper", notCheckable = true, func = function() ChatFrame_SendTell(name) end },
-                        { text = "Invite", notCheckable = true, func = function() C_PartyInfo.InviteUnit(name) end },
-                        { text = "Cancel", notCheckable = true, func = function() end },
-                     }
-                     -- Just using a generic frame for the menu anchor if needed, or creating one on the fly
-                     if not Roster.menuFrame then
-                        Roster.menuFrame = CreateFrame("Frame", "VesperGuildRosterDropdown", UIParent, "UIDropDownMenuTemplate")
+                     -- Using modern MenuUtil
+                     if MenuUtil then
+                        MenuUtil.CreateContextMenu(widget.frame, function(owner, rootDescription)
+                            rootDescription:CreateTitle(name)
+                            rootDescription:CreateButton("Whisper", function() ChatFrame_SendTell(name) end)
+                            rootDescription:CreateButton("Invite", function() C_PartyInfo.InviteUnit(name) end)
+                            rootDescription:CreateButton("Cancel", function() end)
+                        end)
+                     else
+                        -- Fallback for older clients (unlikely given 12.0)
+                        print("MenuUtil not found cannot open menu.")
                      end
-                     EasyMenu(menu, Roster.menuFrame, "cursor", 0 , 0, "MENU")
                 end
             end)
             row:AddChild(nameLabel)
