@@ -1,0 +1,26 @@
+## Interface: 120000
+## Title: VesperGuild
+## Notes: A guild management suite.
+## Author: Panta
+## Version: 0.1.0
+## SavedVariables: VesperGuildDB
+
+## OptionalDeps: Ace3
+
+# Libraries (Uncomment if using Ace3/LibStub)
+Libs\LibStub\LibStub.lua
+Libs\CallbackHandler-1.0\CallbackHandler-1.0.xml
+Libs\AceAddon-3.0\AceAddon-3.0.xml
+Libs\AceEvent-3.0\AceEvent-3.0.xml
+Libs\AceDB-3.0\AceDB-3.0.xml
+Libs\AceConsole-3.0\AceConsole-3.0.xml
+Libs\AceGUI-3.0\AceGUI-3.0.xml
+
+# Locales
+Locales\enUS.lua
+
+# Core
+VesperGuild.lua
+
+# Modules
+Modules\Roster.lua
