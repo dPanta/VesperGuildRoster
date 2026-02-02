@@ -96,7 +96,7 @@ function Roster:UpdateRosterList()
             local classColor = C_ClassColor.GetClassColor(classFileName)
             local nameText = name
             if classColor then
-                 nameText = string.format("|c%s%s|r", classColor.GenerateHexColor(), name)
+                 nameText = string.format("|c%s%s|r", classColor:GenerateHexColor(), name)
             end
 
             local nameLabel = AceGUI:Create("Label")
