@@ -33,16 +33,69 @@ function VesperGuild:OnInitialize()
             minimap = {
                 hide = false,
             },
+            icon = {
+                point = "CENTER",
+                x = 0,
+                y = 0,
+            },
         },
     }, true)
 
     self:Print(L["ADDON_LOADED_MESSAGE"])
 end
 
+function VesperGuild:CreateFloatingIcon()
+    local btn = CreateFrame("Button", "VesperGuildIcon", UIParent)
+    btn:SetSize(40, 40)
+    btn:SetMovable(true)
+    btn:EnableMouse(true)
+    btn:RegisterForDrag("LeftButton")
+    
+    -- Load Saved Position
+    local pos = self.db.profile.icon
+    btn:SetPoint(pos.point, UIParent, pos.point, pos.x, pos.y)
+    
+    -- Artwork
+    local tex = btn:CreateTexture(nil, "BACKGROUND")
+    tex:SetAllPoints()
+    tex:SetTexture("Interface\\Icons\\Spell_Nature_Polymorph")
+    btn.texture = tex
+
+    -- Drag Script
+    btn:SetScript("OnDragStart", function(self)
+        self:StartMoving()
+    end)
+    btn:SetScript("OnDragStop", function(self)
+        self:StopMovingOrSizing()
+        local point, _, relativePoint, x, y = self:GetPoint()
+        VesperGuild.db.profile.icon.point = point
+        VesperGuild.db.profile.icon.x = x
+        VesperGuild.db.profile.icon.y = y
+    end)
+    
+    -- Click Script
+    btn:SetScript("OnClick", function()
+        local Roster = VesperGuild:GetModule("Roster")
+        if Roster then Roster:Toggle() end
+    end)
+
+    -- Tooltip
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("VesperGuild", 1, 1, 1)
+        GameTooltip:AddLine("Left-Click: Toggle Roster", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Drag: Move Icon", 0.8, 0.8, 0.8)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
+end
+
 function VesperGuild:OnEnable()
     -- Called when the addon is enabled
     self:RegisterChatCommand("vesper", "HandleChatCommand")
     self:RegisterChatCommand("vg", "HandleChatCommand")
+    
+    self:CreateFloatingIcon()
 end
 
 function VesperGuild:OnDisable()

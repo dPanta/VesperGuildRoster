@@ -46,6 +46,15 @@ function Roster:ShowRoster()
     Roster:UpdateRosterList()
 end
 
+function Roster:Toggle()
+    if frame and frame:IsShown() then
+        AceGUI:Release(frame)
+        frame = nil
+    else
+        Roster:ShowRoster()
+    end
+end
+
 function Roster:UpdateRosterList()
     if not frame then return end
     scroll:ReleaseChildren() -- Clear existing list
@@ -120,7 +129,7 @@ function Roster:UpdateRosterList()
                             rootDescription:CreateTitle(name)
                             
                             rootDescription:CreateButton("Whisper", function() 
-                                ChatFrame_OpenChat("/w " .. name) 
+                                ChatFrame_OpenChat("/w " .. name .. " ") 
                             end)
                             
                             rootDescription:CreateButton("Invite", function() 
