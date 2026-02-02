@@ -35,7 +35,28 @@ function Roster:ShowRoster()
     frame:SetLayout("Fill")
     frame:SetWidth(600)
     frame:SetHeight(500)
-    frame.frame:SetFrameStrata("MEDIUM") -- Lower than menus (default is often FULLSCREEN_DIALOG/HIGH)
+    
+    -- MATERIAL SKINNING: Main Window
+    local f = frame.frame
+    f:SetBackdrop(nil) -- Remove Blizzard Frame
+    -- Create flat background
+    if not f.bg then
+        f.bg = f:CreateTexture(nil, "BACKGROUND")
+        f.bg:SetAllPoints()
+        f.bg:SetColorTexture(0.07, 0.07, 0.07, 0.95) -- #121212
+    end
+    -- Simple Border
+    if not f.border then
+       f.border = CreateFrame("Frame", nil, f, "BackdropTemplate")
+       f.border:SetAllPoints()
+       f.border:SetBackdrop({
+           edgeFile = "Interface\\Buttons\\WHITE8x8", 
+           edgeSize = 1,
+       })
+       f.border:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+    end
+    
+    f:SetFrameStrata("MEDIUM") -- Lower than menus (default is often FULLSCREEN_DIALOG/HIGH)
     frame:EnableResize(true)
 
     -- Create Scroll Container
@@ -167,6 +188,30 @@ function Roster:UpdateRosterList()
             keyLabel:SetRelativeWidth(0.2)
             row:AddChild(keyLabel)
 
+            -- MATERIAL SKINNING: Row Background
+            local rowFrame = row.frame
+            local bg = rowFrame:CreateTexture(nil, "BACKGROUND")
+            bg:SetAllPoints()
+            -- Zebra Striping
+            if (i % 2 == 0) then
+                bg:SetColorTexture(0.17, 0.17, 0.17, 1) -- #2C2C2C
+            else
+                bg:SetColorTexture(0.12, 0.12, 0.12, 1) -- #1E1E1E
+            end
+            
+            -- Hover Effect
+            rowFrame:SetScript("OnEnter", function() 
+                bg:SetColorTexture(0.24, 0.24, 0.24, 1) -- #3D3D3D (Highlight)
+            end)
+            rowFrame:SetScript("OnLeave", function() 
+                -- Restore original color
+                if (i % 2 == 0) then
+                    bg:SetColorTexture(0.17, 0.17, 0.17, 1)
+                else
+                    bg:SetColorTexture(0.12, 0.12, 0.12, 1)
+                end
+            end)
+            
             scroll:AddChild(row)
         end
     end
