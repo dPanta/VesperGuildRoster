@@ -30,13 +30,13 @@ function Roster:ShowRoster()
 
     -- Create Custom Frame (MATERIAL DESIGN)
     frame = CreateFrame("Frame", "VesperGuildRosterFrame", UIParent, "BackdropTemplate")
-    frame:SetSize(600, 500)
+    frame:SetSize(420, 300)
     frame:SetPoint("CENTER")
     frame:SetFrameStrata("MEDIUM")
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:SetResizable(true)
-    frame:SetResizeBounds(400, 300)
+    frame:SetResizeBounds(300, 200)
     
     -- Background
     frame:SetBackdrop({
@@ -57,7 +57,7 @@ function Roster:ShowRoster()
     titlebg:SetAllPoints()
     titlebg:SetColorTexture(0.1, 0.1, 0.1, 1) -- #1A1A1A
     
-    local title = titlebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    local title = titlebar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", 10, 0)
     title:SetText("VesperGuild Roster")
     
@@ -244,8 +244,6 @@ function Roster:UpdateRosterList()
                 if not string.find(name, "-") then
                     fullName = name .. "-" .. playerRealm
                 end
-                -- DEBUG: Show what we're searching for (all players for now)
-                VesperGuild:Print(string.format("Roster: [%s] -> searching [%s]", name, fullName))
                 
                 local keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName) or "-"
                 keyLabel:SetText(keystoneText)
