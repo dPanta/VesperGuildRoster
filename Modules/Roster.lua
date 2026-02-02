@@ -118,10 +118,8 @@ function Roster:UpdateRosterList()
                             Roster.menuFrame = CreateFrame("Frame", "VesperGuildMenuAnchor", UIParent)
                             Roster.menuFrame:SetFrameStrata("FULLSCREEN_DIALOG") -- Ensure it is above AceGUI
                         end
-                        -- MenuUtil opens at the anchor. We can try to move the anchor to the mouse.
-                        local x, y = GetCursorPosition()
-                        local scale = UIParent:GetEffectiveScale()
-                        Roster.menuFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+                        -- Fixed position debug
+                        Roster.menuFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 200, 200)
                         
                         MenuUtil.CreateContextMenu(Roster.menuFrame, function(owner, rootDescription)
                             rootDescription:CreateTitle(name)
