@@ -219,10 +219,16 @@ function Roster:UpdateRosterList()
             statusLabel:SetRelativeWidth(0.2)
             row:AddChild(statusLabel)
             
-            -- Placeholder Key Data
+            -- Keystone Data from KeystoneSync
             local keyLabel = AceGUI:Create("Label")
-            -- We don't have data yet
-            keyLabel:SetText("-") 
+            local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
+            if KeystoneSync then
+                local fullName = name .. "-" .. GetRealmName()
+                local keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName) or "-"
+                keyLabel:SetText(keystoneText)
+            else
+                keyLabel:SetText("-")
+            end
             keyLabel:SetRelativeWidth(0.2)
             row:AddChild(keyLabel)
 

@@ -39,6 +39,9 @@ function VesperGuild:OnInitialize()
                 y = 0,
             },
         },
+        global = {
+            keystones = {}, -- Persistent keystone storage
+        },
     }, true)
 
     self:Print(L["ADDON_LOADED_MESSAGE"])
