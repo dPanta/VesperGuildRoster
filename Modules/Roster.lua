@@ -116,7 +116,7 @@ function Roster:UpdateRosterList()
                      if MenuUtil then
                         MenuUtil.CreateContextMenu(widget.frame, function(owner, rootDescription)
                             rootDescription:CreateTitle(name)
-                            rootDescription:CreateButton("Whisper", function() ChatFrame_SendTell(name) end)
+                            rootDescription:CreateButton("Whisper", function() ChatFrame_OpenChat("/w " .. name) end)
                             rootDescription:CreateButton("Invite", function() C_PartyInfo.InviteUnit(name) end)
                             rootDescription:CreateButton("Cancel", function() end)
                         end)
