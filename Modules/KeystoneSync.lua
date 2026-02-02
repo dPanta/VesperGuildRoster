@@ -114,7 +114,7 @@ function KeystoneSync:OnKeystoneReceived(prefix, message, distribution, sender)
     
     -- Normalize sender name: ensure realm is present
     if not string.find(sender, "-") then
-        sender = sender .. "-" .. GetRealmName()
+        sender = sender .. "-" .. GetNormalizedRealmName()
     end
     
     -- Store in database
