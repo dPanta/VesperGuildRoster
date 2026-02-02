@@ -28,43 +28,79 @@ function Roster:ShowRoster()
         return
     end
 
-    -- Create Main Frame
-    frame = AceGUI:Create("Window")
-    frame:SetCallback("OnClose", function(widget) AceGUI:Release(widget) frame = nil end)
-    frame:SetTitle("VesperGuild Roster")
-    frame:SetLayout("Fill")
-    frame:SetWidth(600)
-    frame:SetHeight(500)
+    -- Create Custom Frame (MATERIAL DESIGN)
+    frame = CreateFrame("Frame", "VesperGuildRosterFrame", UIParent, "BackdropTemplate")
+    frame:SetSize(600, 500)
+    frame:SetPoint("CENTER")
+    frame:SetFrameStrata("MEDIUM")
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:SetResizable(true)
+    frame:SetMinResize(400, 300)
     
-    -- MATERIAL SKINNING: Main Window
-    local f = frame.frame
-    if f.SetBackdrop then
-        f:SetBackdrop(nil) -- Remove Blizzard Frame
-    end
-    -- Create flat background
-    if not f.bg then
-        f.bg = f:CreateTexture(nil, "BACKGROUND")
-        f.bg:SetAllPoints()
-        f.bg:SetColorTexture(0.07, 0.07, 0.07, 0.95) -- #121212
-    end
-    -- Simple Border
-    if not f.border then
-       f.border = CreateFrame("Frame", nil, f, "BackdropTemplate")
-       f.border:SetAllPoints()
-       f.border:SetBackdrop({
-           edgeFile = "Interface\\Buttons\\WHITE8x8", 
-           edgeSize = 1,
-       })
-       f.border:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
-    end
+    -- Background
+    frame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    frame:SetBackdropColor(0.07, 0.07, 0.07, 0.95) -- #121212
+    frame:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
     
-    f:SetFrameStrata("MEDIUM") -- Lower than menus (default is often FULLSCREEN_DIALOG/HIGH)
-    frame:EnableResize(true)
-
-    -- Create Scroll Container
+    -- Titlebar
+    local titlebar = CreateFrame("Frame", nil, frame)
+    titlebar:SetHeight(32)
+    titlebar:SetPoint("TOPLEFT")
+    titlebar:SetPoint("TOPRIGHT")
+    
+    local titlebg = titlebar:CreateTexture(nil, "BACKGROUND")
+    titlebg:SetAllPoints()
+    titlebg:SetColorTexture(0.1, 0.1, 0.1, 1) -- #1A1A1A
+    
+    local title = titlebar:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("LEFT", 10, 0)
+    title:SetText("VesperGuild Roster")
+    
+    -- Make draggable via titlebar
+    titlebar:EnableMouse(true)
+    titlebar:RegisterForDrag("LeftButton")
+    titlebar:SetScript("OnDragStart", function() frame:StartMoving() end)
+    titlebar:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
+    
+    -- Close Button
+    local closeBtn = CreateFrame("Button", nil, titlebar, "UIPanelCloseButton")
+    closeBtn:SetPoint("RIGHT", -5, 0)
+    closeBtn:SetSize(20, 20)
+    closeBtn:SetScript("OnClick", function() 
+        frame:Hide()
+        frame = nil
+        scroll = nil
+    end)
+    
+    -- Resize Grip
+    local resizeBtn = CreateFrame("Button", nil, frame)
+    resizeBtn:SetSize(16, 16)
+    resizeBtn:SetPoint("BOTTOMRIGHT")
+    resizeBtn:EnableMouse(true)
+    resizeBtn:RegisterForDrag("LeftButton")
+    
+    local resizeTex = resizeBtn:CreateTexture(nil, "OVERLAY")
+    resizeTex:SetAllPoints()
+    resizeTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
+    
+    resizeBtn:SetScript("OnDragStart", function() frame:StartSizing("BOTTOMRIGHT") end)
+    resizeBtn:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
+    
+    -- Content Container (using AceGUI ScrollFrame inside our custom frame)
+    local contentFrame = CreateFrame("Frame", nil, frame)
+    contentFrame:SetPoint("TOPLEFT", titlebar, "BOTTOMLEFT", 5, -5)
+    contentFrame:SetPoint("BOTTOMRIGHT", -5, 20)
+    
     scroll = AceGUI:Create("ScrollFrame")
-    scroll:SetLayout("Flow") -- List items vertically
-    frame:AddChild(scroll)
+    scroll:SetLayout("Flow")
+    scroll.frame:SetParent(contentFrame)
+    scroll.frame:SetAllPoints()
+    scroll.frame:Show()
 
     Roster:UpdateRosterList()
 end
