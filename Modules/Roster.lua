@@ -36,7 +36,7 @@ function Roster:ShowRoster()
     frame:SetMovable(true)
     frame:EnableMouse(true)
     frame:SetResizable(true)
-    frame:SetMinResize(400, 300)
+    frame:SetResizeBounds(400, 300)
     
     -- Background
     frame:SetBackdrop({
