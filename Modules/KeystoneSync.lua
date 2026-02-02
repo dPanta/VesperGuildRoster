@@ -97,7 +97,7 @@ function KeystoneSync:BroadcastKeystone()
     self:SendCommMessage("VesperKey", message, "GUILD")
     
     -- Also update our own database
-    local playerName = UnitName("player") .. "-" .. GetRealmName()
+    local playerName = UnitName("player") .. "-" .. GetNormalizedRealmName()
     VesperGuild:Print("Storing keystone for: " .. playerName) -- Debug
     self:StoreKeystone(playerName, mapID or 0, level or 0)
 end
