@@ -35,6 +35,7 @@ function Roster:ShowRoster()
     frame:SetLayout("Fill")
     frame:SetWidth(600)
     frame:SetHeight(500)
+    frame:SetFrameStrata("MEDIUM") -- Lower than menus (default is often FULLSCREEN_DIALOG/HIGH)
     frame:EnableResize(true)
 
     -- Create Scroll Container
@@ -113,15 +114,9 @@ function Roster:UpdateRosterList()
             nameLabel:SetCallback("OnClick", function(widget, event, button) 
                 if button == "RightButton" then
                      -- Using modern MenuUtil
+                     -- Using modern MenuUtil
                      if MenuUtil then
-                        if not Roster.menuFrame then
-                            Roster.menuFrame = CreateFrame("Frame", "VesperGuildMenuAnchor", UIParent)
-                            Roster.menuFrame:SetFrameStrata("FULLSCREEN_DIALOG") -- Ensure it is above AceGUI
-                        end
-                        -- Fixed position debug
-                        Roster.menuFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", 200, 200)
-                        
-                        MenuUtil.CreateContextMenu(Roster.menuFrame, function(owner, rootDescription)
+                         MenuUtil.CreateContextMenu(widget.frame, function(owner, rootDescription)
                             rootDescription:CreateTitle(name)
                             
                             rootDescription:CreateButton("Whisper", function() 
