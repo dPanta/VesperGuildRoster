@@ -35,7 +35,7 @@ function Roster:ShowRoster()
     frame:SetLayout("Fill")
     frame:SetWidth(600)
     frame:SetHeight(500)
-    frame:SetFrameStrata("MEDIUM") -- Lower than menus (default is often FULLSCREEN_DIALOG/HIGH)
+    frame.frame:SetFrameStrata("MEDIUM") -- Lower than menus (default is often FULLSCREEN_DIALOG/HIGH)
     frame:EnableResize(true)
 
     -- Create Scroll Container
