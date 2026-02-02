@@ -112,6 +112,11 @@ function KeystoneSync:OnKeystoneReceived(prefix, message, distribution, sender)
         return -- Invalid message
     end
     
+    -- Normalize sender name: ensure realm is present
+    if not string.find(sender, "-") then
+        sender = sender .. "-" .. GetRealmName()
+    end
+    
     -- Store in database
     self:StoreKeystone(sender, mapID, level)
     
