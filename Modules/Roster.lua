@@ -185,6 +185,7 @@ function Roster:UpdateRosterList()
             local nameLabel = AceGUI:Create("InteractiveLabel")
             nameLabel:SetText(nameText)
             nameLabel:SetRelativeWidth(0.3)
+            nameLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\NotoSans-SemiBold.ttf", 13, "")
             -- Highlight on hover to show interactivity
             nameLabel:SetCallback("OnEnter", function(widget) 
                  GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
@@ -221,6 +222,7 @@ function Roster:UpdateRosterList()
             local zoneLabel = AceGUI:Create("Label")
             zoneLabel:SetText(zone or "Unknown")
             zoneLabel:SetRelativeWidth(0.3)
+            zoneLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 13, "")
             row:AddChild(zoneLabel)
 
             -- Format Status
@@ -231,6 +233,7 @@ function Roster:UpdateRosterList()
             local statusLabel = AceGUI:Create("Label")
             statusLabel:SetText(statusText)
             statusLabel:SetRelativeWidth(0.2)
+            statusLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 13, "")
             row:AddChild(statusLabel)
             
             -- Keystone Data from KeystoneSync
@@ -247,6 +250,7 @@ function Roster:UpdateRosterList()
                 
                 local keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName) or "-"
                 keyLabel:SetText(keystoneText)
+                keyLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 13, "")
             else
                 keyLabel:SetText("-")
             end
