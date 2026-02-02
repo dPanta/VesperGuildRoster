@@ -112,57 +112,33 @@ function Roster:UpdateRosterList()
             
             nameLabel:SetCallback("OnClick", function(widget, event, button) 
                 if button == "RightButton" then
-                    -- Custom Mini-Menu to bypass API issues
-                    if Roster.popup then Roster.popup:Hide() end
-                    
-                    local f = CreateFrame("Frame", "VesperGuildPopup", UIParent, "BackdropTemplate")
-                    Roster.popup = f
-                    f:SetSize(120, 80)
-                    f:SetPoint("TOPLEFT", widget.frame, "BOTTOMLEFT", 0, 10) -- Position near click
-                    f:SetFrameStrata("DIALOG")
-                    
-                    f:SetBackdrop({
-                        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-                        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-                        tile = true, tileSize = 32, edgeSize = 16,
-                        insets = { left = 4, right = 4, top = 4, bottom = 4 }
-                    })
-                    
-                    -- Title
-                    f.title = f:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-                    f.title:SetPoint("TOP", 0, -10)
-                    f.title:SetText(name)
-                    
-                    -- Whisper Button
-                    local btn1 = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-                    btn1:SetPoint("TOP", f.title, "BOTTOM", 0, -5)
-                    btn1:SetSize(100, 20)
-                    btn1:SetText("Whisper")
-                    btn1:SetScript("OnClick", function() 
-                        ChatFrame_OpenChat("/w " .. name) 
-                        f:Hide()
-                    end)
-                    
-                    -- Invite Button
-                    local btn2 = CreateFrame("Button", nil, f, "UIPanelButtonTemplate")
-                    btn2:SetPoint("TOP", btn1, "BOTTOM", 0, -5)
-                    btn2:SetSize(100, 20)
-                    btn2:SetText("Invite")
-                    btn2:SetScript("OnClick", function() 
-                        C_PartyInfo.InviteUnit(name) 
-                        f:Hide()
-                    end)
+                     -- Using modern MenuUtil
+                     if MenuUtil then
+                        if not Roster.menuFrame then
+                            Roster.menuFrame = CreateFrame("Frame", "VesperGuildMenuAnchor", UIParent)
+                            Roster.menuFrame:SetFrameStrata("FULLSCREEN_DIALOG") -- Ensure it is above AceGUI
+                        end
+                        -- MenuUtil opens at the anchor. We can try to move the anchor to the mouse.
+                        local x, y = GetCursorPosition()
+                        local scale = UIParent:GetEffectiveScale()
+                        Roster.menuFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", x / scale, y / scale)
+                        
+                        MenuUtil.CreateContextMenu(Roster.menuFrame, function(owner, rootDescription)
+                            rootDescription:CreateTitle(name)
+                            
+                            rootDescription:CreateButton("Whisper", function() 
+                                ChatFrame_OpenChat("/w " .. name) 
+                            end)
+                            
+                            rootDescription:CreateButton("Invite", function() 
+                                C_PartyInfo.InviteUnit(name) 
+                            end)
 
-                    -- Close on global click (roughly)
-                    f:SetScript("OnLeave", function() 
-                        -- Auto-hide logic could go here, or just a close button
-                    end)
-                    
-                    -- Simple Close Button
-                    local close = CreateFrame("Button", nil, f, "UIPanelCloseButton")
-                    close:SetPoint("TOPRIGHT", 0, 0)
-                    
-                    f:Show()
+                            rootDescription:CreateButton("Cancel", function() end)
+                        end)
+                     else
+                        print("MenuUtil not found.")
+                     end
                 end
             end)
             row:AddChild(nameLabel)
