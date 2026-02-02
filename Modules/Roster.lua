@@ -244,6 +244,10 @@ function Roster:UpdateRosterList()
                 if not string.find(name, "-") then
                     fullName = name .. "-" .. playerRealm
                 end
+                -- DEBUG: Show what we're searching for (only for our own character)
+                if name == UnitName("player") then
+                    VesperGuild:Print("Roster lookup for: [" .. fullName .. "]")
+                end
                 local keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName) or "-"
                 keyLabel:SetText(keystoneText)
             else
