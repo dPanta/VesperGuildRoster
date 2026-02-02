@@ -114,7 +114,10 @@ function Roster:UpdateRosterList()
                 if button == "RightButton" then
                      -- Using modern MenuUtil
                      if MenuUtil then
-                        MenuUtil.CreateContextMenu(widget.frame, function(owner, rootDescription)
+                        if not Roster.menuFrame then
+                            Roster.menuFrame = CreateFrame("Frame", "VesperGuildMenuAnchor", UIParent)
+                        end
+                        MenuUtil.CreateContextMenu(Roster.menuFrame, function(owner, rootDescription)
                             rootDescription:CreateTitle(name)
                             
                             local whisperBtn = rootDescription:CreateButton("Whisper", function() 
