@@ -116,8 +116,18 @@ function Roster:UpdateRosterList()
                      if MenuUtil then
                         MenuUtil.CreateContextMenu(widget.frame, function(owner, rootDescription)
                             rootDescription:CreateTitle(name)
-                            rootDescription:CreateButton("Whisper", function() ChatFrame_OpenChat("/w " .. name) end)
-                            rootDescription:CreateButton("Invite", function() C_PartyInfo.InviteUnit(name) end)
+                            
+                            local whisperBtn = rootDescription:CreateButton("Whisper", function() 
+                                print("VesperGuild: Whispering " .. name)
+                                ChatFrame_OpenChat("/w " .. name) 
+                            end)
+                            whisperBtn:SetEnabled(true)
+
+                            local inviteBtn = rootDescription:CreateButton("Invite", function() 
+                                C_PartyInfo.InviteUnit(name) 
+                            end)
+                            inviteBtn:SetEnabled(true)
+
                             rootDescription:CreateButton("Cancel", function() end)
                         end)
                      else
