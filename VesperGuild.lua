@@ -114,7 +114,16 @@ function VesperGuild:HandleChatCommand(input)
         else
             self:Print("Roster module not found!")
         end
+    elseif input == "debug" or input == "keys" then
+        -- Debug: Dump keystone database
+        local KeystoneSync = self:GetModule("KeystoneSync", true)
+        if KeystoneSync then
+            KeystoneSync:DebugDumpKeystones()
+        else
+            self:Print("KeystoneSync module not found!")
+        end
     else
         self:Print("Unknown command: " .. input)
+        self:Print("Usage: /vg [debug|keys]")
     end
 end

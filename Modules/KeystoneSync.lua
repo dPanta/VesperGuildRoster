@@ -31,6 +31,25 @@ function KeystoneSync:OnEnable()
     self:ScheduleTimer("BroadcastKeystone", 2) -- Delay to let other systems initialize
 end
 
+function KeystoneSync:DebugDumpKeystones()
+    if not VesperGuild.db.global.keystones then
+        VesperGuild:Print("Keystone database is empty")
+        return
+    end
+    
+    VesperGuild:Print("=== Keystone Database ===")
+    local count = 0
+    for playerName, data in pairs(VesperGuild.db.global.keystones) do
+        VesperGuild:Print(string.format("%s: %s +%d (age: %ds)", 
+            playerName, 
+            self:GetDungeonAbbrev(data.mapID), 
+            data.level,
+            time() - data.timestamp))
+        count = count + 1
+    end
+    VesperGuild:Print(string.format("Total: %d keystones", count))
+end
+
 function KeystoneSync:OnDisable()
     self:UnregisterAllComm()
     self:UnregisterAllEvents()
@@ -122,8 +141,16 @@ function KeystoneSync:GetKeystoneForPlayer(playerName)
         return nil
     end
     
+    -- DEBUG: Show what we're looking for
+    -- VesperGuild:Print("Looking for keystone: " .. playerName)
+    
     local data = VesperGuild.db.global.keystones[playerName]
     if not data then
+        -- DEBUG: Show what's in the database
+        -- VesperGuild:Print("Not found. Database contains:")
+        -- for k, v in pairs(VesperGuild.db.global.keystones) do
+        --     VesperGuild:Print("  " .. k .. " -> " .. v.mapID .. ":" .. v.level)
+        -- end
         return nil
     end
     
