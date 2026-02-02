@@ -99,9 +99,32 @@ function Roster:UpdateRosterList()
                  nameText = string.format("|c%s%s|r", classColor:GenerateHexColor(), name)
             end
 
-            local nameLabel = AceGUI:Create("Label")
+            local nameLabel = AceGUI:Create("InteractiveLabel")
             nameLabel:SetText(nameText)
             nameLabel:SetRelativeWidth(0.3)
+            -- Highlight on hover to show interactivity
+            nameLabel:SetCallback("OnEnter", function(widget) 
+                 GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
+                 GameTooltip:SetText("Right-click for menu")
+                 GameTooltip:Show()
+            end)
+            nameLabel:SetCallback("OnLeave", function(widget) GameTooltip:Hide() end)
+            
+            nameLabel:SetCallback("OnClick", function(widget, event, button) 
+                if button == "RightButton" then
+                     local menu = {
+                        { text = name, isTitle = true, notCheckable = true },
+                        { text = "Whisper", notCheckable = true, func = function() ChatFrame_SendTell(name) end },
+                        { text = "Invite", notCheckable = true, func = function() C_PartyInfo.InviteUnit(name) end },
+                        { text = "Cancel", notCheckable = true, func = function() end },
+                     }
+                     -- Just using a generic frame for the menu anchor if needed, or creating one on the fly
+                     if not Roster.menuFrame then
+                        Roster.menuFrame = CreateFrame("Frame", "VesperGuildRosterDropdown", UIParent, "UIDropDownMenuTemplate")
+                     end
+                     EasyMenu(menu, Roster.menuFrame, "cursor", 0 , 0, "MENU")
+                end
+            end)
             row:AddChild(nameLabel)
 
             local zoneLabel = AceGUI:Create("Label")
