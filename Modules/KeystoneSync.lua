@@ -4,15 +4,15 @@ local KeystoneSync = VesperGuild:NewModule("KeystoneSync", "AceComm-3.0", "AceEv
 
 -- Dungeon abbreviation lookup (TWW Season 1 dungeons)
 local DUNGEON_ABBREV = {
-    -- The War Within Season 1
-    [353] = "BRH",      -- Brackenhide Hollow (DF)
-    [375] = "MISTS",    -- Mists of Tirna Scithe (SL)
-    [376] = "NW",       -- Necrotic Wake (SL)
-    [399] = "RUBY",     -- Ruby Life Pools (DF)
-    [400] = "NOK",      -- Nokhud Offensive (DF)
-    [401] = "AV",       -- Azurevault (DF)
-    [507] = "GB",       -- Grim Batol (Cata)
-    [353] = "SOB",      -- Siege of Boralus (BFA)
+    -- The War Within Season 3
+    [499] = "PALADIN_DZIHAD",       -- Priory of Sacred Flame
+    [542] = "EVERYONE JUMP",        -- Eco Dome Almahdani
+    [378] = "HALLS",                -- Halls of Atonement
+    [525] = "FLOOD",                -- Operation Floodgate
+    [503] = "ARA",                  -- Ara-Kara
+    [392] = "MRGLGLGLGLGLGLGL!",    -- Gambit
+    [391] = "STREETS",              -- Ulice hrichu
+    [505] = "BUGGS_EVERYWHERE",      -- Siege of Boralus (BFA)
     -- Add more as needed for current season
 }
 
