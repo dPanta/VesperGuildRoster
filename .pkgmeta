@@ -1,10 +1,17 @@
 package-as: VesperGuild
 
-# Ace3 libraries are bundled locally in Libs/, so no externals needed.
-# The packager will include them automatically based on VesperGuild.toc.
+externals:
+  Libs/LibStub: https://repos.wowace.com/wow/libstub/tags/1.0
+  Libs/CallbackHandler-1.0: https://repos.wowace.com/wow/callbackhandler/trunk/CallbackHandler-1.0
+  Libs/AceAddon-3.0: https://repos.wowace.com/wow/ace3/trunk/AceAddon-3.0
+  Libs/AceEvent-3.0: https://repos.wowace.com/wow/ace3/trunk/AceEvent-3.0
+  Libs/AceDB-3.0: https://repos.wowace.com/wow/ace3/trunk/AceDB-3.0
+  Libs/AceConsole-3.0: https://repos.wowace.com/wow/ace3/trunk/AceConsole-3.0
+  Libs/AceGUI-3.0: https://repos.wowace.com/wow/ace3/trunk/AceGUI-3.0
+  Libs/AceComm-3.0: https://repos.wowace.com/wow/ace3/trunk/AceComm-3.0
+  Libs/AceTimer-3.0: https://repos.wowace.com/wow/ace3/trunk/AceTimer-3.0
 
 ignore:
   - .git
   - .gitignore
   - .pkgmeta
-exit
