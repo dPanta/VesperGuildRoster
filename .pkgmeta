@@ -1,47 +1,10 @@
-# .pkgmeta for VesperGuild
-# Used by the CurseForge / WoWAce autopackager. Edit fields as needed.
+package-as: VesperGuild
 
-name: VesperGuild
-title: VesperGuildRoster
-author: dPanta
-notes: "A guild management suite."
-version: "0.3.1"
-releaseType: release
-# The main TOC file for the addon
-toc: VesperGuild.toc
+# Ace3 libraries are bundled locally in Libs/, so no externals needed.
+# The packager will include them automatically based on VesperGuild.toc.
 
-# Files to include in the packaged addon (glob patterns supported)
-files:
-  - include:
-      - VesperGuild.toc
-      - VesperGuild.lua
-      - Locales/*.lua
-      - Modules/*.lua
-      - Libs/**/*
-
-# Optional external dependencies. See Libs/README.md for recommended base path.
-# This references specific Ace3 libraries rather than pulling the entire Ace3 repo.
-optionalDependencies:
-  - name: AceAddon-3.0
-    url: https://repos.wowace.com/wow/ace3/trunk/AceAddon-3.0
-  - name: AceEvent-3.0
-    url: https://repos.wowace.com/wow/ace3/trunk/AceEvent-3.0
-  - name: AceDB-3.0
-    url: https://repos.wowace.com/wow/ace3/trunk/AceDB-3.0
-  - name: AceConsole-3.0
-    url: https://repos.wowace.com/wow/ace3/trunk/AceConsole-3.0
-  - name: AceGUI-3.0
-    url: https://repos.wowace.com/wow/ace3/trunk/AceGUI-3.0
-  - name: AceComm-3.0
-    url: https://repos.wowace.com/wow/ace3/trunk/AceComm-3.0
-  - name: AceTimer-3.0
-    url: https://repos.wowace.com/wow/ace3/trunk/AceTimer-3.0
-  - name: CallbackHandler-1.0
-    url: https://repos.wowace.com/wow/ace3/trunk/CallbackHandler-1.0
-  - name: LibStub
-    url: https://repos.wowace.com/wow/ace3/trunk/LibStub
-
-# Notes:
-# - Adjust `version` or `releaseType` before packaging if this is a pre-release.
-# - If your project needs a different packaging layout, update the `files` globs.
-# - The autopackager will follow the `toc` to determine which files are referenced by the addon.
+ignore:
+  - .git
+  - .gitignore
+  - .pkgmeta
+exit
