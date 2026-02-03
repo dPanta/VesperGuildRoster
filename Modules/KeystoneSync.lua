@@ -12,7 +12,7 @@ local DUNGEON_ABBREV = {
     [503] = "ARA",                  -- Ara-Kara
     [392] = "MRGLGLGLGLGLGLGL!",    -- Gambit
     [391] = "STREETS",              -- Ulice hrichu
-    [505] = "BUGGS_EVERYWHERE",      -- Siege of Boralus (BFA)
+    [505] = "BUGGS_EVERYWHERE",     -- Dawnbreaker
     -- Add more as needed for current season
 }
 
