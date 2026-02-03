@@ -33,7 +33,7 @@ end
 
 function KeystoneSync:DebugDumpKeystones()
     if not VesperGuild.db.global.keystones then
-        VesperGuild:Print("Keystone database is empty")
+        VesperGuild:Print("Keystone database is empty mon, POPULATE IT!")
         return
     end
     
