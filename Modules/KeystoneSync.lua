@@ -5,12 +5,12 @@ local KeystoneSync = VesperGuild:NewModule("KeystoneSync", "AceComm-3.0", "AceEv
 -- Dungeon abbreviation lookup (TWW Season 1 dungeons)
 local DUNGEON_ABBREV = {
     -- The War Within Season 3
-    [499] = "PALADIN_DZIHAD",       -- Priory of Sacred Flame
-    [542] = "EVERYONE JUMP",        -- Eco Dome Almahdani
+    [499] = "DZIHAD",               -- Priory of Sacred Flame
+    [542] = "JUMP",                 -- Eco Dome Almahdani
     [378] = "HALLS",                -- Halls of Atonement
     [525] = "FLOOD",                -- Operation Floodgate
     [503] = "ARA",                  -- Ara-Kara
-    [392] = "MRGLGLGLGLGLGLGL!",    -- Gambit
+    [392] = "MRGLGL!",              -- Gambit
     [391] = "STREETS",              -- Ulice hrichu
     [505] = "BUGGS_EVERYWHERE",     -- Dawnbreaker
     -- Add more as needed for current season
@@ -74,7 +74,7 @@ function KeystoneSync:ScanKeystone()
     local mapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
     local level = C_MythicPlus.GetOwnedKeystoneLevel()
     
-    if mapID and level and level > 0 then
+    if mapID and level > 0 then
         return mapID, level
     end
     

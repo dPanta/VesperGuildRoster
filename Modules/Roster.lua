@@ -185,7 +185,7 @@ function Roster:UpdateRosterList()
             local nameLabel = AceGUI:Create("InteractiveLabel")
             nameLabel:SetText(nameText)
             nameLabel:SetRelativeWidth(0.3)
-            nameLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\NotoSans-SemiBold.ttf", 13, "")
+            nameLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\NotoSans-SemiBold.ttf", 11, "")
             -- Highlight on hover to show interactivity
             nameLabel:SetCallback("OnEnter", function(widget) 
                  GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
