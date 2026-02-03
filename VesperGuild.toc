@@ -1,8 +1,8 @@
 ## Interface: 120000
-## Title: VesperGuild
+## Title: VesperGuildRoster
 ## Notes: A guild management suite.
-## Author: Panta
-## Version: 0.1.0
+## Author: dPanta
+## Version: 0.2.0
 ## SavedVariables: VesperGuildDB
 
 ## OptionalDeps: Ace3
