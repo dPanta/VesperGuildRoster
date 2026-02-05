@@ -78,8 +78,8 @@ function Roster:ShowRoster()
         end
         -- Also hide the Portals frame
         local Portals = VesperGuild:GetModule("Portals", true)
-        if Portals and Portals.VesperDungeonPanel then
-            Portals.VesperDungeonPanel:Hide()
+        if Portals and Portals.VesperPortalsUI then
+            Portals.VesperPortalsUI:Hide()
         end
     end)
     
