@@ -1,0 +1,31 @@
+# VesperGuildRoster
+Simple addon to manage your guild m+ runs.
+
+# Features
+- Roster window with online guildies
+  - Name, faction, Current Zone, Status (afk, online), m+ rating and current m+ keystone
+  - If you click on someones key, teleport spell begins to cast
+  - Pulls data from bigwigs/other addons that use LibKeystone
+- Portals window frame with all current seasonal teleports
+  - Automatically fills up with current season
+  - Grays out if given teleport not learned yet
+  - Cooldown spiral
+  - Ready for Midnight Season 1 (hopefully)
+
+# How to use
+- Icon with a sheep appears after installation
+  - Can be moved via shift+left click and drag
+- Or use chatcommand /vg or /vesper
+
+# Credits
+## LibKeystone / BigWigs
+[https://github.com/BigWigsMods/LibKeystone]
+I am using this to pull data from guildies. Epic stuff.
+
+## DungeonTeleportButtons
+[https://github.com/tadahh/DungeonTeleportButtons]
+Learned a lot from the library structure.
+
+## EnhanceQoL
+[https://github.com/R41z0r/EnhanceQoL]
+Inspiration for the teleport buttons and how to style/sort them, how to pull data from wowAPI.
