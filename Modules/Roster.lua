@@ -26,7 +26,7 @@ function Roster:ShowRoster()
     end
 
     -- Create Custom Frame (MATERIAL DESIGN)
-    self.frame = CreateFrame("Frame", "VesperGuildRosterFrame", UIParent, "BackdropTemplate" ) -- "BackdropTemplate" or "SecureHandlerBaseTemplate"--
+    self.frame = CreateFrame("Frame", "VesperGuildRosterFrame", UIParent, "BackdropTemplate" )
     self.frame:SetSize(600, 250)
     self.frame:SetPoint("RIGHT", UIParent, "CENTER", -250, 0)
     self.frame:SetFrameStrata("MEDIUM")
@@ -68,13 +68,18 @@ function Roster:ShowRoster()
     local closeBtn = CreateFrame("Button", nil, titlebar, "UIPanelCloseButton")
     closeBtn:SetPoint("RIGHT", -5, 0)
     closeBtn:SetSize(20, 20)
-    closeBtn:SetScript("OnClick", function() 
+    closeBtn:SetScript("OnClick", function()
         self.frame:Hide()
         self.frame = nil
         self.scroll = nil
         if self.dungeonPanel then
             self.dungeonPanel:Hide()
             self.dungeonPanel = nil
+        end
+        -- Also hide the Portals frame
+        local Portals = VesperGuild:GetModule("Portals", true)
+        if Portals and Portals.VesperDungeonPanel then
+            Portals.VesperDungeonPanel:Hide()
         end
     end)
     
@@ -106,8 +111,8 @@ function Roster:ShowRoster()
         end
     end)
     
-    -- Content Container (using AceGUI ScrollFrame inside our custom frame)
-    local contentFrame = CreateFrame("Frame", nil, self.frame, "SecureHandlerBaseTemplate")
+    -- Content Container
+    local contentFrame = CreateFrame("Frame", nil, self.frame, "BackdropTemplate")
     contentFrame:SetPoint("TOPLEFT", titlebar, "BOTTOMLEFT", 5, -5)
     contentFrame:SetPoint("BOTTOMRIGHT", -5, 20)
     
@@ -262,8 +267,10 @@ function Roster:UpdateRosterList()
             row:AddChild(statusLabel)
             
             -- Keystone Data from KeystoneSync
-            local keyLabel = AceGUI:Create("Label")
             local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
+            local keystoneMapID = nil
+            local keystoneText = "-"
+
             if KeystoneSync then
                 -- Normalize player name: remove realm if it's the same realm
                 local playerRealm = GetRealmName()
@@ -272,15 +279,58 @@ function Roster:UpdateRosterList()
                 if not string.find(name, "-") then
                     fullName = name .. "-" .. playerRealm
                 end
-                
-                local keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName) or "-"
-                keyLabel:SetText(keystoneText)
-                keyLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
-            else
-                keyLabel:SetText("-")
+
+                keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName) or "-"
+
+                -- Get the actual mapID from the database for portal casting
+                if VesperGuild.db.global.keystones and VesperGuild.db.global.keystones[fullName] then
+                    keystoneMapID = VesperGuild.db.global.keystones[fullName].mapID
+                end
             end
+
+            -- Create AceGUI Label...to not have 200px wide rows :)
+            local keyLabel = AceGUI:Create("Label")
+            keyLabel:SetText(keystoneText)
             keyLabel:SetRelativeWidth(0.2)
+            keyLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
             row:AddChild(keyLabel)
+
+            -- Create secure button overlay for portal casting (only if player has a keystone)
+            if keystoneMapID then
+                local DataHandle = VesperGuild:GetModule("DataHandle", true)
+                if DataHandle then
+                    local dungInfo = DataHandle:GetDungeonByMapID(keystoneMapID)
+                    if dungInfo then
+                        local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
+                        local spellName = spellInfo and spellInfo.name
+                        local hasPortal = C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
+
+                        if spellName and hasPortal then
+                            -- Parent outside ACE! Breaks secure functions if I parent it to ACE container...my god.
+                            local keyBtn = CreateFrame("Button", nil, contentFrame, "InsecureActionButtonTemplate")
+
+                            -- Position it to match by SetPoint
+                            keyBtn:SetPoint("TOPLEFT", keyLabel.frame, "TOPLEFT")
+                            keyBtn:SetPoint("BOTTOMRIGHT", keyLabel.frame, "BOTTOMRIGHT")
+                            keyBtn:SetFrameLevel(row.frame:GetFrameLevel() + 20)
+
+                            keyBtn:SetAttribute("type1", "spell")
+                            keyBtn:SetAttribute("spell1", spellName)
+                            keyBtn:RegisterForClicks("AnyUp", "AnyDown")
+
+                            -- Add tooltip
+                            keyBtn:SetScript("OnEnter", function(self)
+                                GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+                                GameTooltip:SetText("Click to cast portal: " .. spellName)
+                                GameTooltip:Show()
+                            end)
+                            keyBtn:SetScript("OnLeave", function(self)
+                                GameTooltip:Hide()
+                            end)
+                        end
+                    end
+                end
+            end
 
             -- MATERIAL SKINNING: Row Background
             local rowFrame = row.frame

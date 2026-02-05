@@ -5,29 +5,32 @@ local KeystoneSync = VesperGuild:NewModule("KeystoneSync", "AceComm-3.0", "AceEv
 local DUNGEON_ABBREV = {
     -- The War Within Season 3
     [499] = "DZIHAD",               -- Priory of Sacred Flame
-    [542] = "JUMP",                 -- Eco Dome Almahdani
+    [542] = "ECOJUMP",              -- Eco Dome Almahdani
     [378] = "HALLS",                -- Halls of Atonement
     [525] = "FLOOD",                -- Operation Floodgate
     [503] = "ARA",                  -- Ara-Kara
     [392] = "MRGLGL!",              -- Gambit
     [391] = "STREETS",              -- Ulice hrichu
-    [505] = "BUGGS_EVERYWHERE",     -- Dawnbreaker
+    [505] = "BUGS",                 -- Dawnbreaker
     -- Add more as needed for current season
 }
 
 function KeystoneSync:OnEnable()
     -- Register AceComm prefix
     self:RegisterComm("VesperKey", "OnKeystoneReceived")
-    
+
     -- Register events
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
     self:RegisterEvent("BAG_UPDATE_DELAYED", "OnBagUpdate")
-    
+
     -- Clean up old entries on login
     self:CleanupStaleEntries()
-    
+
     -- Broadcast our keystone
     self:ScheduleTimer("BroadcastKeystone", 2) -- Delay to let other systems initialize
+
+    -- Start repeating timer to sync keystones every minute (only when not in combat)
+    self.syncTimer = self:ScheduleRepeatingTimer("TimedBroadcast", 60)
 end
 
 function KeystoneSync:DebugDumpKeystones()
@@ -50,6 +53,12 @@ function KeystoneSync:DebugDumpKeystones()
 end
 
 function KeystoneSync:OnDisable()
+    -- Cancel the repeating sync timer
+    if self.syncTimer then
+        self:CancelTimer(self.syncTimer)
+        self.syncTimer = nil
+    end
+
     self:UnregisterAllComm()
     self:UnregisterAllEvents()
 end
@@ -69,9 +78,8 @@ function KeystoneSync:OnBagUpdate()
 end
 
 function KeystoneSync:ScanKeystone()
-    -- Try modern API first (available if player has a keystone)
-    local mapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID()
-    local level = C_MythicPlus.GetOwnedKeystoneLevel()
+    local mapID = C_MythicPlus.GetOwnedKeystoneChallengeMapID() -- get mapID of current keystone
+    local level = C_MythicPlus.GetOwnedKeystoneLevel() -- get level of current keystone
     
     if mapID and level > 0 then
         return mapID, level
@@ -80,20 +88,29 @@ function KeystoneSync:ScanKeystone()
     return nil, 0
 end
 
+function KeystoneSync:TimedBroadcast()
+    -- Skip broadcast if player is in combat
+    if InCombatLockdown() then
+        return
+    end
+
+    self:BroadcastKeystone()
+end
+
 function KeystoneSync:BroadcastKeystone()
     local mapID, level = self:ScanKeystone()
-    
+
     local message
     if mapID and level > 0 then
         message = string.format("%d:%d", mapID, level)
     else
         message = "0:0" -- No keystone
     end
-    
+
     -- Send to guild channel
     self:SendCommMessage("VesperKey", message, "GUILD")
-    
-    -- Also update our own database
+
+    -- Also update local database
     local playerName = UnitName("player") .. "-" .. GetNormalizedRealmName()
     self:StoreKeystone(playerName, mapID or 0, level or 0)
 end
