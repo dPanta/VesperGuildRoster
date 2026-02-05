@@ -17,11 +17,13 @@ Simple addon for forming m+ groups in a guild.
 - Icon of a sheep will be visible on your screen after logging in. Click on it to view the roster.
 - or use /vg chat command
   
-## Credits
+# Credits
 Everyone who uses the addon for testing. First time doing this.
 
-EnhanceQoL - [https://github.com/R41z0r/EnhanceQoL]
+## EnhanceQoL - [https://github.com/R41z0r/EnhanceQoL]
+
 Learned how to make clickable dungeon buttons and how to pull data about keys from wowAPI.
 
-DungeonTeleportButtons - [https://github.com/tadahh/DungeonTeleportButtons]
+## DungeonTeleportButtons - [https://github.com/tadahh/DungeonTeleportButtons]
+
 Learned filtering from his library structure.
