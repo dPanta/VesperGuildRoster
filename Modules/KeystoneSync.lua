@@ -1,5 +1,4 @@
-local addonName = ...
-local VesperGuild = LibStub("AceAddon-3.0"):GetAddon(addonName)
+local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild")
 local KeystoneSync = VesperGuild:NewModule("KeystoneSync", "AceComm-3.0", "AceEvent-3.0", "AceTimer-3.0")
 
 -- Dungeon abbreviation lookup (TWW Season 1 dungeons)

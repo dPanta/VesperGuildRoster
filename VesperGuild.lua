@@ -19,6 +19,9 @@ end
 
 -- Global Addon Object
 VesperGuild = LibStub("AceAddon-3.0"):NewAddon(addonName, "AceConsole-3.0", "AceEvent-3.0")
+
+-- Global table for Portals module (non-Ace context)
+VesperDungeonPanel = {}
 -- Re-fetch locale via Ace if available, though our fallback L above is fine too
 local AceLocale = LibStub("AceLocale-3.0", true)
 if AceLocale then
@@ -64,9 +67,11 @@ function VesperGuild:CreateFloatingIcon()
     tex:SetTexture("Interface\\Icons\\Spell_Nature_Polymorph")
     btn.texture = tex
 
-    -- Drag Script
+    -- Drag Script - only drag if Shift+LeftButton is held
     btn:SetScript("OnDragStart", function(self)
-        self:StartMoving()
+        if IsShiftKeyDown() then
+            self:StartMoving()
+        end
     end)
     btn:SetScript("OnDragStop", function(self)
         self:StopMovingOrSizing()
@@ -76,10 +81,14 @@ function VesperGuild:CreateFloatingIcon()
         VesperGuild.db.profile.icon.y = y
     end)
     
-    -- Click Script
-    btn:SetScript("OnClick", function()
-        local Roster = VesperGuild:GetModule("Roster")
-        if Roster then Roster:Toggle() end
+    -- Click Script - left click to toggle roster and portals (no shift required)
+    btn:SetScript("OnClick", function(self, button)
+        if button == "LeftButton" and not IsShiftKeyDown() then
+            local Roster = VesperGuild:GetModule("Roster", true)
+            local Portals = VesperGuild:GetModule("Portals", true)
+            if Roster then Roster:Toggle() end
+            if Portals then Portals:Toggle() end
+        end
     end)
 
     -- Tooltip
@@ -87,7 +96,7 @@ function VesperGuild:CreateFloatingIcon()
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("VesperGuild", 1, 1, 1)
         GameTooltip:AddLine("Left-Click: Toggle Roster", 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("Drag: Move Icon", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine("Shift+Left-Click & Drag: Move Icon", 0.8, 0.8, 0.8)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -97,6 +106,16 @@ function VesperGuild:OnEnable()
     -- Called when the addon is enabled
     self:RegisterChatCommand("vesper", "HandleChatCommand")
     self:RegisterChatCommand("vg", "HandleChatCommand")
+    
+    -- Debug: Check if modules are loaded
+    local Roster = self:GetModule("Roster", true)
+    local Portals = self:GetModule("Portals", true)
+    if not Roster then
+        self:Print("WARNING: Roster module not found!")
+    end
+    if not Portals then
+        self:Print("WARNING: Portals module not found!")
+    end
     
     self:CreateFloatingIcon()
 end
@@ -108,7 +127,7 @@ end
 function VesperGuild:HandleChatCommand(input)
     if not input or input:trim() == "" then
         -- Open the roster window by default
-        local Roster = self:GetModule("Roster")
+        local Roster = self:GetModule("Roster", true)
         if Roster then
             Roster:ShowRoster()
         else
