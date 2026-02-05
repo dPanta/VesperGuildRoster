@@ -162,7 +162,7 @@ function Roster:UpdateRosterList()
     local headerGroup = AceGUI:Create("SimpleGroup")
     headerGroup:SetLayout("Flow")
     headerGroup:SetFullWidth(true)
-    
+
     -- Name
     local nameHeader = AceGUI:Create("Label")
     nameHeader:SetText("Name")
@@ -192,12 +192,18 @@ function Roster:UpdateRosterList()
     ratingHeader:SetText("R")
     ratingHeader:SetRelativeWidth(0.1)
     headerGroup:AddChild(ratingHeader)
-    
+
     -- Keystone
     local keyHeader = AceGUI:Create("Label")
     keyHeader:SetText("KEY")
     keyHeader:SetRelativeWidth(0.2)
     headerGroup:AddChild(keyHeader)
+
+    -- Set header background to prevent it from being colored
+    local headerFrame = headerGroup.frame
+    local headerBg = headerFrame:CreateTexture(nil, "BACKGROUND")
+    headerBg:SetAllPoints()
+    headerBg:SetColorTexture(0.1, 0.1, 0.1, 1) -- Dark gray, matches titlebar
 
     self.scroll:AddChild(headerGroup)
     -- Horizontal separator
@@ -389,8 +395,10 @@ function Roster:UpdateRosterList()
             -- Check if player is in group
             local isInGroup = false
             for j = 1, (IsInRaid() and GetNumGroupMembers() or 5) do
-                local groupName = IsInRaid() and UnitName("raid" .. j) or (j == 1 and "player" or "party" .. (j - 1))
-                if UnitName(groupName) == name then
+                local groupUnit = IsInRaid() and ("raid" .. j) or (j == 1 and "player" or ("party" .. (j - 1)))
+                local groupName = UnitName(groupUnit)
+                -- Compare using displayName (without realm) since UnitName returns short names
+                if groupName == displayName then
                     isInGroup = true
                     break
                 end
