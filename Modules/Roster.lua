@@ -156,6 +156,15 @@ end
 
 function Roster:Toggle()
     if self.frame and self.frame:IsShown() then
+        -- Clean up portal buttons before hiding
+        if self.portalButtons then
+            for _, btn in ipairs(self.portalButtons) do
+                btn:Hide()
+                btn:SetParent(nil)
+            end
+            self.portalButtons = nil
+        end
+
         self.frame:Hide()
         self.frame = nil
         self.scroll = nil
@@ -409,6 +418,7 @@ function Roster:UpdateRosterList()
                             keyBtn:SetAttribute("type1", "spell")
                             keyBtn:SetAttribute("spell1", spellName)
                             keyBtn:RegisterForClicks("AnyUp", "AnyDown")
+                            keyBtn:Show()  -- Explicitly show the button
 
                             -- Add tooltip
                             keyBtn:SetScript("OnEnter", function(self)
