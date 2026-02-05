@@ -128,10 +128,12 @@ function VesperGuild:HandleChatCommand(input)
     if not input or input:trim() == "" then
         -- Open the roster window by default
         local Roster = self:GetModule("Roster", true)
-        if Roster then
-            Roster:ShowRoster()
+        local Portals = self:GetModule("Portals", true)
+        if Roster and Portals then
+            Roster:Toggle()
+            Portals:Toggle()
         else
-            self:Print("Roster module not found!")
+            self:Print("Roster or Portals module not found!")
         end
     elseif input == "debug" or input == "keys" then
         -- Debug: Dump keystone database
