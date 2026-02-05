@@ -20,6 +20,10 @@ Simple addon for forming m+ groups in a guild.
 # Credits
 Everyone who uses the addon for testing. First time doing this.
 
+## BigWigs - [https://github.com/BigWigsMods/LibKeystone]
+
+LibKeystone for synchronizing keystones across guild members, pulling rating data and such.
+
 ## EnhanceQoL - [https://github.com/R41z0r/EnhanceQoL]
 
 Learned how to make clickable dungeon buttons and how to pull data about keys from wowAPI.
