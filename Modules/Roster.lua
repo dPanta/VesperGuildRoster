@@ -28,7 +28,15 @@ function Roster:ShowRoster()
     -- Create Custom Frame (MATERIAL DESIGN)
     self.frame = CreateFrame("Frame", "VesperGuildRosterFrame", UIParent, "BackdropTemplate" )
     self.frame:SetSize(600, 250)
-    self.frame:SetPoint("RIGHT", UIParent, "CENTER", -250, 0)
+
+    -- Restore saved position or use default
+    if VesperGuild.db.profile.rosterPosition then
+        local pos = VesperGuild.db.profile.rosterPosition
+        self.frame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
+    else
+        self.frame:SetPoint("RIGHT", UIParent, "CENTER", -250, 0)
+    end
+
     self.frame:SetFrameStrata("MEDIUM")
     self.frame:SetMovable(true)
     self.frame:EnableMouse(true)
@@ -62,13 +70,32 @@ function Roster:ShowRoster()
     titlebar:EnableMouse(true)
     titlebar:RegisterForDrag("LeftButton")
     titlebar:SetScript("OnDragStart", function() self.frame:StartMoving() end)
-    titlebar:SetScript("OnDragStop", function() self.frame:StopMovingOrSizing() end)
+    titlebar:SetScript("OnDragStop", function()
+        self.frame:StopMovingOrSizing()
+        -- Save position to database
+        local point, _, relativePoint, xOfs, yOfs = self.frame:GetPoint()
+        VesperGuild.db.profile.rosterPosition = {
+            point = point,
+            relativePoint = relativePoint,
+            xOfs = xOfs,
+            yOfs = yOfs
+        }
+    end)
     
     -- Close Button
     local closeBtn = CreateFrame("Button", nil, titlebar, "UIPanelCloseButton")
     closeBtn:SetPoint("RIGHT", -5, 0)
     closeBtn:SetSize(20, 20)
     closeBtn:SetScript("OnClick", function()
+        -- Clean up portal buttons before closing
+        if self.portalButtons then
+            for _, btn in ipairs(self.portalButtons) do
+                btn:Hide()
+                btn:SetParent(nil)
+            end
+            self.portalButtons = nil
+        end
+
         self.frame:Hide()
         self.frame = nil
         self.scroll = nil
@@ -156,6 +183,16 @@ end
 
 function Roster:UpdateRosterList()
     if not self.frame then return end
+
+    -- Clean up any existing portal buttons
+    if self.portalButtons then
+        for _, btn in ipairs(self.portalButtons) do
+            btn:Hide()
+            btn:SetParent(nil)
+        end
+    end
+    self.portalButtons = {}
+
     self.scroll:ReleaseChildren() -- Clear existing list
 
     -- Header only
@@ -382,6 +419,9 @@ function Roster:UpdateRosterList()
                             keyBtn:SetScript("OnLeave", function(self)
                                 GameTooltip:Hide()
                             end)
+
+                            -- Track button for cleanup
+                            table.insert(self.portalButtons, keyBtn)
                         end
                     end
                 end
