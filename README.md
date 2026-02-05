@@ -18,7 +18,7 @@ Simple addon for forming m+ groups in a guild.
 - or use /vg chat command
   
 # Credits
-Everyone who uses the addon for testing. First time doing this.
+Thank you to all who use the addon for testing. First time doing this.
 
 ## BigWigs - [https://github.com/BigWigsMods/LibKeystone]
 
