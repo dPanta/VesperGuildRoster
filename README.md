@@ -29,3 +29,6 @@ Learned a lot from the library structure.
 ## EnhanceQoL
 [https://github.com/R41z0r/EnhanceQoL]
 Inspiration for the teleport buttons and how to style/sort them, how to pull data from wowAPI.
+
+## Download
+[https://www.curseforge.com/wow/addons/vesperguildroster]
