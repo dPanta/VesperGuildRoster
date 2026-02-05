@@ -105,10 +105,10 @@ function Roster:ShowRoster()
     syncBtn:SetScript("OnClick", function()
         local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
         if KeystoneSync then
-            KeystoneSync:BroadcastKeystone()
+            KeystoneSync:RequestGuildKeystones()
             self:UpdateRosterList()
-            VesperGuild:Print("Keystone sync requested")
         end
+
     end)
     
     -- Content Container
@@ -137,35 +137,63 @@ function Roster:Toggle()
     end
 end
 
+-- M+ rating coloring
+local function GetRatingColor(rating)
+    if rating >= 3000 then
+        return "|cffe268a8" -- Pink (Thunderpaw)
+    elseif rating >= 2500 then
+        return "|cffff8000" -- Orange (Legendary)
+    elseif rating >= 2000 then
+        return "|cffa335ee" -- Purple (Epic)
+    elseif rating >= 1500 then
+        return "|cff0070dd" -- Blue (Rare)
+    elseif rating >= 100 then
+        return "|cff1eff00" -- Green (Uncommon)
+    else
+        return "|cff9d9d9d" -- Gray (Poor)
+    end
+end
+
 function Roster:UpdateRosterList()
     if not self.frame then return end
     self.scroll:ReleaseChildren() -- Clear existing list
 
-    -- Header Row (Fake it for now with labels, or use a better widget later)
+    -- Header only
     local headerGroup = AceGUI:Create("SimpleGroup")
     headerGroup:SetLayout("Flow")
     headerGroup:SetFullWidth(true)
     
+    -- Name
     local nameHeader = AceGUI:Create("Label")
     nameHeader:SetText("Name")
-    nameHeader:SetRelativeWidth(0.25)
+    nameHeader:SetRelativeWidth(0.15)
     headerGroup:AddChild(nameHeader)
 
+    -- Faction
     local factionHeader = AceGUI:Create("Label")
-    factionHeader:SetText("Faction")
-    factionHeader:SetRelativeWidth(0.1)
+    factionHeader:SetText("F")
+    factionHeader:SetRelativeWidth(0.05)
     headerGroup:AddChild(factionHeader)
 
+    -- Current Zone
     local zoneHeader = AceGUI:Create("Label")
     zoneHeader:SetText("Zone")
     zoneHeader:SetRelativeWidth(0.25)
     headerGroup:AddChild(zoneHeader)
 
+    -- Status
     local statusHeader = AceGUI:Create("Label")
     statusHeader:SetText("Status")
-    statusHeader:SetRelativeWidth(0.2)
+    statusHeader:SetRelativeWidth(0.15)
     headerGroup:AddChild(statusHeader)
+
+    -- M+ Rating
+    local ratingHeader = AceGUI:Create("Label")
+    ratingHeader:SetText("R")
+    ratingHeader:SetRelativeWidth(0.1)
+    headerGroup:AddChild(ratingHeader)
     
+    -- Keystone
     local keyHeader = AceGUI:Create("Label")
     keyHeader:SetText("KEY")
     keyHeader:SetRelativeWidth(0.2)
@@ -189,16 +217,20 @@ function Roster:UpdateRosterList()
             row:SetLayout("Flow")
             row:SetFullWidth(true)
 
+            -- Extract short name (without realm) for display
+            local displayName = name:match("([^-]+)") or name
+
             -- Color name by class
             local classColor = C_ClassColor.GetClassColor(classFileName)
-            local nameText = name
+            local nameText = displayName
             if classColor then
-                 nameText = string.format("|c%s%s|r", classColor:GenerateHexColor(), name)
+                 nameText = string.format("|c%s%s|r", classColor:GenerateHexColor(), displayName)
             end
 
+            -- Make name clickable with many, many options...maybe
             local nameLabel = AceGUI:Create("InteractiveLabel")
             nameLabel:SetText(nameText)
-            nameLabel:SetRelativeWidth(0.25)
+            nameLabel:SetRelativeWidth(0.15)
             nameLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
             -- Highlight on hover to show interactivity
             nameLabel:SetCallback("OnEnter", function(widget) 
@@ -208,12 +240,13 @@ function Roster:UpdateRosterList()
             end)
             nameLabel:SetCallback("OnLeave", function(widget) GameTooltip:Hide() end)
             
-            nameLabel:SetCallback("OnClick", function(widget, event, button) 
+            nameLabel:SetCallback("OnClick", function(widget, event, button)
                 if button == "RightButton" then
                      -- Using modern MenuUtil
+                     -- Add more in future TBD
                      if MenuUtil then
                          MenuUtil.CreateContextMenu(widget.frame, function(owner, rootDescription)
-                            rootDescription:CreateTitle(name)
+                            rootDescription:CreateTitle(displayName)
                             
                             rootDescription:CreateButton("Whisper", function() 
                                 ChatFrame_OpenChat("/w " .. name .. " ") 
@@ -245,10 +278,11 @@ function Roster:UpdateRosterList()
             
             local factionLabel = AceGUI:Create("Label")
             factionLabel:SetText(factionColor .. factionText .. "|r")
-            factionLabel:SetRelativeWidth(0.1)
+            factionLabel:SetRelativeWidth(0.05)
             factionLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
             row:AddChild(factionLabel)
 
+            -- Where are you?
             local zoneLabel = AceGUI:Create("Label")
             zoneLabel:SetText(zone or "Unknown")
             zoneLabel:SetRelativeWidth(0.25)
@@ -262,9 +296,24 @@ function Roster:UpdateRosterList()
             
             local statusLabel = AceGUI:Create("Label")
             statusLabel:SetText(statusText)
-            statusLabel:SetRelativeWidth(0.2)
+            statusLabel:SetRelativeWidth(0.15)
             statusLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
             row:AddChild(statusLabel)
+
+            -- Rating with Raider.IO-style coloring
+            local ratingText = "-"
+            if VesperGuild.db.global.keystones and VesperGuild.db.global.keystones[name] and VesperGuild.db.global.keystones[name].rating then
+                local rating = VesperGuild.db.global.keystones[name].rating
+                if rating > 0 then
+                    local colorCode = GetRatingColor(rating)
+                    ratingText = string.format("%s%d|r", colorCode, rating)
+                end
+            end
+            local ratingLabel = AceGUI:Create("Label")
+            ratingLabel:SetText(ratingText)
+            ratingLabel:SetRelativeWidth(0.1)
+            ratingLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+            row:AddChild(ratingLabel)
             
             -- Keystone Data from KeystoneSync
             local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)

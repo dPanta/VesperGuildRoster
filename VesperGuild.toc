@@ -2,13 +2,10 @@
 ## Title: VesperGuildRoster
 ## Notes: A guild management suite.
 ## Author: dPanta
-## Version: 0.6.0
+## Version: 0.7.0
 ## SavedVariables: VesperGuildDB
 
 ## OptionalDeps: Ace3
-
-# Todo:
-# Sync keys from other addons...danger-zone baby
 
 # Libraries (Uncomment if using Ace3/LibStub)
 Libs\LibStub\LibStub.lua
@@ -20,6 +17,7 @@ Libs\AceConsole-3.0\AceConsole-3.0.xml
 Libs\AceGUI-3.0\AceGUI-3.0.xml
 Libs\AceComm-3.0\AceComm-3.0.xml
 Libs\AceTimer-3.0\AceTimer-3.0.xml
+Libs\LibKeystone\LibKeystone.lua
 
 # Locales
 Locales\enUS.lua
