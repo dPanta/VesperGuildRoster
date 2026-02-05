@@ -2,10 +2,16 @@
 ## Title: VesperGuildRoster
 ## Notes: A guild management suite.
 ## Author: dPanta
-## Version: 0.3.1
+## Version: 0.5.0
 ## SavedVariables: VesperGuildDB
 
 ## OptionalDeps: Ace3
+
+# Todo:
+#   Dodelat port na on-click na key
+#   Sync mezi online lidma automatickej...jak tyvole?
+#   Zvyraznit lidi v parte - done - needs testing
+
 
 # Libraries (Uncomment if using Ace3/LibStub)
 Libs\LibStub\LibStub.lua
@@ -27,3 +33,4 @@ VesperGuild.lua
 # Modules
 Modules\KeystoneSync.lua
 Modules\Roster.lua
+Modules\Portals.lua

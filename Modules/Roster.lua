@@ -1,5 +1,4 @@
-local addonName, addonTable = ...
-local VesperGuild = LibStub("AceAddon-3.0"):GetAddon(addonName)
+local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild")
 local Roster = VesperGuild:NewModule("Roster", "AceConsole-3.0", "AceEvent-3.0")
 local AceGUI = LibStub("AceGUI-3.0")
 
@@ -18,37 +17,35 @@ end
 
 -- --- GUI Creation ---
 
-local frame
-local scroll
-
 function Roster:ShowRoster()
-    if frame then
-        frame:Show()
-        Roster:UpdateRosterList()
+    if self.frame then
+        self.frame:Show()
+        self.dungeonPanel:Show()
+        self:UpdateRosterList()
         return
     end
 
     -- Create Custom Frame (MATERIAL DESIGN)
-    frame = CreateFrame("Frame", "VesperGuildRosterFrame", UIParent, "BackdropTemplate")
-    frame:SetSize(420, 300)
-    frame:SetPoint("CENTER")
-    frame:SetFrameStrata("MEDIUM")
-    frame:SetMovable(true)
-    frame:EnableMouse(true)
-    frame:SetResizable(true)
-    frame:SetResizeBounds(300, 200)
+    self.frame = CreateFrame("Frame", "VesperGuildRosterFrame", UIParent, "BackdropTemplate" ) -- "BackdropTemplate" or "SecureHandlerBaseTemplate"--
+    self.frame:SetSize(600, 250)
+    self.frame:SetPoint("RIGHT", UIParent, "CENTER", -250, 0)
+    self.frame:SetFrameStrata("MEDIUM")
+    self.frame:SetMovable(true)
+    self.frame:EnableMouse(true)
+    self.frame:SetResizable(true)
+    self.frame:SetResizeBounds(600, 250)
     
-    -- Background
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    frame:SetBackdropColor(0.07, 0.07, 0.07, 0.95) -- #121212
-    frame:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+--   Background
+     self.frame:SetBackdrop({
+         bgFile = "Interface\\Buttons\\WHITE8x8",
+         edgeFile = "Interface\\Buttons\\WHITE8x8",
+         edgeSize = 1,
+     })
+     self.frame:SetBackdropColor(0.07, 0.07, 0.07, 0.95) -- #121212
+     self.frame:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
     
-    -- Titlebar
-    local titlebar = CreateFrame("Frame", nil, frame)
+--   Titlebar
+    local titlebar = CreateFrame("Frame", nil, self.frame)
     titlebar:SetHeight(32)
     titlebar:SetPoint("TOPLEFT")
     titlebar:SetPoint("TOPRIGHT")
@@ -64,21 +61,25 @@ function Roster:ShowRoster()
     -- Make draggable via titlebar
     titlebar:EnableMouse(true)
     titlebar:RegisterForDrag("LeftButton")
-    titlebar:SetScript("OnDragStart", function() frame:StartMoving() end)
-    titlebar:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
+    titlebar:SetScript("OnDragStart", function() self.frame:StartMoving() end)
+    titlebar:SetScript("OnDragStop", function() self.frame:StopMovingOrSizing() end)
     
     -- Close Button
     local closeBtn = CreateFrame("Button", nil, titlebar, "UIPanelCloseButton")
     closeBtn:SetPoint("RIGHT", -5, 0)
     closeBtn:SetSize(20, 20)
     closeBtn:SetScript("OnClick", function() 
-        frame:Hide()
-        frame = nil
-        scroll = nil
+        self.frame:Hide()
+        self.frame = nil
+        self.scroll = nil
+        if self.dungeonPanel then
+            self.dungeonPanel:Hide()
+            self.dungeonPanel = nil
+        end
     end)
     
     -- Resize Grip
-    local resizeBtn = CreateFrame("Button", nil, frame)
+    local resizeBtn = CreateFrame("Button", nil, self.frame)
     resizeBtn:SetSize(16, 16)
     resizeBtn:SetPoint("BOTTOMRIGHT")
     resizeBtn:EnableMouse(true)
@@ -88,8 +89,8 @@ function Roster:ShowRoster()
     resizeTex:SetAllPoints()
     resizeTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     
-    resizeBtn:SetScript("OnDragStart", function() frame:StartSizing("BOTTOMRIGHT") end)
-    resizeBtn:SetScript("OnDragStop", function() frame:StopMovingOrSizing() end)
+    resizeBtn:SetScript("OnDragStart", function() self.frame:StartSizing("BOTTOMRIGHT") end)
+    resizeBtn:SetScript("OnDragStop", function() self.frame:StopMovingOrSizing() end)
     
     -- Sync Button
     local syncBtn = CreateFrame("Button", nil, titlebar, "UIPanelButtonTemplate")
@@ -100,37 +101,40 @@ function Roster:ShowRoster()
         local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
         if KeystoneSync then
             KeystoneSync:BroadcastKeystone()
-            Roster:UpdateRosterList()
+            self:UpdateRosterList()
             VesperGuild:Print("Keystone sync requested")
         end
     end)
     
     -- Content Container (using AceGUI ScrollFrame inside our custom frame)
-    local contentFrame = CreateFrame("Frame", nil, frame)
+    local contentFrame = CreateFrame("Frame", nil, self.frame, "SecureHandlerBaseTemplate")
     contentFrame:SetPoint("TOPLEFT", titlebar, "BOTTOMLEFT", 5, -5)
     contentFrame:SetPoint("BOTTOMRIGHT", -5, 20)
     
-    scroll = AceGUI:Create("ScrollFrame")
-    scroll:SetLayout("Flow")
-    scroll.frame:SetParent(contentFrame)
-    scroll.frame:SetAllPoints()
-    scroll.frame:Show()
+    self.scroll = AceGUI:Create("ScrollFrame")
+    self.scroll:SetLayout("Flow")
+    self.scroll.frame:SetParent(contentFrame)
+    self.scroll.frame:SetAllPoints()
+    self.scroll.frame:Show()
 
-    Roster:UpdateRosterList()
+
+
+    self:UpdateRosterList()
 end
 
 function Roster:Toggle()
-    if frame and frame:IsShown() then
-        AceGUI:Release(frame)
-        frame = nil
+    if self.frame and self.frame:IsShown() then
+        self.frame:Hide()
+        self.frame = nil
+        self.scroll = nil
     else
-        Roster:ShowRoster()
+        self:ShowRoster()
     end
 end
 
 function Roster:UpdateRosterList()
-    if not frame then return end
-    scroll:ReleaseChildren() -- Clear existing list
+    if not self.frame then return end
+    self.scroll:ReleaseChildren() -- Clear existing list
 
     -- Header Row (Fake it for now with labels, or use a better widget later)
     local headerGroup = AceGUI:Create("SimpleGroup")
@@ -139,12 +143,17 @@ function Roster:UpdateRosterList()
     
     local nameHeader = AceGUI:Create("Label")
     nameHeader:SetText("Name")
-    nameHeader:SetRelativeWidth(0.3)
+    nameHeader:SetRelativeWidth(0.25)
     headerGroup:AddChild(nameHeader)
+
+    local factionHeader = AceGUI:Create("Label")
+    factionHeader:SetText("Faction")
+    factionHeader:SetRelativeWidth(0.1)
+    headerGroup:AddChild(factionHeader)
 
     local zoneHeader = AceGUI:Create("Label")
     zoneHeader:SetText("Zone")
-    zoneHeader:SetRelativeWidth(0.3)
+    zoneHeader:SetRelativeWidth(0.25)
     headerGroup:AddChild(zoneHeader)
 
     local statusHeader = AceGUI:Create("Label")
@@ -153,15 +162,15 @@ function Roster:UpdateRosterList()
     headerGroup:AddChild(statusHeader)
     
     local keyHeader = AceGUI:Create("Label")
-    keyHeader:SetText("C. Key")
+    keyHeader:SetText("KEY")
     keyHeader:SetRelativeWidth(0.2)
     headerGroup:AddChild(keyHeader)
 
-    scroll:AddChild(headerGroup)
+    self.scroll:AddChild(headerGroup)
     -- Horizontal separator
     local line = AceGUI:Create("Heading")
     line:SetFullWidth(true)
-    scroll:AddChild(line)
+    self.scroll:AddChild(line)
 
 
     -- Iterate Guild Members
@@ -184,8 +193,8 @@ function Roster:UpdateRosterList()
 
             local nameLabel = AceGUI:Create("InteractiveLabel")
             nameLabel:SetText(nameText)
-            nameLabel:SetRelativeWidth(0.3)
-            nameLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\NotoSans-SemiBold.ttf", 11, "")
+            nameLabel:SetRelativeWidth(0.25)
+            nameLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
             -- Highlight on hover to show interactivity
             nameLabel:SetCallback("OnEnter", function(widget) 
                  GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
@@ -196,7 +205,6 @@ function Roster:UpdateRosterList()
             
             nameLabel:SetCallback("OnClick", function(widget, event, button) 
                 if button == "RightButton" then
-                     -- Using modern MenuUtil
                      -- Using modern MenuUtil
                      if MenuUtil then
                          MenuUtil.CreateContextMenu(widget.frame, function(owner, rootDescription)
@@ -219,10 +227,27 @@ function Roster:UpdateRosterList()
             end)
             row:AddChild(nameLabel)
 
+            -- Faction
+            local factionText = "Unknown"
+            local factionColor = "|cffFFFFFF"
+            if UnitFactionGroup("player") == "Alliance" then
+                factionText = "A"
+                factionColor = "|cff0070DD"
+            elseif UnitFactionGroup("player") == "Horde" then
+                factionText = "H"
+                factionColor = "|cffA335EE"
+            end
+            
+            local factionLabel = AceGUI:Create("Label")
+            factionLabel:SetText(factionColor .. factionText .. "|r")
+            factionLabel:SetRelativeWidth(0.1)
+            factionLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+            row:AddChild(factionLabel)
+
             local zoneLabel = AceGUI:Create("Label")
             zoneLabel:SetText(zone or "Unknown")
-            zoneLabel:SetRelativeWidth(0.3)
-            zoneLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 13, "")
+            zoneLabel:SetRelativeWidth(0.25)
+            zoneLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
             row:AddChild(zoneLabel)
 
             -- Format Status
@@ -233,7 +258,7 @@ function Roster:UpdateRosterList()
             local statusLabel = AceGUI:Create("Label")
             statusLabel:SetText(statusText)
             statusLabel:SetRelativeWidth(0.2)
-            statusLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 13, "")
+            statusLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
             row:AddChild(statusLabel)
             
             -- Keystone Data from KeystoneSync
@@ -250,7 +275,7 @@ function Roster:UpdateRosterList()
                 
                 local keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName) or "-"
                 keyLabel:SetText(keystoneText)
-                keyLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 13, "")
+                keyLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
             else
                 keyLabel:SetText("-")
             end
@@ -261,12 +286,28 @@ function Roster:UpdateRosterList()
             local rowFrame = row.frame
             local bg = rowFrame:CreateTexture(nil, "BACKGROUND")
             bg:SetAllPoints()
-            -- Zebra Striping
-            if (i % 2 == 0) then
-                bg:SetColorTexture(0.17, 0.17, 0.17, 1) -- #2C2C2C
-            else
-                bg:SetColorTexture(0.12, 0.12, 0.12, 1) -- #1E1E1E
+            
+            -- Check if player is in group
+            local isInGroup = false
+            for j = 1, (IsInRaid() and GetNumGroupMembers() or 5) do
+                local groupName = IsInRaid() and UnitName("raid" .. j) or (j == 1 and "player" or "party" .. (j - 1))
+                if UnitName(groupName) == name then
+                    isInGroup = true
+                    break
+                end
             end
+            
+            -- Determine base color: teal tint if in group, zebra stripes otherwise
+            local baseColorR, baseColorG, baseColorB
+            if isInGroup then
+                baseColorR, baseColorG, baseColorB = 0.12, 0.24, 0.24 -- Teal tint
+            elseif (i % 2 == 0) then
+                baseColorR, baseColorG, baseColorB = 0.17, 0.17, 0.17 -- #2C2C2C
+            else
+                baseColorR, baseColorG, baseColorB = 0.12, 0.12, 0.12 -- #1E1E1E
+            end
+            
+            bg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
             
             -- Hover Effect
             rowFrame:SetScript("OnEnter", function() 
@@ -274,14 +315,10 @@ function Roster:UpdateRosterList()
             end)
             rowFrame:SetScript("OnLeave", function() 
                 -- Restore original color
-                if (i % 2 == 0) then
-                    bg:SetColorTexture(0.17, 0.17, 0.17, 1)
-                else
-                    bg:SetColorTexture(0.12, 0.12, 0.12, 1)
-                end
+                bg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
             end)
             
-            scroll:AddChild(row)
+            self.scroll:AddChild(row)
         end
     end
 end
