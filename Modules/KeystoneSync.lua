@@ -5,7 +5,7 @@ local LibKeystone = LibStub("LibKeystone")
 -- Dungeon abbreviation lookup (TWW Season 3 dungeons)
 local DUNGEON_ABBREV = {
     -- The War Within Season 3
-    [499] = "DZIHAD",               -- Priory of Sacred Flame
+    [499] = "PRIORY",               -- Priory of Sacred Flame
     [542] = "ECOJUMP",              -- Eco Dome Almahdani
     [378] = "HALLS",                -- Halls of Atonement
     [525] = "FLOOD",                -- Operation Floodgate

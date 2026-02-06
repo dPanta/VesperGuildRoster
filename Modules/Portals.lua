@@ -86,6 +86,17 @@ function Portals:CreatePortalFrame()
 				btn:EnableMouse(true)
 			end
 
+            -- Tooltip
+            btn.dungeonName = dungInfo.dungeonName
+            btn:SetScript("OnEnter", function(self)
+                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+                GameTooltip:SetText(self.dungeonName, 1, 1, 1)
+                GameTooltip:Show()
+            end)
+            btn:SetScript("OnLeave", function(self)
+                GameTooltip:Hide()
+            end)
+
             -- Clickitty Click
             btn:SetAttribute("type1", "spell")
             btn:SetAttribute("spell1", spellName)

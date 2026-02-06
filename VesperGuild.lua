@@ -50,6 +50,7 @@ function VesperGuild:OnInitialize()
     self:Print(L["ADDON_LOADED_MESSAGE"])
 end
 
+-- Baaaaaaa, create a sheep
 function VesperGuild:CreateFloatingIcon()
     local btn = CreateFrame("Button", "VesperGuildIcon", UIParent)
     btn:SetSize(40, 40)
@@ -107,7 +108,7 @@ function VesperGuild:OnEnable()
     self:RegisterChatCommand("vesper", "HandleChatCommand")
     self:RegisterChatCommand("vg", "HandleChatCommand")
     
-    -- Debug: Check if modules are loaded
+    -- HealthCheck if modules are loaded
     local Roster = self:GetModule("Roster", true)
     local Portals = self:GetModule("Portals", true)
     if not Roster then
@@ -126,7 +127,7 @@ end
 
 function VesperGuild:HandleChatCommand(input)
     if not input or input:trim() == "" then
-        -- Open the roster window by default
+        -- Open the roster and portals window by default
         local Roster = self:GetModule("Roster", true)
         local Portals = self:GetModule("Portals", true)
         if Roster and Portals then
@@ -135,6 +136,31 @@ function VesperGuild:HandleChatCommand(input)
         else
             self:Print("Roster or Portals module not found!")
         end
+    elseif input == "reset" then
+        -- Reset icon position
+        self.db.profile.icon = { point = "CENTER", x = 0, y = 0 }
+        local icon = _G["VesperGuildIcon"]
+        if icon then
+            icon:ClearAllPoints()
+            icon:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
+        end
+
+        -- Reset roster frame position
+        self.db.profile.rosterPosition = nil
+        local rosterFrame = _G["VesperGuildRosterFrame"]
+        if rosterFrame then
+            rosterFrame:ClearAllPoints()
+            rosterFrame:SetPoint("RIGHT", UIParent, "CENTER", -250, 0)
+        end
+
+        -- Reset portals frame position
+        local portalFrame = _G["VesperGuildPortalFrame"]
+        if portalFrame then
+            portalFrame:ClearAllPoints()
+            portalFrame:SetPoint("LEFT", UIParent, "CENTER", 250, 0)
+        end
+
+        self:Print("All frame positions have been reset.")
     elseif input == "debug" or input == "keys" then
         -- Debug: Dump keystone database
         local KeystoneSync = self:GetModule("KeystoneSync", true)
@@ -145,6 +171,6 @@ function VesperGuild:HandleChatCommand(input)
         end
     else
         self:Print("Unknown command: " .. input)
-        self:Print("Usage: /vg [debug|keys]")
+        self:Print("Usage: /vg [reset|debug|keys]")
     end
 end

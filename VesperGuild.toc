@@ -2,7 +2,7 @@
 ## Title: VesperGuildRoster
 ## Notes: A guild management suite.
 ## Author: dPanta
-## Version: 0.7.0
+## Version: 0.7.6
 ## SavedVariables: VesperGuildDB
 
 ## OptionalDeps: Ace3
