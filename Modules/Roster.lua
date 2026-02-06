@@ -64,7 +64,8 @@ function Roster:ShowRoster()
     
     local title = titlebar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", 10, 0)
-    title:SetText("VesperGuild Roster")
+    local guildName = GetGuildInfo("player")
+    title:SetText(guildName or "Guild Roster")
     
     -- Make draggable via titlebar
     titlebar:EnableMouse(true)
