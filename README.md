@@ -17,12 +17,12 @@ Simple addon to manage your guild m+ runs.
   - Can be moved via shift+left click and drag
 - Or use chatcommand /vg or /vesper
   - subcommands:
-    /vg reset
-      Resets position of both frames and the icon
-    /vg keys
-      Dumps all currently saved keys to chat
-    /vg debug
-      Prints out additional info while using the addon
+    - /vg reset
+      - Resets position of both frames and the icon
+    - /vg keys
+      - Dumps all currently saved keys to chat
+    - /vg debug
+      - Prints out additional info while using the addon
 
 # Credits
 ## LibKeystone / BigWigs

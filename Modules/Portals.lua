@@ -13,8 +13,32 @@ end
 function Portals:CreatePortalFrame()
     self.VesperPortalsUI = CreateFrame("Frame", "VesperGuildPortalFrame", UIParent, "BackdropTemplate")
     self.VesperPortalsUI:SetSize(300, 160)
-    self.VesperPortalsUI:SetPoint("LEFT", UIParent, "CENTER", 250, 0)
+
+    -- Restore saved position or use default
+    if VesperGuild.db.profile.portalsPosition then
+        local pos = VesperGuild.db.profile.portalsPosition
+        self.VesperPortalsUI:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
+    else
+        self.VesperPortalsUI:SetPoint("LEFT", UIParent, "CENTER", 250, 0)
+    end
+
     self.VesperPortalsUI:SetFrameStrata("MEDIUM")
+    self.VesperPortalsUI:SetMovable(true)
+    self.VesperPortalsUI:EnableMouse(true)
+    self.VesperPortalsUI:RegisterForDrag("LeftButton")
+    self.VesperPortalsUI:SetScript("OnDragStart", function(frame)
+        frame:StartMoving()
+    end)
+    self.VesperPortalsUI:SetScript("OnDragStop", function(frame)
+        frame:StopMovingOrSizing()
+        local point, _, relativePoint, xOfs, yOfs = frame:GetPoint()
+        VesperGuild.db.profile.portalsPosition = {
+            point = point,
+            relativePoint = relativePoint,
+            xOfs = xOfs,
+            yOfs = yOfs,
+        }
+    end)
     self.VesperPortalsUI:Hide()
     
      self.VesperPortalsUI:SetBackdrop({

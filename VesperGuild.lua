@@ -154,6 +154,7 @@ function VesperGuild:HandleChatCommand(input)
         end
 
         -- Reset portals frame position
+        self.db.profile.portalsPosition = nil
         local portalFrame = _G["VesperGuildPortalFrame"]
         if portalFrame then
             portalFrame:ClearAllPoints()
