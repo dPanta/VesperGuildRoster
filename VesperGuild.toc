@@ -2,7 +2,7 @@
 ## Title: VesperGuildRoster
 ## Notes: A guild management suite.
 ## Author: dPanta
-## Version: 0.7.6
+## Version: 0.8.0
 ## SavedVariables: VesperGuildDB
 
 ## OptionalDeps: Ace3
@@ -30,3 +30,4 @@ Modules\DataHandle.lua
 Modules\KeystoneSync.lua
 Modules\Roster.lua
 Modules\Portals.lua
+Modules\Automation.lua

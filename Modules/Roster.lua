@@ -248,9 +248,11 @@ function Roster:UpdateRosterList()
 
     -- Set header background to prevent it from being colored
     local headerFrame = headerGroup.frame
-    local headerBg = headerFrame:CreateTexture(nil, "BACKGROUND")
-    headerBg:SetAllPoints()
-    headerBg:SetColorTexture(0.1, 0.1, 0.1, 1) -- Dark gray, matches titlebar
+    if not headerFrame.vesperBg then
+        headerFrame.vesperBg = headerFrame:CreateTexture(nil, "BACKGROUND")
+        headerFrame.vesperBg:SetAllPoints()
+    end
+    headerFrame.vesperBg:SetColorTexture(0.1, 0.1, 0.1, 1) -- Dark gray, matches titlebar
 
     self.scroll:AddChild(headerGroup)
     -- Horizontal separator
@@ -440,8 +442,11 @@ function Roster:UpdateRosterList()
 
             -- MATERIAL SKINNING: Row Background
             local rowFrame = row.frame
-            local bg = rowFrame:CreateTexture(nil, "BACKGROUND")
-            bg:SetAllPoints()
+            if not rowFrame.vesperBg then
+                rowFrame.vesperBg = rowFrame:CreateTexture(nil, "BACKGROUND")
+                rowFrame.vesperBg:SetAllPoints()
+            end
+            local bg = rowFrame.vesperBg
             
             -- Check if player is in group
             local isInGroup = false
