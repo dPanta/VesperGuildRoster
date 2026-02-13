@@ -128,6 +128,196 @@ function Portals:CreatePortalFrame()
 
             index = index + 1
         end
+
+    self:CreateVaultFrame()
+    self:CreateMPlusProgFrame(curSeason)
+end
+
+function Portals:CreateVaultFrame()
+    self.vaultFrame = CreateFrame("Frame", "VesperGuildVaultFrame", self.VesperPortalsUI, "BackdropTemplate")
+    self.vaultFrame:SetSize(72, 72)
+    self.vaultFrame:SetPoint("TOP", self.VesperPortalsUI, "BOTTOM", 0, -10)
+    self.vaultFrame:SetFrameStrata("MEDIUM")
+
+    self.vaultFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    self.vaultFrame:SetBackdropColor(0.07, 0.07, 0.07, 0.95)
+    self.vaultFrame:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+
+    local btn = CreateFrame("Button", nil, self.vaultFrame)
+    btn:SetSize(52, 52)
+    btn:SetPoint("CENTER")
+
+    local icon = btn:CreateTexture(nil, "ARTWORK")
+    icon:SetAllPoints()
+    icon:SetTexture("Interface\\Icons\\Achievement_Dungeon_GloryoftheRaider")
+
+    local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetColorTexture(1, 1, 0, 0.4)
+    btn:SetHighlightTexture(highlight)
+
+    btn:SetScript("OnClick", function()
+        if WeeklyRewards_ShowUI then
+            WeeklyRewards_ShowUI()
+        end
+    end)
+
+    btn:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetText("Great Vault", 1, 1, 1)
+        GameTooltip:Show()
+    end)
+    btn:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+end
+
+-- M+ keys coloring
+local KEY_BRACKETS = {
+    { 20, "ff8000" },
+    { 18, "e85f7c" },
+    { 16, "d64ea6" },
+    { 14, "bd3fd0" },
+    { 12, "ab38e5" },
+    { 10, "7957e7" },
+    { 8,  "1773da" },
+    { 2,  "58d66b" },
+}
+
+local function GetKeyColor(level)
+    for _, bracket in ipairs(KEY_BRACKETS) do
+        if level >= bracket[1] then
+            return "|cff" .. bracket[2]
+        end
+    end
+    return "|cff9d9d9d"
+end
+
+function Portals:CreateMPlusProgFrame(curSeason)
+    local rowHeight = 18
+    local headerHeight = 22
+    local padding = 10
+    local bestColWidth = 40 -- space for "+XX" text
+    local timeColWidth = 55 -- space for "mm:ss" text
+    local gap = 10 -- gap between columns
+    local numDungeons = #curSeason
+    local frameHeight = headerHeight + (numDungeons * rowHeight) + (padding * 2)
+
+    -- Measure widest dungeon name to size frame dynamically
+    local measure = UIParent:CreateFontString(nil, "OVERLAY")
+    measure:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 11, "")
+    local maxNameWidth = 0
+    for _, mapID in ipairs(curSeason) do
+        local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or "Unknown"
+        measure:SetText(dungName)
+        local w = measure:GetStringWidth()
+        if w > maxNameWidth then maxNameWidth = w end
+    end
+    measure:Hide()
+
+    local frameWidth = math.ceil(maxNameWidth) + bestColWidth + timeColWidth + (gap * 2) + (padding * 2)
+
+    self.mplusProgFrame = CreateFrame("Frame", "VesperGuildMPlusProgFrame", self.VesperPortalsUI, "BackdropTemplate")
+    self.mplusProgFrame:SetSize(frameWidth, frameHeight)
+    self.mplusProgFrame:SetPoint("LEFT", self.VesperPortalsUI, "RIGHT", 10, 0)
+    self.mplusProgFrame:SetFrameStrata("MEDIUM")
+
+    self.mplusProgFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    self.mplusProgFrame:SetBackdropColor(0.07, 0.07, 0.07, 0.95)
+    self.mplusProgFrame:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+
+    local timeColRight = -padding
+    local bestColRight = timeColRight - timeColWidth - gap
+
+    -- Header
+    local nameHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
+    nameHeader:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 11, "")
+    nameHeader:SetPoint("TOPLEFT", padding, -padding)
+    nameHeader:SetText("|cffFFFFFFDungeon|r")
+
+    local keyHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
+    keyHeader:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 11, "")
+    keyHeader:SetPoint("TOPRIGHT", bestColRight, -padding)
+    keyHeader:SetText("|cffFFFFFFBest|r")
+
+    local timeHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
+    timeHeader:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 11, "")
+    timeHeader:SetPoint("TOPRIGHT", timeColRight, -padding)
+    timeHeader:SetText("|cffFFFFFFTime|r")
+
+    -- Rows
+    for i, mapID in ipairs(curSeason) do
+        local rowTop = -(padding + headerHeight + (i - 1) * rowHeight)
+        local rowCenter = rowTop - (rowHeight / 2)
+
+        -- Zebra stripe background
+        if i % 2 == 0 then
+            local stripe = self.mplusProgFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+            stripe:SetPoint("TOPLEFT", self.mplusProgFrame, "TOPLEFT", 1, rowTop)
+            stripe:SetPoint("TOPRIGHT", self.mplusProgFrame, "TOPRIGHT", -1, rowTop)
+            stripe:SetHeight(rowHeight)
+            stripe:SetColorTexture(0.17, 0.17, 0.17, 1)
+        end
+
+        -- Dungeon name
+        local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or "Unknown"
+        local nameText = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
+        nameText:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 11, "")
+        nameText:SetPoint("LEFT", self.mplusProgFrame, "TOPLEFT", padding, rowCenter)
+        nameText:SetJustifyH("LEFT")
+        nameText:SetText(dungName)
+
+        -- Best key level
+        local bestLevel = 0
+        local bestDuration = 0
+        local wasInTime = false
+        local inTimeInfo, overTimeInfo = C_MythicPlus.GetSeasonBestForMap(mapID)
+        if inTimeInfo and inTimeInfo.level then
+            bestLevel = inTimeInfo.level
+            bestDuration = inTimeInfo.durationSec
+            wasInTime = true
+        end
+        if overTimeInfo and overTimeInfo.level and overTimeInfo.level > bestLevel then
+            bestLevel = overTimeInfo.level
+            bestDuration = overTimeInfo.durationSec
+            wasInTime = false
+        end
+
+        local levelText = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
+        levelText:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 11, "")
+        levelText:SetPoint("RIGHT", self.mplusProgFrame, "TOPRIGHT", bestColRight, rowCenter)
+        levelText:SetJustifyH("RIGHT")
+
+        local timeText = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
+        timeText:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 11, "")
+        timeText:SetPoint("RIGHT", self.mplusProgFrame, "TOPRIGHT", timeColRight, rowCenter)
+        timeText:SetJustifyH("RIGHT")
+
+        if bestLevel > 0 then
+            local color = GetKeyColor(bestLevel)
+            levelText:SetText(color .. "+" .. bestLevel .. "|r")
+
+            local mins = math.floor(bestDuration / 60)
+            local secs = bestDuration % 60
+            local timeStr = string.format("%d:%02d", mins, secs)
+            if wasInTime then
+                timeText:SetText("|cff81c784" .. timeStr .. "|r") -- Material light green
+            else
+                timeText:SetText("|cffe57373" .. timeStr .. "|r") -- Material light red
+            end
+        else
+            levelText:SetText("|cff9d9d9d-|r")
+            timeText:SetText("|cff9d9d9d-|r")
+        end
+    end
 end
 
 function Portals:Toggle()

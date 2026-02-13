@@ -7,8 +7,13 @@ function Roster:OnInitialize()
 end
 
 function Roster:OnEnable()
-    -- Hook into the main slash command logic if needed,
-    -- or just expose a function the Core can call.
+    self:RegisterMessage("VESPERGUILD_ILVL_UPDATE", "OnIlvlUpdate")
+end
+
+function Roster:OnIlvlUpdate()
+    if self.frame and self.frame:IsShown() then
+        self:UpdateRosterList()
+    end
 end
 
 function Roster:OnDisable()
@@ -134,9 +139,12 @@ function Roster:ShowRoster()
         local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
         if KeystoneSync then
             KeystoneSync:RequestGuildKeystones()
-            self:UpdateRosterList()
         end
-
+        local Auto = VesperGuild:GetModule("Automation", true)
+        if Auto then
+            Auto:ManualSync()
+        end
+        self:UpdateRosterList()
     end)
     
     -- Content Container
@@ -174,21 +182,61 @@ function Roster:Toggle()
     end
 end
 
--- M+ rating coloring
-local function GetRatingColor(rating)
-    if rating >= 3000 then
-        return "|cffe268a8" -- Pink (Thunderpaw)
-    elseif rating >= 2500 then
-        return "|cffff8000" -- Orange (Legendary)
-    elseif rating >= 2000 then
-        return "|cffa335ee" -- Purple (Epic)
-    elseif rating >= 1500 then
-        return "|cff0070dd" -- Blue (Rare)
-    elseif rating >= 100 then
-        return "|cff1eff00" -- Green (Uncommon)
-    else
-        return "|cff9d9d9d" -- Gray (Poor)
+-- M+ rating coloring (gradient brackets)
+local RATING_BRACKETS = {
+    { 4325, "ff8000" },
+    { 4155, "fb7834" },
+    { 4035, "f56f4f" },
+    { 3915, "ef6766" },
+    { 3795, "e85f7c" },
+    { 3675, "e05791" },
+    { 3555, "d64ea6" },
+    { 3435, "cb46bb" },
+    { 3315, "bd3fd0" },
+    { 3195, "ab38e5" },
+    { 3070, "7957e7" },
+    { 2900, "1773da" },
+    { 2780, "3d80cc" },
+    { 2660, "4e8ebd" },
+    { 2540, "589cae" },
+    { 2420, "5eaa9f" },
+    { 2300, "5fb98f" },
+    { 2180, "5ec77d" },
+    { 2060, "58d66b" },
+    { 1940, "4ee455" },
+    { 1820, "3cf337" },
+    { 1700, "2cff13" },
+    { 1575, "54ff3a" },
+    { 1450, "6eff52" },
+    { 1325, "83ff67" },
+    { 1200, "95ff79" },
+    { 1075, "a5ff8b" },
+    { 950,  "b4ff9c" },
+    { 825,  "c2ffad" },
+    { 700,  "cfffbe" },
+    { 575,  "dcffce" },
+    { 450,  "e8ffde" },
+    { 325,  "f4ffef" },
+    { 200,  "ffffff" },
+}
+
+-- Helper: vertically center text inside AceGUI Label/InteractiveLabel
+local function CenterLabelV(widget)
+    if widget.label then
+        widget.label:SetJustifyV("MIDDLE")
+        widget.label:ClearAllPoints()
+        widget.label:SetPoint("TOPLEFT", widget.frame, "TOPLEFT", 0, 0)
+        widget.label:SetPoint("BOTTOMRIGHT", widget.frame, "BOTTOMRIGHT", 0, 0)
     end
+end
+
+local function GetRatingColor(rating)
+    for _, bracket in ipairs(RATING_BRACKETS) do
+        if rating >= bracket[1] then
+            return "|cff" .. bracket[2]
+        end
+    end
+    return "|cff9d9d9d" -- Gray for below 200
 end
 
 function Roster:UpdateRosterList()
@@ -214,36 +262,49 @@ function Roster:UpdateRosterList()
     local nameHeader = AceGUI:Create("Label")
     nameHeader:SetText("Name")
     nameHeader:SetRelativeWidth(0.15)
+    CenterLabelV(nameHeader)
     headerGroup:AddChild(nameHeader)
 
     -- Faction
     local factionHeader = AceGUI:Create("Label")
     factionHeader:SetText("F")
     factionHeader:SetRelativeWidth(0.05)
+    CenterLabelV(factionHeader)
     headerGroup:AddChild(factionHeader)
 
     -- Current Zone
     local zoneHeader = AceGUI:Create("Label")
     zoneHeader:SetText("Zone")
-    zoneHeader:SetRelativeWidth(0.25)
+    zoneHeader:SetRelativeWidth(0.20)
+    CenterLabelV(zoneHeader)
     headerGroup:AddChild(zoneHeader)
 
     -- Status
     local statusHeader = AceGUI:Create("Label")
     statusHeader:SetText("Status")
-    statusHeader:SetRelativeWidth(0.15)
+    statusHeader:SetRelativeWidth(0.10)
+    CenterLabelV(statusHeader)
     headerGroup:AddChild(statusHeader)
+
+    -- iLvl
+    local ilvlHeader = AceGUI:Create("Label")
+    ilvlHeader:SetText("iLvl")
+    ilvlHeader:SetRelativeWidth(0.10)
+    CenterLabelV(ilvlHeader)
+    headerGroup:AddChild(ilvlHeader)
 
     -- M+ Rating
     local ratingHeader = AceGUI:Create("Label")
     ratingHeader:SetText("R")
     ratingHeader:SetRelativeWidth(0.1)
+    CenterLabelV(ratingHeader)
     headerGroup:AddChild(ratingHeader)
 
     -- Keystone
     local keyHeader = AceGUI:Create("Label")
     keyHeader:SetText("KEY")
     keyHeader:SetRelativeWidth(0.2)
+    CenterLabelV(keyHeader)
     headerGroup:AddChild(keyHeader)
 
     -- Set header background to prevent it from being colored
@@ -287,6 +348,7 @@ function Roster:UpdateRosterList()
             nameLabel:SetText(nameText)
             nameLabel:SetRelativeWidth(0.15)
             nameLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+            CenterLabelV(nameLabel)
             -- Highlight on hover to show interactivity
             nameLabel:SetCallback("OnEnter", function(widget) 
                  GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
@@ -335,25 +397,44 @@ function Roster:UpdateRosterList()
             factionLabel:SetText(factionColor .. factionText .. "|r")
             factionLabel:SetRelativeWidth(0.05)
             factionLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+            CenterLabelV(factionLabel)
             row:AddChild(factionLabel)
 
             -- Where are you?
             local zoneLabel = AceGUI:Create("Label")
             zoneLabel:SetText(zone or "Unknown")
-            zoneLabel:SetRelativeWidth(0.25)
+            zoneLabel:SetRelativeWidth(0.20)
             zoneLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+            CenterLabelV(zoneLabel)
             row:AddChild(zoneLabel)
 
             -- Format Status
             local statusText = "Online"
             if status == 1 then statusText = "|cffFFFF00AFK|r" end
             if status == 2 then statusText = "|cffFF0000DND|r" end
-            
+
             local statusLabel = AceGUI:Create("Label")
             statusLabel:SetText(statusText)
-            statusLabel:SetRelativeWidth(0.15)
+            statusLabel:SetRelativeWidth(0.10)
             statusLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+            CenterLabelV(statusLabel)
             row:AddChild(statusLabel)
+
+            -- iLvl from sync DB
+            local ilvlText = "-"
+            local DataHandle = VesperGuild:GetModule("DataHandle", true)
+            if DataHandle then
+                local ilvlData = DataHandle:GetIlvlForPlayer(name)
+                if ilvlData then
+                    ilvlText = tostring(ilvlData.ilvl)
+                end
+            end
+            local ilvlLabel = AceGUI:Create("Label")
+            ilvlLabel:SetText(ilvlText)
+            ilvlLabel:SetRelativeWidth(0.10)
+            ilvlLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+            CenterLabelV(ilvlLabel)
+            row:AddChild(ilvlLabel)
 
             -- Rating with Raider.IO-style coloring
             local ratingText = "-"
@@ -368,6 +449,7 @@ function Roster:UpdateRosterList()
             ratingLabel:SetText(ratingText)
             ratingLabel:SetRelativeWidth(0.1)
             ratingLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+            CenterLabelV(ratingLabel)
             row:AddChild(ratingLabel)
             
             -- Keystone Data from KeystoneSync
@@ -397,6 +479,7 @@ function Roster:UpdateRosterList()
             keyLabel:SetText(keystoneText)
             keyLabel:SetRelativeWidth(0.2)
             keyLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+            CenterLabelV(keyLabel)
             row:AddChild(keyLabel)
 
             -- Create secure button overlay for portal casting (only if player has a keystone)

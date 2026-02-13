@@ -115,3 +115,39 @@ end
 function DataHandle:GetDB()
     return dungListDB
 end
+
+-- ilvl Sync DB accessors (persistent via AceDB global)
+function DataHandle:GetIlvlDB()
+    return VesperGuild.db.global.ilvlSync
+end
+
+function DataHandle:StoreIlvl(playerName, ilvl, classID)
+    if not VesperGuild.db.global.ilvlSync then
+        VesperGuild.db.global.ilvlSync = {}
+    end
+    VesperGuild.db.global.ilvlSync[playerName] = {
+        ilvl = ilvl,
+        classID = classID,
+        timestamp = time(),
+    }
+end
+
+function DataHandle:GetIlvlForPlayer(playerName)
+    local db = VesperGuild.db.global.ilvlSync
+    if not db or not db[playerName] then
+        return nil
+    end
+    return db[playerName]
+end
+
+function DataHandle:CleanupStaleIlvl(maxAge)
+    local db = VesperGuild.db.global.ilvlSync
+    if not db then return end
+    maxAge = maxAge or (7 * 24 * 3600) -- default 7 days
+    local now = time()
+    for name, data in pairs(db) do
+        if (now - data.timestamp) > maxAge then
+            db[name] = nil
+        end
+    end
+end

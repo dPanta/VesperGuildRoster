@@ -44,6 +44,7 @@ function VesperGuild:OnInitialize()
         },
         global = {
             keystones = {}, -- Persistent keystone storage
+            ilvlSync = {},  -- Persistent ilvl storage from guild sync
         },
     }, true)
 
@@ -89,6 +90,7 @@ function VesperGuild:CreateFloatingIcon()
             local Portals = VesperGuild:GetModule("Portals", true)
             if Roster then Roster:Toggle() end
             if Portals then Portals:Toggle() end
+            VesperGuild:SendMessage("VESPERGUILD_ADDON_OPENED")
         end
     end)
 
@@ -133,6 +135,7 @@ function VesperGuild:HandleChatCommand(input)
         if Roster and Portals then
             Roster:Toggle()
             Portals:Toggle()
+            self:SendMessage("VESPERGUILD_ADDON_OPENED")
         else
             self:Print("Roster or Portals module not found!")
         end
@@ -162,6 +165,13 @@ function VesperGuild:HandleChatCommand(input)
         end
 
         self:Print("All frame positions have been reset.")
+    elseif input == "sync" then
+        local Auto = self:GetModule("Automation", true)
+        if Auto then
+            Auto:ManualSync()
+        else
+            self:Print("Automation module not found!")
+        end
     elseif input == "debug" or input == "keys" then
         -- Debug: Dump keystone database
         local KeystoneSync = self:GetModule("KeystoneSync", true)
@@ -172,6 +182,6 @@ function VesperGuild:HandleChatCommand(input)
         end
     else
         self:Print("Unknown command: " .. input)
-        self:Print("Usage: /vg [reset|debug|keys]")
+        self:Print("Usage: /vg [reset|sync|debug|keys]")
     end
 end
