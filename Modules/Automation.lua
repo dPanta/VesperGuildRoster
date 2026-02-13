@@ -4,6 +4,7 @@ local Automation = VesperGuild:NewModule("Automation", "AceConsole-3.0", "AceEve
 local ILVL_PREFIX = "VGiLvl"
 local SYNC_COOLDOWN = 30 -- seconds between broadcasts to avoid spam
 local lastBroadcast = 0
+local cachedRealmName = nil
 
 function Automation:OnInitialize()
     self:RegisterEvent("PLAYER_LOGIN")
@@ -59,7 +60,8 @@ function Automation:OnIlvlReceived(prefix, message, distribution, sender)
 
     -- Normalize sender (add realm if missing)
     if not string.find(sender, "-") then
-        sender = sender .. "-" .. GetNormalizedRealmName()
+        cachedRealmName = cachedRealmName or GetNormalizedRealmName()
+        sender = sender .. "-" .. cachedRealmName
     end
 
     local ilvlStr, classIDStr = strsplit(":", message)

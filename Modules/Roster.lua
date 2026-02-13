@@ -278,6 +278,22 @@ function Roster:UpdateRosterList()
     self.scroll:AddChild(line)
 
 
+    -- Cache lookups before the loop
+    local DataHandle = VesperGuild:GetModule("DataHandle", true)
+    local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
+    local playerRealm = GetRealmName()
+    local playerFaction = UnitFactionGroup("player")
+
+    -- Build group member lookup table for O(1) checks
+    local groupMembers = {}
+    if IsInGroup() then
+        for j = 1, GetNumGroupMembers() do
+            local unit = IsInRaid() and ("raid" .. j) or (j == 1 and "player" or ("party" .. (j - 1)))
+            local gName = UnitName(unit)
+            if gName then groupMembers[gName] = true end
+        end
+    end
+
     -- Iterate Guild Members
     local numMembers = GetNumGuildMembers()
     for i = 1, numMembers do
@@ -338,13 +354,13 @@ function Roster:UpdateRosterList()
             end)
             row:AddChild(nameLabel)
 
-            -- Faction
+            -- Faction (cached)
             local factionText = "Unknown"
             local factionColor = "|cffFFFFFF"
-            if UnitFactionGroup("player") == "Alliance" then
+            if playerFaction == "Alliance" then
                 factionText = "A"
                 factionColor = "|cff0070DD"
-            elseif UnitFactionGroup("player") == "Horde" then
+            elseif playerFaction == "Horde" then
                 factionText = "H"
                 factionColor = "|cffA335EE"
             end
@@ -378,7 +394,6 @@ function Roster:UpdateRosterList()
 
             -- iLvl from sync DB
             local ilvlText = "-"
-            local DataHandle = VesperGuild:GetModule("DataHandle", true)
             if DataHandle then
                 local ilvlData = DataHandle:GetIlvlForPlayer(name)
                 if ilvlData then
@@ -397,7 +412,6 @@ function Roster:UpdateRosterList()
             if VesperGuild.db.global.keystones and VesperGuild.db.global.keystones[name] and VesperGuild.db.global.keystones[name].rating then
                 local rating = VesperGuild.db.global.keystones[name].rating
                 if rating > 0 then
-                    local DataHandle = VesperGuild:GetModule("DataHandle", true)
                     local colorCode = DataHandle and DataHandle:GetRatingColor(rating) or "|cff9d9d9d"
                     ratingText = string.format("%s%d|r", colorCode, rating)
                 end
@@ -410,13 +424,11 @@ function Roster:UpdateRosterList()
             row:AddChild(ratingLabel)
             
             -- Keystone Data from KeystoneSync
-            local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
             local keystoneMapID = nil
             local keystoneText = "-"
 
             if KeystoneSync then
                 -- Normalize player name: remove realm if it's the same realm
-                local playerRealm = GetRealmName()
                 local fullName = name
                 -- If name doesn't have realm, add it
                 if not string.find(name, "-") then
@@ -441,7 +453,6 @@ function Roster:UpdateRosterList()
 
             -- Create secure button overlay for portal casting (only if player has a keystone)
             if keystoneMapID then
-                local DataHandle = VesperGuild:GetModule("DataHandle", true)
                 if DataHandle then
                     local dungInfo = DataHandle:GetDungeonByMapID(keystoneMapID)
                     if dungInfo then
@@ -488,17 +499,8 @@ function Roster:UpdateRosterList()
             end
             local bg = rowFrame.vesperBg
             
-            -- Check if player is in group
-            local isInGroup = false
-            for j = 1, (IsInRaid() and GetNumGroupMembers() or 5) do
-                local groupUnit = IsInRaid() and ("raid" .. j) or (j == 1 and "player" or ("party" .. (j - 1)))
-                local groupName = UnitName(groupUnit)
-                -- Compare using displayName (without realm) since UnitName returns short names
-                if groupName == displayName then
-                    isInGroup = true
-                    break
-                end
-            end
+            -- Check if player is in group (cached lookup)
+            local isInGroup = groupMembers[displayName] or false
             
             -- Determine base color: teal tint if in group, zebra stripes otherwise
             local baseColorR, baseColorG, baseColorB

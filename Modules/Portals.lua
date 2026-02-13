@@ -104,7 +104,7 @@ function Portals:CreatePortalFrame()
 			btn.cooldownFrame:SetAllPoints(btn)
 
             -- Check if player unlocked the portal 
-            if not known == true then
+            if not known then
 				icon:SetDesaturated(true)
 				icon:SetAlpha(0.5)
 				btn:EnableMouse(false)
@@ -310,12 +310,12 @@ function Portals:Toggle()
         return
     end
 
-    if not VesperPortalsUI then
+    if not self.VesperPortalsUI then
         print("Portal UI not initialized yet.")
         return
     end
 
-    if self.VesperPortalsUI and self.VesperPortalsUI:IsShown() then
+    if self.VesperPortalsUI:IsShown() then
         self.VesperPortalsUI:Hide()
     elseif self.VesperPortalsUI then
         self.VesperPortalsUI:Show()

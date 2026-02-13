@@ -20,9 +20,6 @@ end
 -- Global Addon Object
 VesperGuild = LibStub("AceAddon-3.0"):NewAddon(addonName, "AceConsole-3.0", "AceEvent-3.0")
 
--- Global table for Portals module
-VesperPortalsUI = {}
-
 local AceLocale = LibStub("AceLocale-3.0", true)
 if AceLocale then
     L = AceLocale:GetLocale(addonName)

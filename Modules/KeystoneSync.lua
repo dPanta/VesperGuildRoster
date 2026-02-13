@@ -2,6 +2,8 @@ local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild
 local KeystoneSync = VesperGuild:NewModule("KeystoneSync", "AceEvent-3.0", "AceTimer-3.0")
 local LibKeystone = LibStub("LibKeystone")
 
+local cachedRealmName = nil
+
 -- Dungeon abbreviation lookup (TWW Season 3 dungeons)
 local DUNGEON_ABBREV = {
     -- The War Within Season 3
@@ -81,7 +83,8 @@ function KeystoneSync:OnLibKeystoneReceived(keyLevel, keyChallengeMapID, playerR
 
     -- Normalize sender name (add realm if missing)
     if not string.find(sender, "-") then
-        sender = sender .. "-" .. GetNormalizedRealmName()
+        cachedRealmName = cachedRealmName or GetNormalizedRealmName()
+        sender = sender .. "-" .. cachedRealmName
     end
 
     -- Store keystone data (-1 means hidden, treat as no keystone)
@@ -138,16 +141,8 @@ function KeystoneSync:GetKeystoneForPlayer(playerName)
         return nil
     end
     
-    -- DEBUG: Show what we're looking for
-    -- VesperGuild:Print("Looking for keystone: " .. playerName)
-    
     local data = VesperGuild.db.global.keystones[playerName]
     if not data then
-        -- DEBUG: Show what's in the database
-        -- VesperGuild:Print("Not found. Database contains:")
-        -- for k, v in pairs(VesperGuild.db.global.keystones) do
-        --     VesperGuild:Print("  " .. k .. " -> " .. v.mapID .. ":" .. v.level)
-        -- end
         return nil
     end
     
