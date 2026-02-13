@@ -11,6 +11,10 @@ function Portals:PLAYER_LOGIN()
 end
 
 function Portals:CreatePortalFrame()
+    local _, englishClass = UnitClass("player")
+    local classColor = C_ClassColor.GetClassColor(englishClass)
+    self.classColor = classColor
+
     self.VesperPortalsUI = CreateFrame("Frame", "VesperGuildPortalFrame", UIParent, "BackdropTemplate")
     self.VesperPortalsUI:SetSize(300, 160)
 
@@ -47,7 +51,7 @@ function Portals:CreatePortalFrame()
          edgeSize = 1,
      })
      self.VesperPortalsUI:SetBackdropColor(0.07, 0.07, 0.07, 0.95) -- #121212
-     self.VesperPortalsUI:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+     self.VesperPortalsUI:SetBackdropBorderColor(classColor.r, classColor.g, classColor.b, 1)
 
     local DataHandle = VesperGuild:GetModule("DataHandle", true)
     if not DataHandle then
@@ -145,7 +149,7 @@ function Portals:CreateVaultFrame()
         edgeSize = 1,
     })
     self.vaultFrame:SetBackdropColor(0.07, 0.07, 0.07, 0.95)
-    self.vaultFrame:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+    self.vaultFrame:SetBackdropBorderColor(self.classColor.r, self.classColor.g, self.classColor.b, 1)
 
     local btn = CreateFrame("Button", nil, self.vaultFrame)
     btn:SetSize(52, 52)
@@ -174,27 +178,6 @@ function Portals:CreateVaultFrame()
     btn:SetScript("OnLeave", function()
         GameTooltip:Hide()
     end)
-end
-
--- M+ keys coloring
-local KEY_BRACKETS = {
-    { 20, "ff8000" },
-    { 18, "e85f7c" },
-    { 16, "d64ea6" },
-    { 14, "bd3fd0" },
-    { 12, "ab38e5" },
-    { 10, "7957e7" },
-    { 8,  "1773da" },
-    { 2,  "58d66b" },
-}
-
-local function GetKeyColor(level)
-    for _, bracket in ipairs(KEY_BRACKETS) do
-        if level >= bracket[1] then
-            return "|cff" .. bracket[2]
-        end
-    end
-    return "|cff9d9d9d"
 end
 
 function Portals:CreateMPlusProgFrame(curSeason)
@@ -232,7 +215,7 @@ function Portals:CreateMPlusProgFrame(curSeason)
         edgeSize = 1,
     })
     self.mplusProgFrame:SetBackdropColor(0.07, 0.07, 0.07, 0.95)
-    self.mplusProgFrame:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+    self.mplusProgFrame:SetBackdropBorderColor(self.classColor.r, self.classColor.g, self.classColor.b, 1)
 
     local timeColRight = -padding
     local bestColRight = timeColRight - timeColWidth - gap
@@ -302,7 +285,8 @@ function Portals:CreateMPlusProgFrame(curSeason)
         timeText:SetJustifyH("RIGHT")
 
         if bestLevel > 0 then
-            local color = GetKeyColor(bestLevel)
+            local DataHandle = VesperGuild:GetModule("DataHandle", true)
+            local color = DataHandle and DataHandle:GetKeyColor(bestLevel) or "|cff9d9d9d"
             levelText:SetText(color .. "+" .. bestLevel .. "|r")
 
             local mins = math.floor(bestDuration / 60)

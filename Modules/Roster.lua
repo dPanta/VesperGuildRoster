@@ -55,13 +55,15 @@ function Roster:ShowRoster()
          edgeSize = 1,
      })
      self.frame:SetBackdropColor(0.07, 0.07, 0.07, 0.95) -- #121212
-     self.frame:SetBackdropBorderColor(0.2, 0.2, 0.2, 1)
+     local _, englishClass = UnitClass("player")
+     local classColor = C_ClassColor.GetClassColor(englishClass)
+     self.frame:SetBackdropBorderColor(classColor.r, classColor.g, classColor.b, 1)
     
 --   Titlebar
     local titlebar = CreateFrame("Frame", nil, self.frame)
     titlebar:SetHeight(32)
-    titlebar:SetPoint("TOPLEFT")
-    titlebar:SetPoint("TOPRIGHT")
+    titlebar:SetPoint("TOPLEFT", 1, -1)
+    titlebar:SetPoint("TOPRIGHT", -1, -1)
     
     local titlebg = titlebar:CreateTexture(nil, "BACKGROUND")
     titlebg:SetAllPoints()
@@ -182,44 +184,6 @@ function Roster:Toggle()
     end
 end
 
--- M+ rating coloring (gradient brackets)
-local RATING_BRACKETS = {
-    { 4325, "ff8000" },
-    { 4155, "fb7834" },
-    { 4035, "f56f4f" },
-    { 3915, "ef6766" },
-    { 3795, "e85f7c" },
-    { 3675, "e05791" },
-    { 3555, "d64ea6" },
-    { 3435, "cb46bb" },
-    { 3315, "bd3fd0" },
-    { 3195, "ab38e5" },
-    { 3070, "7957e7" },
-    { 2900, "1773da" },
-    { 2780, "3d80cc" },
-    { 2660, "4e8ebd" },
-    { 2540, "589cae" },
-    { 2420, "5eaa9f" },
-    { 2300, "5fb98f" },
-    { 2180, "5ec77d" },
-    { 2060, "58d66b" },
-    { 1940, "4ee455" },
-    { 1820, "3cf337" },
-    { 1700, "2cff13" },
-    { 1575, "54ff3a" },
-    { 1450, "6eff52" },
-    { 1325, "83ff67" },
-    { 1200, "95ff79" },
-    { 1075, "a5ff8b" },
-    { 950,  "b4ff9c" },
-    { 825,  "c2ffad" },
-    { 700,  "cfffbe" },
-    { 575,  "dcffce" },
-    { 450,  "e8ffde" },
-    { 325,  "f4ffef" },
-    { 200,  "ffffff" },
-}
-
 -- Helper: vertically center text inside AceGUI Label/InteractiveLabel
 local function CenterLabelV(widget)
     if widget.label then
@@ -230,14 +194,6 @@ local function CenterLabelV(widget)
     end
 end
 
-local function GetRatingColor(rating)
-    for _, bracket in ipairs(RATING_BRACKETS) do
-        if rating >= bracket[1] then
-            return "|cff" .. bracket[2]
-        end
-    end
-    return "|cff9d9d9d" -- Gray for below 200
-end
 
 function Roster:UpdateRosterList()
     if not self.frame then return end
@@ -441,7 +397,8 @@ function Roster:UpdateRosterList()
             if VesperGuild.db.global.keystones and VesperGuild.db.global.keystones[name] and VesperGuild.db.global.keystones[name].rating then
                 local rating = VesperGuild.db.global.keystones[name].rating
                 if rating > 0 then
-                    local colorCode = GetRatingColor(rating)
+                    local DataHandle = VesperGuild:GetModule("DataHandle", true)
+                    local colorCode = DataHandle and DataHandle:GetRatingColor(rating) or "|cff9d9d9d"
                     ratingText = string.format("%s%d|r", colorCode, rating)
                 end
             end
