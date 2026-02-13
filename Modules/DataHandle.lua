@@ -116,70 +116,20 @@ function DataHandle:GetDB()
     return dungListDB
 end
 
--- M+ rating coloring (gradient brackets)
-local RATING_BRACKETS = {
-    { 4325, "ff8000" },
-    { 4155, "fb7834" },
-    { 4035, "f56f4f" },
-    { 3915, "ef6766" },
-    { 3795, "e85f7c" },
-    { 3675, "e05791" },
-    { 3555, "d64ea6" },
-    { 3435, "cb46bb" },
-    { 3315, "bd3fd0" },
-    { 3195, "ab38e5" },
-    { 3070, "7957e7" },
-    { 2900, "1773da" },
-    { 2780, "3d80cc" },
-    { 2660, "4e8ebd" },
-    { 2540, "589cae" },
-    { 2420, "5eaa9f" },
-    { 2300, "5fb98f" },
-    { 2180, "5ec77d" },
-    { 2060, "58d66b" },
-    { 1940, "4ee455" },
-    { 1820, "3cf337" },
-    { 1700, "2cff13" },
-    { 1575, "54ff3a" },
-    { 1450, "6eff52" },
-    { 1325, "83ff67" },
-    { 1200, "95ff79" },
-    { 1075, "a5ff8b" },
-    { 950,  "b4ff9c" },
-    { 825,  "c2ffad" },
-    { 700,  "cfffbe" },
-    { 575,  "dcffce" },
-    { 450,  "e8ffde" },
-    { 325,  "f4ffef" },
-    { 200,  "ffffff" },
-}
-
--- M+ key level coloring
-local KEY_BRACKETS = {
-    { 20, "ff8000" },
-    { 18, "e85f7c" },
-    { 16, "d64ea6" },
-    { 14, "bd3fd0" },
-    { 12, "ab38e5" },
-    { 10, "7957e7" },
-    { 8,  "1773da" },
-    { 2,  "58d66b" },
-}
-
+-- M+ key level coloring (Blizzard API, auto-updates each season)
 function DataHandle:GetKeyColor(level)
-    for _, bracket in ipairs(KEY_BRACKETS) do
-        if level >= bracket[1] then
-            return "|cff" .. bracket[2]
-        end
+    local color = C_ChallengeMode.GetKeystoneLevelRarityColor(level)
+    if color then
+        return string.format("|cff%02x%02x%02x", color.r * 255, color.g * 255, color.b * 255)
     end
     return "|cff9d9d9d"
 end
 
+-- M+ rating coloring (Blizzard API, auto-updates each season)
 function DataHandle:GetRatingColor(rating)
-    for _, bracket in ipairs(RATING_BRACKETS) do
-        if rating >= bracket[1] then
-            return "|cff" .. bracket[2]
-        end
+    local color = C_ChallengeMode.GetDungeonScoreRarityColor(rating)
+    if color then
+        return string.format("|cff%02x%02x%02x", color.r * 255, color.g * 255, color.b * 255)
     end
     return "|cff9d9d9d"
 end
