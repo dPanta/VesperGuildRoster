@@ -1,6 +1,6 @@
 local addonName, addonTable = ...
 
--- Helper to safely get locale
+-- Helper to safely get localee
 local L = addonTable.L or {}
 setmetatable(L, { __index = function(t, k) return k end })
 
@@ -17,7 +17,7 @@ if not LibStub or not LibStub("AceAddon-3.0", true) then
     return
 end
 
--- Global Addon Object
+-- Global Addon Objectt
 VesperGuild = LibStub("AceAddon-3.0"):NewAddon(addonName, "AceConsole-3.0", "AceEvent-3.0")
 
 local AceLocale = LibStub("AceLocale-3.0", true)
