@@ -11,6 +11,10 @@ Simple addon to manage your guild m+ runs.
   - Grays out if given teleport not learned yet
   - Cooldown spiral
   - Ready for Midnight Season 1 (hopefully)
+  - Button bellow portals for opening Great Vault Rewards window
+  - M+ progress overview with best for each seasonal key + time (green for in-time keys, red for over-time keys)
+  - iLvl sync for people with the addon. Will sync ilvl accros addon users and display it in roster frame
+  - If you time a key and the key in your bag is lower or same as the key you just timed, a huge message pops up to ask if you wanted to change the key or not :)
 
 # How to use
 - Icon with a sheep appears after installation
