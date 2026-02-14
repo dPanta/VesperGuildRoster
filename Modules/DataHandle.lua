@@ -169,3 +169,37 @@ function DataHandle:CleanupStaleIlvl(maxAge)
         end
     end
 end
+
+-- Best Keys Sync DB accessors (persistent via AceDB global)
+function DataHandle:GetBestKeysDB()
+    return VesperGuild.db.global.bestKeys
+end
+
+function DataHandle:StoreBestKeys(playerName, bestKeysData, classID)
+    if not VesperGuild.db.global.bestKeys then
+        VesperGuild.db.global.bestKeys = {}
+    end
+    bestKeysData.timestamp = time()
+    bestKeysData.classID = classID
+    VesperGuild.db.global.bestKeys[playerName] = bestKeysData
+end
+
+function DataHandle:GetBestKeysForPlayer(playerName)
+    local db = VesperGuild.db.global.bestKeys
+    if not db or not db[playerName] then
+        return nil
+    end
+    return db[playerName]
+end
+
+function DataHandle:CleanupStaleBestKeys(maxAge)
+    local db = VesperGuild.db.global.bestKeys
+    if not db then return end
+    maxAge = maxAge or (7 * 24 * 3600) -- default 7 days
+    local now = time()
+    for name, data in pairs(db) do
+        if data.timestamp and (now - data.timestamp) > maxAge then
+            db[name] = nil
+        end
+    end
+end

@@ -14,7 +14,7 @@ local DUNGEON_ABBREV = {
     [503] = "ARA",                  -- Ara-Kara
     [392] = "MRGLGL!",              -- Gambit
     [391] = "STREETS",              -- Ulice hrichu
-    [505] = "BUGS",                 -- Dawnbreaker
+    [505] = "DAWN",                 -- Dawnbreaker
     -- Add more as needed for current season
 }
 

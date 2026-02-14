@@ -42,6 +42,7 @@ function VesperGuild:OnInitialize()
         global = {
             keystones = {}, -- Persistent keystone storage
             ilvlSync = {},  -- Persistent ilvl storage from guild sync
+            bestKeys = {},  -- Persistent best M+ keys from guild sync
         },
     }, true)
 
@@ -177,8 +178,40 @@ function VesperGuild:HandleChatCommand(input)
         else
             self:Print("KeystoneSync module not found!")
         end
+    elseif input == "bestkeys" then
+        -- Debug: Dump best keys database
+        local DataHandle = self:GetModule("DataHandle", true)
+        if not DataHandle then
+            self:Print("DataHandle module not found!")
+            return
+        end
+        local db = DataHandle:GetBestKeysDB()
+        if not db or not next(db) then
+            self:Print("Best keys database is empty.")
+            return
+        end
+        self:Print("=== Best Keys Database ===")
+        local count = 0
+        for playerName, data in pairs(db) do
+            local entries = {}
+            for mapID, info in pairs(data) do
+                if type(info) == "table" and info.level then
+                    local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or tostring(mapID)
+                    local timeStr = string.format("%d:%02d", math.floor(info.duration / 60), info.duration % 60)
+                    local timedStr = info.inTime and "timed" or "over"
+                    table.insert(entries, string.format("  %s: +%d (%s, %s)", dungName, info.level, timeStr, timedStr))
+                end
+            end
+            local age = data.timestamp and (time() - data.timestamp) or 0
+            self:Print(string.format("%s (age: %ds):", playerName, age))
+            for _, e in ipairs(entries) do
+                self:Print(e)
+            end
+            count = count + 1
+        end
+        self:Print(string.format("Total: %d players", count))
     else
         self:Print("Unknown command: " .. input)
-        self:Print("Usage: /vg [reset|sync|debug|keys]")
+        self:Print("Usage: /vg [reset|sync|debug|keys|bestkeys]")
     end
 end

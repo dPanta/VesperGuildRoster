@@ -123,14 +123,19 @@ function Roster:ShowRoster()
     resizeBtn:SetSize(16, 16)
     resizeBtn:SetPoint("BOTTOMRIGHT")
     resizeBtn:EnableMouse(true)
-    resizeBtn:RegisterForDrag("LeftButton")
-    
+
     local resizeTex = resizeBtn:CreateTexture(nil, "OVERLAY")
     resizeTex:SetAllPoints()
     resizeTex:SetTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
-    
-    resizeBtn:SetScript("OnDragStart", function() self.frame:StartSizing("BOTTOMRIGHT") end)
-    resizeBtn:SetScript("OnDragStop", function() self.frame:StopMovingOrSizing() end)
+
+    resizeBtn:SetScript("OnMouseDown", function(_, button)
+        if button == "LeftButton" then
+            self.frame:StartSizing("BOTTOMRIGHT")
+        end
+    end)
+    resizeBtn:SetScript("OnMouseUp", function()
+        self.frame:StopMovingOrSizing()
+    end)
     
     -- Sync Button
     local syncBtn = CreateFrame("Button", nil, titlebar, "UIPanelButtonTemplate")
@@ -194,6 +199,20 @@ local function CenterLabelV(widget)
     end
 end
 
+-- Sort arrow indicators (WoW built-in arrow textures)
+local ARROW_UP = " |TInterface\\Buttons\\Arrow-Up-Up:12:12|t"
+local ARROW_DOWN = " |TInterface\\Buttons\\Arrow-Down-Up:12:12|t"
+
+-- Column definitions: key, label, width, sort type
+local COLUMNS = {
+    { key = "name",    label = "Name",   width = 0.15, sort = "string" },
+    { key = "faction", label = "F",      width = 0.05, sort = "string" },
+    { key = "zone",    label = "Zone",   width = 0.20, sort = "string" },
+    { key = "status",  label = "Status", width = 0.10, sort = "string" },
+    { key = "ilvl",    label = "iLvl",   width = 0.10, sort = "number" },
+    { key = "rating",  label = "R",      width = 0.1,  sort = "number" },
+    { key = "keyLevel", label = "KEY",   width = 0.2,  sort = "number" },
+}
 
 function Roster:UpdateRosterList()
     if not self.frame then return end
@@ -209,74 +228,57 @@ function Roster:UpdateRosterList()
 
     self.scroll:ReleaseChildren() -- Clear existing list
 
-    -- Header only
+    -- Header row with clickable sort labels
     local headerGroup = AceGUI:Create("SimpleGroup")
     headerGroup:SetLayout("Flow")
     headerGroup:SetFullWidth(true)
 
-    -- Name
-    local nameHeader = AceGUI:Create("Label")
-    nameHeader:SetText("Name")
-    nameHeader:SetRelativeWidth(0.15)
-    CenterLabelV(nameHeader)
-    headerGroup:AddChild(nameHeader)
+    for _, col in ipairs(COLUMNS) do
+        local arrow = ""
+        if self.sortColumn == col.key then
+            arrow = self.sortAscending and ARROW_UP or ARROW_DOWN
+        end
 
-    -- Faction
-    local factionHeader = AceGUI:Create("Label")
-    factionHeader:SetText("F")
-    factionHeader:SetRelativeWidth(0.05)
-    CenterLabelV(factionHeader)
-    headerGroup:AddChild(factionHeader)
+        local header = AceGUI:Create("InteractiveLabel")
+        header:SetText(col.label .. arrow)
+        header:SetRelativeWidth(col.width)
+        CenterLabelV(header)
 
-    -- Current Zone
-    local zoneHeader = AceGUI:Create("Label")
-    zoneHeader:SetText("Zone")
-    zoneHeader:SetRelativeWidth(0.20)
-    CenterLabelV(zoneHeader)
-    headerGroup:AddChild(zoneHeader)
+        header:SetCallback("OnClick", function(_, _, button)
+            if self.sortColumn == col.key then
+                self.sortAscending = not self.sortAscending
+            else
+                self.sortColumn = col.key
+                self.sortAscending = (col.sort == "string")
+            end
+            self:UpdateRosterList()
+        end)
 
-    -- Status
-    local statusHeader = AceGUI:Create("Label")
-    statusHeader:SetText("Status")
-    statusHeader:SetRelativeWidth(0.10)
-    CenterLabelV(statusHeader)
-    headerGroup:AddChild(statusHeader)
+        header:SetCallback("OnEnter", function(widget)
+            GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
+            GameTooltip:SetText("Click to sort by " .. col.label)
+            GameTooltip:Show()
+        end)
+        header:SetCallback("OnLeave", function() GameTooltip:Hide() end)
 
-    -- iLvl
-    local ilvlHeader = AceGUI:Create("Label")
-    ilvlHeader:SetText("iLvl")
-    ilvlHeader:SetRelativeWidth(0.10)
-    CenterLabelV(ilvlHeader)
-    headerGroup:AddChild(ilvlHeader)
+        headerGroup:AddChild(header)
+    end
 
-    -- M+ Rating
-    local ratingHeader = AceGUI:Create("Label")
-    ratingHeader:SetText("R")
-    ratingHeader:SetRelativeWidth(0.1)
-    CenterLabelV(ratingHeader)
-    headerGroup:AddChild(ratingHeader)
-
-    -- Keystone
-    local keyHeader = AceGUI:Create("Label")
-    keyHeader:SetText("KEY")
-    keyHeader:SetRelativeWidth(0.2)
-    CenterLabelV(keyHeader)
-    headerGroup:AddChild(keyHeader)
-
-    -- Set header background to prevent it from being colored
+    -- Header background (no hover highlight)
     local headerFrame = headerGroup.frame
     if not headerFrame.vesperBg then
         headerFrame.vesperBg = headerFrame:CreateTexture(nil, "BACKGROUND")
         headerFrame.vesperBg:SetAllPoints()
     end
-    headerFrame.vesperBg:SetColorTexture(0.1, 0.1, 0.1, 1) -- Dark gray, matches titlebar
+    headerFrame.vesperBg:SetColorTexture(0.1, 0.1, 0.1, 1)
+    headerFrame:SetScript("OnEnter", nil)
+    headerFrame:SetScript("OnLeave", nil)
 
     self.scroll:AddChild(headerGroup)
-    -- Horizontal separator
+
     local line = AceGUI:Create("Heading")
     line:SetFullWidth(true)
     self.scroll:AddChild(line)
-
 
     -- Cache lookups before the loop
     local DataHandle = VesperGuild:GetModule("DataHandle", true)
@@ -294,236 +296,283 @@ function Roster:UpdateRosterList()
         end
     end
 
-    -- Iterate Guild Members
+    -- Collect all online member data for sorting
+    local members = {}
     local numMembers = GetNumGuildMembers()
     for i = 1, numMembers do
-        -- name, rankName, rankIndex, level, classDisplayName, zone, publicNote, officerNote, isOnline, status, class, achievementPoints, achievementRank, isMobile, canSoR, repStanding, guid = GetGuildRosterInfo(index)
         local name, _, _, level, _, zone, _, _, isOnline, status, classFileName = GetGuildRosterInfo(i)
-        
+
         if isOnline then
-            local row = AceGUI:Create("SimpleGroup")
-            row:SetLayout("Flow")
-            row:SetFullWidth(true)
-
-            -- Extract short name (without realm) for display
             local displayName = name:match("([^-]+)") or name
-
-            -- Color name by class
-            local classColor = C_ClassColor.GetClassColor(classFileName)
-            local nameText = displayName
-            if classColor then
-                 nameText = string.format("|c%s%s|r", classColor:GenerateHexColor(), displayName)
+            local fullName = name
+            if not string.find(name, "-") then
+                fullName = name .. "-" .. playerRealm
             end
 
-            -- Make name clickable with many, many options...maybe
-            local nameLabel = AceGUI:Create("InteractiveLabel")
-            nameLabel:SetText(nameText)
-            nameLabel:SetRelativeWidth(0.15)
-            nameLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
-            CenterLabelV(nameLabel)
-            -- Highlight on hover to show interactivity
-            nameLabel:SetCallback("OnEnter", function(widget) 
-                 GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
-                 GameTooltip:SetText("Right-click for menu")
-                 GameTooltip:Show()
-            end)
-            nameLabel:SetCallback("OnLeave", function(widget) GameTooltip:Hide() end)
-            
-            nameLabel:SetCallback("OnClick", function(widget, event, button)
-                if button == "RightButton" then
-                     -- Using modern MenuUtil
-                     -- Add more in future TBD
-                     if MenuUtil then
-                         MenuUtil.CreateContextMenu(widget.frame, function(owner, rootDescription)
-                            rootDescription:CreateTitle(displayName)
-                            
-                            rootDescription:CreateButton("Whisper", function() 
-                                ChatFrame_OpenChat("/w " .. name .. " ") 
-                            end)
-                            
-                            rootDescription:CreateButton("Invite", function() 
-                                C_PartyInfo.InviteUnit(name) 
-                            end)
+            -- Faction
+            local factionText = "?"
+            if playerFaction == "Alliance" then factionText = "A"
+            elseif playerFaction == "Horde" then factionText = "H" end
 
-                            rootDescription:CreateButton("Cancel", function() end)
-                        end)
-                     else
-                        print("MenuUtil not found.")
-                     end
-                end
-            end)
-            row:AddChild(nameLabel)
+            -- Status
+            local statusRaw = "Online"
+            if status == 1 then statusRaw = "AFK"
+            elseif status == 2 then statusRaw = "DND" end
 
-            -- Faction (cached)
-            local factionText = "Unknown"
-            local factionColor = "|cffFFFFFF"
-            if playerFaction == "Alliance" then
-                factionText = "A"
-                factionColor = "|cff0070DD"
-            elseif playerFaction == "Horde" then
-                factionText = "H"
-                factionColor = "|cffA335EE"
-            end
-            
-            local factionLabel = AceGUI:Create("Label")
-            factionLabel:SetText(factionColor .. factionText .. "|r")
-            factionLabel:SetRelativeWidth(0.05)
-            factionLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
-            CenterLabelV(factionLabel)
-            row:AddChild(factionLabel)
-
-            -- Where are you?
-            local zoneLabel = AceGUI:Create("Label")
-            zoneLabel:SetText(zone or "Unknown")
-            zoneLabel:SetRelativeWidth(0.20)
-            zoneLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
-            CenterLabelV(zoneLabel)
-            row:AddChild(zoneLabel)
-
-            -- Format Status
-            local statusText = "Online"
-            if status == 1 then statusText = "|cffFFFF00AFK|r" end
-            if status == 2 then statusText = "|cffFF0000DND|r" end
-
-            local statusLabel = AceGUI:Create("Label")
-            statusLabel:SetText(statusText)
-            statusLabel:SetRelativeWidth(0.10)
-            statusLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
-            CenterLabelV(statusLabel)
-            row:AddChild(statusLabel)
-
-            -- iLvl from sync DB
-            local ilvlText = "-"
+            -- iLvl
+            local ilvlNum = 0
             if DataHandle then
                 local ilvlData = DataHandle:GetIlvlForPlayer(name)
-                if ilvlData then
-                    ilvlText = tostring(ilvlData.ilvl)
-                end
+                if ilvlData then ilvlNum = ilvlData.ilvl end
             end
-            local ilvlLabel = AceGUI:Create("Label")
-            ilvlLabel:SetText(ilvlText)
-            ilvlLabel:SetRelativeWidth(0.10)
-            ilvlLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
-            CenterLabelV(ilvlLabel)
-            row:AddChild(ilvlLabel)
 
-            -- Rating with Raider.IO-style coloring
-            local ratingText = "-"
+            -- Rating
+            local ratingNum = 0
             if VesperGuild.db.global.keystones and VesperGuild.db.global.keystones[name] and VesperGuild.db.global.keystones[name].rating then
-                local rating = VesperGuild.db.global.keystones[name].rating
-                if rating > 0 then
-                    local colorCode = DataHandle and DataHandle:GetRatingColor(rating) or "|cff9d9d9d"
-                    ratingText = string.format("%s%d|r", colorCode, rating)
-                end
+                ratingNum = VesperGuild.db.global.keystones[name].rating
             end
-            local ratingLabel = AceGUI:Create("Label")
-            ratingLabel:SetText(ratingText)
-            ratingLabel:SetRelativeWidth(0.1)
-            ratingLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
-            CenterLabelV(ratingLabel)
-            row:AddChild(ratingLabel)
-            
-            -- Keystone Data from KeystoneSync
-            local keystoneMapID = nil
+
+            -- Keystone
             local keystoneText = "-"
-
+            local keystoneMapID = nil
+            local keyLevel = 0
             if KeystoneSync then
-                -- Normalize player name: remove realm if it's the same realm
-                local fullName = name
-                -- If name doesn't have realm, add it
-                if not string.find(name, "-") then
-                    fullName = name .. "-" .. playerRealm
-                end
-
                 keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName) or "-"
-
-                -- Get the actual mapID from the database for portal casting
                 if VesperGuild.db.global.keystones and VesperGuild.db.global.keystones[fullName] then
                     keystoneMapID = VesperGuild.db.global.keystones[fullName].mapID
+                    keyLevel = VesperGuild.db.global.keystones[fullName].level or 0
                 end
             end
 
-            -- Create AceGUI Label...to not have 200px wide rows :)
-            local keyLabel = AceGUI:Create("Label")
-            keyLabel:SetText(keystoneText)
-            keyLabel:SetRelativeWidth(0.2)
-            keyLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
-            CenterLabelV(keyLabel)
-            row:AddChild(keyLabel)
+            table.insert(members, {
+                name = displayName,
+                fullName = name,
+                classFileName = classFileName,
+                faction = factionText,
+                zone = zone or "Unknown",
+                status = statusRaw,
+                ilvl = ilvlNum,
+                rating = ratingNum,
+                keystoneText = keystoneText,
+                keystoneMapID = keystoneMapID,
+                keyLevel = keyLevel,
+                isInGroup = groupMembers[displayName] or false,
+            })
+        end
+    end
 
-            -- Create secure button overlay for portal casting (only if player has a keystone)
-            if keystoneMapID then
-                if DataHandle then
-                    local dungInfo = DataHandle:GetDungeonByMapID(keystoneMapID)
-                    if dungInfo then
-                        local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
-                        local spellName = spellInfo and spellInfo.name
-                        local hasPortal = C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
+    -- Sort members
+    if self.sortColumn then
+        table.sort(members, function(a, b)
+            local va, vb = a[self.sortColumn], b[self.sortColumn]
+            if va == vb then return a.name < b.name end
+            if self.sortAscending then
+                return va < vb
+            else
+                return va > vb
+            end
+        end)
+    end
 
-                        if spellName and hasPortal then
-                            -- Parent outside ACE! Breaks secure functions if I parent it to ACE container...my god.
-                            local keyBtn = CreateFrame("Button", nil, contentFrame, "InsecureActionButtonTemplate")
+    -- Render sorted rows
+    for i, m in ipairs(members) do
+        local row = AceGUI:Create("SimpleGroup")
+        row:SetLayout("Flow")
+        row:SetFullWidth(true)
 
-                            -- Position it to match by SetPoint
-                            keyBtn:SetPoint("TOPLEFT", keyLabel.frame, "TOPLEFT")
-                            keyBtn:SetPoint("BOTTOMRIGHT", keyLabel.frame, "BOTTOMRIGHT")
-                            keyBtn:SetFrameLevel(row.frame:GetFrameLevel() + 20)
+        -- Name (class colored)
+        local classColor = C_ClassColor.GetClassColor(m.classFileName)
+        local nameText = m.name
+        if classColor then
+            nameText = string.format("|c%s%s|r", classColor:GenerateHexColor(), m.name)
+        end
 
-                            keyBtn:SetAttribute("type1", "spell")
-                            keyBtn:SetAttribute("spell1", spellName)
-                            keyBtn:RegisterForClicks("AnyUp", "AnyDown")
-                            keyBtn:Show()  -- Explicitly show the button
+        local nameLabel = AceGUI:Create("Label")
+        nameLabel:SetText(nameText)
+        nameLabel:SetRelativeWidth(0.15)
+        nameLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+        CenterLabelV(nameLabel)
+        row:AddChild(nameLabel)
 
-                            -- Add tooltip
-                            keyBtn:SetScript("OnEnter", function(self)
-                                GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
-                                GameTooltip:SetText("Click to cast portal: " .. spellName)
-                                GameTooltip:Show()
-                            end)
-                            keyBtn:SetScript("OnLeave", function(self)
-                                GameTooltip:Hide()
-                            end)
+        -- Faction
+        local factionColor = "|cffFFFFFF"
+        if m.faction == "A" then factionColor = "|cff0070DD"
+        elseif m.faction == "H" then factionColor = "|cffA335EE" end
 
-                            -- Track button for cleanup
-                            table.insert(self.portalButtons, keyBtn)
+        local factionLabel = AceGUI:Create("Label")
+        factionLabel:SetText(factionColor .. m.faction .. "|r")
+        factionLabel:SetRelativeWidth(0.05)
+        factionLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+        CenterLabelV(factionLabel)
+        row:AddChild(factionLabel)
+
+        -- Zone
+        local zoneLabel = AceGUI:Create("Label")
+        zoneLabel:SetText(m.zone)
+        zoneLabel:SetRelativeWidth(0.20)
+        zoneLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+        CenterLabelV(zoneLabel)
+        row:AddChild(zoneLabel)
+
+        -- Status
+        local statusDisplay = m.status
+        if m.status == "AFK" then statusDisplay = "|cffFFFF00AFK|r"
+        elseif m.status == "DND" then statusDisplay = "|cffFF0000DND|r" end
+
+        local statusLabel = AceGUI:Create("Label")
+        statusLabel:SetText(statusDisplay)
+        statusLabel:SetRelativeWidth(0.10)
+        statusLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+        CenterLabelV(statusLabel)
+        row:AddChild(statusLabel)
+
+        -- iLvl
+        local ilvlLabel = AceGUI:Create("Label")
+        ilvlLabel:SetText(m.ilvl > 0 and tostring(m.ilvl) or "-")
+        ilvlLabel:SetRelativeWidth(0.10)
+        ilvlLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+        CenterLabelV(ilvlLabel)
+        row:AddChild(ilvlLabel)
+
+        -- Rating
+        local ratingText = "-"
+        if m.rating > 0 then
+            local colorCode = DataHandle and DataHandle:GetRatingColor(m.rating) or "|cff9d9d9d"
+            ratingText = string.format("%s%d|r", colorCode, m.rating)
+        end
+        local ratingLabel = AceGUI:Create("Label")
+        ratingLabel:SetText(ratingText)
+        ratingLabel:SetRelativeWidth(0.1)
+        ratingLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+        CenterLabelV(ratingLabel)
+        row:AddChild(ratingLabel)
+
+        -- Keystone
+        local keyLabel = AceGUI:Create("Label")
+        keyLabel:SetText(m.keystoneText)
+        keyLabel:SetRelativeWidth(0.2)
+        keyLabel:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 12, "")
+        CenterLabelV(keyLabel)
+        row:AddChild(keyLabel)
+
+        -- Row overlay button: left-click = portal cast, right-click = context menu
+        local rowBtn = CreateFrame("Button", nil, contentFrame, "InsecureActionButtonTemplate")
+        rowBtn:SetPoint("TOPLEFT", row.frame, "TOPLEFT")
+        rowBtn:SetPoint("BOTTOMRIGHT", row.frame, "BOTTOMRIGHT")
+        rowBtn:SetFrameLevel(row.frame:GetFrameLevel() + 20)
+        rowBtn:RegisterForClicks("AnyUp", "AnyDown")
+
+        -- Set up left-click portal cast if player has the spell
+        local portalSpellName = nil
+        if m.keystoneMapID and DataHandle then
+            local dungInfo = DataHandle:GetDungeonByMapID(m.keystoneMapID)
+            if dungInfo then
+                local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
+                local spellName = spellInfo and spellInfo.name
+                local hasPortal = C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
+                if spellName and hasPortal then
+                    portalSpellName = spellName
+                    rowBtn:SetAttribute("type1", "spell")
+                    rowBtn:SetAttribute("spell1", spellName)
+                end
+            end
+        end
+
+        -- Right-click context menu (HookScript so attribute-based spell cast still fires)
+        local memberFullName = m.fullName
+        local memberDisplayName = m.name
+        rowBtn:HookScript("OnClick", function(self, button)
+            if button == "RightButton" and MenuUtil then
+                MenuUtil.CreateContextMenu(self, function(owner, rootDescription)
+                    rootDescription:CreateTitle(memberDisplayName)
+                    rootDescription:CreateButton("Whisper", function()
+                        ChatFrame_OpenChat("/w " .. memberFullName .. " ")
+                    end)
+                    rootDescription:CreateButton("Invite", function()
+                        C_PartyInfo.InviteUnit(memberFullName)
+                    end)
+                    rootDescription:CreateButton("Cancel", function() end)
+                end)
+            end
+        end)
+
+        -- Tooltip with best keys for this dungeon
+        local tooltipMapID = m.keystoneMapID
+        rowBtn:SetScript("OnEnter", function(self)
+            GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+            if portalSpellName then
+                GameTooltip:SetText("Left-click: " .. portalSpellName .. "\nRight-click: Menu")
+            else
+                GameTooltip:SetText("Right-click: Menu")
+            end
+
+            if tooltipMapID and DataHandle then
+                local dungName = C_ChallengeMode.GetMapUIInfo(tooltipMapID)
+                if dungName then
+                    GameTooltip:AddLine(" ")
+                    GameTooltip:AddLine(dungName .. " - Best Keys", 1, 0.82, 0, true)
+
+                    local bestKeysDB = DataHandle:GetBestKeysDB()
+                    if bestKeysDB then
+                        local entries = {}
+                        for playerName, data in pairs(bestKeysDB) do
+                            local info = data[tooltipMapID]
+                            if info and info.level and info.level > 0 then
+                                local shortName = playerName:match("([^-]+)") or playerName
+                                table.insert(entries, { name = shortName, level = info.level, inTime = info.inTime })
+                            end
+                        end
+                        table.sort(entries, function(a, b)
+                            if a.level == b.level then return a.name < b.name end
+                            return a.level > b.level
+                        end)
+                        for _, e in ipairs(entries) do
+                            local colorCode = DataHandle:GetKeyColor(e.level)
+                            local r, g, b = 0.8, 0.8, 0.8
+                            if e.inTime then r, g, b = 0.51, 0.78, 0.52 end -- green for timed
+                            GameTooltip:AddDoubleLine(e.name, colorCode .. "+" .. e.level .. "|r", 1, 1, 1, r, g, b)
+                        end
+                        if #entries == 0 then
+                            GameTooltip:AddLine("No data", 0.5, 0.5, 0.5)
                         end
                     end
                 end
             end
 
-            -- MATERIAL SKINNING: Row Background
-            local rowFrame = row.frame
-            if not rowFrame.vesperBg then
-                rowFrame.vesperBg = rowFrame:CreateTexture(nil, "BACKGROUND")
-                rowFrame.vesperBg:SetAllPoints()
-            end
-            local bg = rowFrame.vesperBg
-            
-            -- Check if player is in group (cached lookup)
-            local isInGroup = groupMembers[displayName] or false
-            
-            -- Determine base color: teal tint if in group, zebra stripes otherwise
-            local baseColorR, baseColorG, baseColorB
-            if isInGroup then
-                baseColorR, baseColorG, baseColorB = 0.12, 0.24, 0.24 -- Teal tint
-            elseif (i % 2 == 0) then
-                baseColorR, baseColorG, baseColorB = 0.17, 0.17, 0.17 -- #2C2C2C
-            else
-                baseColorR, baseColorG, baseColorB = 0.12, 0.12, 0.12 -- #1E1E1E
-            end
-            
-            bg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
-            
-            -- Hover Effect
-            rowFrame:SetScript("OnEnter", function() 
-                bg:SetColorTexture(0.24, 0.24, 0.24, 1) -- #3D3D3D (Highlight)
-            end)
-            rowFrame:SetScript("OnLeave", function() 
-                -- Restore original color
-                bg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
-            end)
-            
-            self.scroll:AddChild(row)
+            GameTooltip:Show()
+        end)
+        rowBtn:SetScript("OnLeave", function(self)
+            GameTooltip:Hide()
+        end)
+
+        table.insert(self.portalButtons, rowBtn)
+
+        -- Row background
+        local rowFrame = row.frame
+        if not rowFrame.vesperBg then
+            rowFrame.vesperBg = rowFrame:CreateTexture(nil, "BACKGROUND")
+            rowFrame.vesperBg:SetAllPoints()
         end
+        local bg = rowFrame.vesperBg
+
+        local baseColorR, baseColorG, baseColorB
+        if m.isInGroup then
+            baseColorR, baseColorG, baseColorB = 0.12, 0.24, 0.24
+        elseif (i % 2 == 0) then
+            baseColorR, baseColorG, baseColorB = 0.17, 0.17, 0.17
+        else
+            baseColorR, baseColorG, baseColorB = 0.12, 0.12, 0.12
+        end
+
+        bg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
+
+        rowFrame:SetScript("OnEnter", function()
+            bg:SetColorTexture(0.24, 0.24, 0.24, 1)
+        end)
+        rowFrame:SetScript("OnLeave", function()
+            bg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
+        end)
+
+        self.scroll:AddChild(row)
     end
 end

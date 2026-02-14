@@ -134,7 +134,6 @@ function Portals:CreatePortalFrame()
         end
 
     self:CreateVaultFrame()
-    self:CreateMPlusProgFrame(curSeason)
 end
 
 function Portals:CreateVaultFrame()
@@ -317,7 +316,17 @@ function Portals:Toggle()
 
     if self.VesperPortalsUI:IsShown() then
         self.VesperPortalsUI:Hide()
-    elseif self.VesperPortalsUI then
+    else
+        -- Rebuild M+ prog frame each time to ensure fresh data
+        if self.mplusProgFrame then
+            self.mplusProgFrame:Hide()
+            self.mplusProgFrame:SetParent(nil)
+            self.mplusProgFrame = nil
+        end
+        local curSeason = C_ChallengeMode.GetMapTable()
+        if curSeason and #curSeason > 0 then
+            self:CreateMPlusProgFrame(curSeason)
+        end
         self.VesperPortalsUI:Show()
     end
 end

@@ -2,8 +2,10 @@ local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild
 local Automation = VesperGuild:NewModule("Automation", "AceConsole-3.0", "AceEvent-3.0", "AceComm-3.0")
 
 local ILVL_PREFIX = "VGiLvl"
+local BESTKEYS_PREFIX = "VGBestKeys"
 local SYNC_COOLDOWN = 30 -- seconds between broadcasts to avoid spam
-local lastBroadcast = 0
+local lastIlvlBroadcast = 0
+local lastBestKeysBroadcast = 0
 local cachedRealmName = nil
 
 function Automation:OnInitialize()
@@ -11,14 +13,20 @@ function Automation:OnInitialize()
 end
 
 function Automation:OnEnable()
-    -- Register comm prefix for ilvl sync
+    -- Register comm prefixes
     self:RegisterComm(ILVL_PREFIX, "OnIlvlReceived")
+    self:RegisterComm(BESTKEYS_PREFIX, "OnBestKeysReceived")
 
-    -- Listen for addon open to trigger sync
-    self:RegisterMessage("VESPERGUILD_ADDON_OPENED", "BroadcastIlvl")
+    -- Listen for addon open to trigger syncs
+    self:RegisterMessage("VESPERGUILD_ADDON_OPENED", "OnAddonOpened")
 
     -- Listen for M+ completion
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnMPlusCompleted")
+end
+
+function Automation:OnAddonOpened()
+    self:BroadcastIlvl()
+    self:BroadcastBestKeys()
 end
 
 function Automation:PLAYER_LOGIN()
@@ -28,6 +36,7 @@ function Automation:PLAYER_LOGIN()
     local DataHandle = VesperGuild:GetModule("DataHandle", true)
     if DataHandle then
         DataHandle:CleanupStaleIlvl()
+        DataHandle:CleanupStaleBestKeys()
     end
 end
 
@@ -41,8 +50,8 @@ function Automation:BroadcastIlvl()
 
     -- Cooldown check
     local now = GetTime()
-    if (now - lastBroadcast) < SYNC_COOLDOWN then return end
-    lastBroadcast = now
+    if (now - lastIlvlBroadcast) < SYNC_COOLDOWN then return end
+    lastIlvlBroadcast = now
 
     local _, ilvl = GetAverageItemLevel()
     ilvl = math.floor(ilvl)
@@ -77,6 +86,71 @@ function Automation:OnIlvlReceived(prefix, message, distribution, sender)
     end
 end
 
+-- Broadcast player's best M+ keys to guild
+function Automation:BroadcastBestKeys()
+    if not IsInGuild() then return end
+
+    local now = GetTime()
+    if (now - lastBestKeysBroadcast) < SYNC_COOLDOWN then return end
+    lastBestKeysBroadcast = now
+
+    local curSeason = C_ChallengeMode.GetMapTable()
+    if not curSeason or #curSeason == 0 then return end
+
+    local _, _, classID = UnitClass("player")
+    local parts = {}
+    for _, mapID in ipairs(curSeason) do
+        local inTimeInfo, overTimeInfo = C_MythicPlus.GetSeasonBestForMap(mapID)
+        local bestLevel, bestDuration, wasInTime = 0, 0, false
+        if inTimeInfo and inTimeInfo.level then
+            bestLevel = inTimeInfo.level
+            bestDuration = inTimeInfo.durationSec
+            wasInTime = true
+        end
+        if overTimeInfo and overTimeInfo.level and overTimeInfo.level > bestLevel then
+            bestLevel = overTimeInfo.level
+            bestDuration = overTimeInfo.durationSec
+            wasInTime = false
+        end
+        table.insert(parts, string.format("%d:%d:%d:%d", mapID, bestLevel, bestDuration, wasInTime and 1 or 0))
+    end
+
+    local payload = classID .. ";" .. table.concat(parts, ",")
+    self:SendCommMessage(BESTKEYS_PREFIX, payload, "GUILD")
+end
+
+-- Handle incoming best keys messages from guild members
+function Automation:OnBestKeysReceived(prefix, message, distribution, sender)
+    if prefix ~= BESTKEYS_PREFIX or distribution ~= "GUILD" then return end
+
+    if not string.find(sender, "-") then
+        cachedRealmName = cachedRealmName or GetNormalizedRealmName()
+        sender = sender .. "-" .. cachedRealmName
+    end
+
+    local classIDStr, dungeonData = strsplit(";", message)
+    local classID = tonumber(classIDStr)
+    if not dungeonData then return end
+
+    local bestKeys = {}
+    for entry in string.gmatch(dungeonData, "[^,]+") do
+        local mStr, lStr, dStr, iStr = strsplit(":", entry)
+        local mapID = tonumber(mStr)
+        local level = tonumber(lStr)
+        local duration = tonumber(dStr)
+        local inTime = iStr == "1"
+        if mapID and level and level > 0 then
+            bestKeys[mapID] = { level = level, duration = duration, inTime = inTime }
+        end
+    end
+
+    local DataHandle = VesperGuild:GetModule("DataHandle", true)
+    if DataHandle then
+        DataHandle:StoreBestKeys(sender, bestKeys, classID)
+        VesperGuild:SendMessage("VESPERGUILD_BESTKEYS_UPDATE", sender)
+    end
+end
+
 -- M+ end reminder (only if timed and current key level <= completed level)
 function Automation:OnMPlusCompleted()
     local _, level, _, onTime = C_ChallengeMode.GetCompletionInfo()
@@ -89,6 +163,10 @@ function Automation:OnMPlusCompleted()
     if ownedLevel and ownedLevel > level then return end
 
     self:ShowKeyReminder()
+
+    -- Broadcast updated best keys after completing a dungeon
+    lastBestKeysBroadcast = 0
+    self:BroadcastBestKeys()
 end
 
 function Automation:ShowKeyReminder()
@@ -117,7 +195,9 @@ end
 
 -- Manual sync (call from a button or slash command)
 function Automation:ManualSync()
-    lastBroadcast = 0 -- reset cooldown so it fires immediately
+    lastIlvlBroadcast = 0
+    lastBestKeysBroadcast = 0
     self:BroadcastIlvl()
-    VesperGuild:Print("iLvl sync broadcasted to guild.")
+    self:BroadcastBestKeys()
+    VesperGuild:Print("Sync broadcasted to guild.")
 end
