@@ -30,7 +30,7 @@ function Roster:ShowRoster()
         return
     end
 
-    -- Create Custom Frame (MATERIAL DESIGN)
+    -- Create Custom Frame
     self.frame = CreateFrame("Frame", "VesperGuildRosterFrame", UIParent, "BackdropTemplate" )
     self.frame:SetSize(600, 250)
 
@@ -455,6 +455,24 @@ function Roster:UpdateRosterList()
         CenterLabelV(keyLabel)
         row:AddChild(keyLabel)
 
+        -- Row background (must be before rowBtn so closures can capture these locals)
+        local rowFrame = row.frame
+        if not rowFrame.vesperBg then
+            rowFrame.vesperBg = rowFrame:CreateTexture(nil, "BACKGROUND")
+            rowFrame.vesperBg:SetAllPoints()
+        end
+
+        local baseColorR, baseColorG, baseColorB
+        if m.isInGroup then
+            baseColorR, baseColorG, baseColorB = 0.12, 0.24, 0.24
+        elseif (i % 2 == 0) then
+            baseColorR, baseColorG, baseColorB = 0.17, 0.17, 0.17
+        else
+            baseColorR, baseColorG, baseColorB = 0.12, 0.12, 0.12
+        end
+
+        rowFrame.vesperBg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
+
         -- Row overlay button: left-click = portal cast, right-click = context menu
         local rowBtn = CreateFrame("Button", nil, contentFrame, "InsecureActionButtonTemplate")
         rowBtn:SetPoint("TOPLEFT", row.frame, "TOPLEFT")
@@ -499,6 +517,10 @@ function Roster:UpdateRosterList()
         -- Tooltip with best keys for this dungeon
         local tooltipMapID = m.keystoneMapID
         rowBtn:SetScript("OnEnter", function(self)
+            -- Highlight row background
+            if rowFrame.vesperBg then
+                rowFrame.vesperBg:SetColorTexture(0.24, 0.24, 0.24, 1)
+            end
             GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
             if portalSpellName then
                 GameTooltip:SetText("Left-click: " .. portalSpellName .. "\nRight-click: Menu")
@@ -542,36 +564,14 @@ function Roster:UpdateRosterList()
             GameTooltip:Show()
         end)
         rowBtn:SetScript("OnLeave", function(self)
+            -- Restore row background
+            if rowFrame.vesperBg then
+                rowFrame.vesperBg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
+            end
             GameTooltip:Hide()
         end)
 
         table.insert(self.portalButtons, rowBtn)
-
-        -- Row background
-        local rowFrame = row.frame
-        if not rowFrame.vesperBg then
-            rowFrame.vesperBg = rowFrame:CreateTexture(nil, "BACKGROUND")
-            rowFrame.vesperBg:SetAllPoints()
-        end
-        local bg = rowFrame.vesperBg
-
-        local baseColorR, baseColorG, baseColorB
-        if m.isInGroup then
-            baseColorR, baseColorG, baseColorB = 0.12, 0.24, 0.24
-        elseif (i % 2 == 0) then
-            baseColorR, baseColorG, baseColorB = 0.17, 0.17, 0.17
-        else
-            baseColorR, baseColorG, baseColorB = 0.12, 0.12, 0.12
-        end
-
-        bg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
-
-        rowFrame:SetScript("OnEnter", function()
-            bg:SetColorTexture(0.24, 0.24, 0.24, 1)
-        end)
-        rowFrame:SetScript("OnLeave", function()
-            bg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
-        end)
 
         self.scroll:AddChild(row)
     end

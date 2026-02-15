@@ -26,15 +26,8 @@ function KeystoneSync:OnEnable()
         end)
     end
 
-    -- Register events
-    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
-
     -- Clean up old entries on login
     self:CleanupStaleEntries()
-
-    -- Request guild keystones after a short delay
-    -- LibKeystone automatically broadcasts when your keystone changes
-    self:ScheduleTimer("RequestGuildKeystones", 5)
 end
 
 function KeystoneSync:DebugDumpKeystones()
@@ -66,13 +59,6 @@ function KeystoneSync:OnDisable()
 
     self:UnregisterAllEvents()
 end
-
-function KeystoneSync:OnPlayerEnteringWorld()
-    -- Request keystones when entering world
-    -- LibKeystone automatically broadcasts your keystone changes
-    self:ScheduleTimer("RequestGuildKeystones", 5)
-end
-
 
 -- LibKeystone callback handler
 function KeystoneSync:OnLibKeystoneReceived(keyLevel, keyChallengeMapID, playerRating, sender, channel)
