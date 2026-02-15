@@ -7,10 +7,11 @@ function Roster:OnInitialize()
 end
 
 function Roster:OnEnable()
-    self:RegisterMessage("VESPERGUILD_ILVL_UPDATE", "OnIlvlUpdate")
+    self:RegisterMessage("VESPERGUILD_ILVL_UPDATE", "OnSyncUpdate")
+    self:RegisterMessage("VESPERGUILD_BESTKEYS_UPDATE", "OnSyncUpdate")
 end
 
-function Roster:OnIlvlUpdate()
+function Roster:OnSyncUpdate()
     if self.frame and self.frame:IsShown() then
         self:UpdateRosterList()
     end
@@ -478,7 +479,7 @@ function Roster:UpdateRosterList()
         rowBtn:SetPoint("TOPLEFT", row.frame, "TOPLEFT")
         rowBtn:SetPoint("BOTTOMRIGHT", row.frame, "BOTTOMRIGHT")
         rowBtn:SetFrameLevel(row.frame:GetFrameLevel() + 20)
-        rowBtn:RegisterForClicks("AnyUp", "AnyDown")
+        rowBtn:RegisterForClicks("AnyUp")
 
         -- Set up left-click portal cast if player has the spell
         local portalSpellName = nil
@@ -528,35 +529,55 @@ function Roster:UpdateRosterList()
                 GameTooltip:SetText("Right-click: Menu")
             end
 
-            if tooltipMapID and DataHandle then
+            if tooltipMapID then
                 local dungName = C_ChallengeMode.GetMapUIInfo(tooltipMapID)
                 if dungName then
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine(dungName .. " - Best Keys", 1, 0.82, 0, true)
+                    GameTooltip:AddLine(dungName .. " - Guild Best", 1, 0.82, 0, true)
 
-                    local bestKeysDB = DataHandle:GetBestKeysDB()
-                    if bestKeysDB then
-                        local entries = {}
-                        for playerName, data in pairs(bestKeysDB) do
-                            local info = data[tooltipMapID]
-                            if info and info.level and info.level > 0 then
-                                local shortName = playerName:match("([^-]+)") or playerName
-                                table.insert(entries, { name = shortName, level = info.level, inTime = info.inTime })
+                    local entries = {}
+                    local seen = {}
+
+                    -- Primary: addon sync data (per-member best keys)
+                    if DataHandle then
+                        local bestKeysDB = DataHandle:GetBestKeysDB()
+                        if bestKeysDB then
+                            for playerName, data in pairs(bestKeysDB) do
+                                local info = data[tooltipMapID]
+                                if info and info.level and info.level > 0 then
+                                    local shortName = playerName:match("([^-]+)") or playerName
+                                    seen[shortName] = true
+                                    table.insert(entries, { name = shortName, level = info.level, inTime = info.inTime })
+                                end
                             end
                         end
-                        table.sort(entries, function(a, b)
-                            if a.level == b.level then return a.name < b.name end
-                            return a.level > b.level
-                        end)
-                        for _, e in ipairs(entries) do
-                            local colorCode = DataHandle:GetKeyColor(e.level)
-                            local r, g, b = 0.8, 0.8, 0.8
-                            if e.inTime then r, g, b = 0.51, 0.78, 0.52 end -- green for timed
-                            GameTooltip:AddDoubleLine(e.name, colorCode .. "+" .. e.level .. "|r", 1, 1, 1, r, g, b)
+                    end
+
+                    -- Supplement: WoW guild leaderboard (top guild run per dungeon)
+                    local guildLeaders = C_ChallengeMode.GetGuildLeaders()
+                    if guildLeaders then
+                        for _, attempt in ipairs(guildLeaders) do
+                            if attempt.mapChallengeModeID == tooltipMapID and attempt.keystoneLevel > 0 then
+                                if not seen[attempt.name] then
+                                    seen[attempt.name] = true
+                                    table.insert(entries, { name = attempt.name, level = attempt.keystoneLevel })
+                                end
+                            end
                         end
-                        if #entries == 0 then
-                            GameTooltip:AddLine("No data", 0.5, 0.5, 0.5)
-                        end
+                    end
+
+                    table.sort(entries, function(a, b)
+                        if a.level == b.level then return a.name < b.name end
+                        return a.level > b.level
+                    end)
+                    for _, e in ipairs(entries) do
+                        local colorCode = DataHandle and DataHandle:GetKeyColor(e.level) or "|cffffffff"
+                        local r, g, b = 0.8, 0.8, 0.8
+                        if e.inTime then r, g, b = 0.51, 0.78, 0.52 end
+                        GameTooltip:AddDoubleLine(e.name, colorCode .. "+" .. e.level .. "|r", 1, 1, 1, r, g, b)
+                    end
+                    if #entries == 0 then
+                        GameTooltip:AddLine("No data", 0.5, 0.5, 0.5)
                     end
                 end
             end
