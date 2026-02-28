@@ -133,6 +133,11 @@ function KeystoneSync:GetKeystoneForPlayer(playerName)
     end
     
     -- Check if data is too old (>48 hours)
+    if not data.timestamp then
+        VesperGuild.db.global.keystones[playerName] = nil
+        return nil
+    end
+
     local age = time() - data.timestamp
     if age > (48 * 3600) then
         VesperGuild.db.global.keystones[playerName] = nil
@@ -181,8 +186,7 @@ function KeystoneSync:CleanupStaleEntries()
     local removed = 0
     
     for playerName, data in pairs(VesperGuild.db.global.keystones) do
-        local age = now - data.timestamp
-        if age > (48 * 3600) then
+        if not data.timestamp or (now - data.timestamp) > (48 * 3600) then
             VesperGuild.db.global.keystones[playerName] = nil
             removed = removed + 1
         end

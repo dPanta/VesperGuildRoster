@@ -120,7 +120,10 @@ end
 function DataHandle:GetKeyColor(level)
     local color = C_ChallengeMode.GetKeystoneLevelRarityColor(level)
     if color then
-        return string.format("|cff%02x%02x%02x", color.r * 255, color.g * 255, color.b * 255)
+        local r = math.floor((color.r or 0) * 255 + 0.5)
+        local g = math.floor((color.g or 0) * 255 + 0.5)
+        local b = math.floor((color.b or 0) * 255 + 0.5)
+        return string.format("|cff%02x%02x%02x", r, g, b)
     end
     return "|cff9d9d9d"
 end
@@ -129,7 +132,10 @@ end
 function DataHandle:GetRatingColor(rating)
     local color = C_ChallengeMode.GetDungeonScoreRarityColor(rating)
     if color then
-        return string.format("|cff%02x%02x%02x", color.r * 255, color.g * 255, color.b * 255)
+        local r = math.floor((color.r or 0) * 255 + 0.5)
+        local g = math.floor((color.g or 0) * 255 + 0.5)
+        local b = math.floor((color.b or 0) * 255 + 0.5)
+        return string.format("|cff%02x%02x%02x", r, g, b)
     end
     return "|cff9d9d9d"
 end
@@ -164,7 +170,7 @@ function DataHandle:CleanupStaleIlvl(maxAge)
     maxAge = maxAge or (7 * 24 * 3600) -- default 7 days
     local now = time()
     for name, data in pairs(db) do
-        if (now - data.timestamp) > maxAge then
+        if not data.timestamp or (now - data.timestamp) > maxAge then
             db[name] = nil
         end
     end

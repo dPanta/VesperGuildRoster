@@ -2,7 +2,7 @@
 ## Title: VesperGuildRoster
 ## Notes: Guild M+ helper.
 ## Author: dPanta
-## Version: 1.2.0
+## Version: 1.2.1
 ## SavedVariables: VesperGuildDB
 
 ## OptionalDeps: Ace3
@@ -21,6 +21,17 @@ Libs\LibKeystone\LibKeystone.lua
 
 # Locales
 Locales\enUS.lua
+Locales\enGB.lua
+Locales\deDE.lua
+Locales\esES.lua
+Locales\esMX.lua
+Locales\frFR.lua
+Locales\itIT.lua
+Locales\koKR.lua
+Locales\ptBR.lua
+Locales\ruRU.lua
+Locales\zhCN.lua
+Locales\zhTW.lua
 
 # Core
 VesperGuild.lua

@@ -26,7 +26,6 @@ end
 function Roster:ShowRoster()
     if self.frame then
         self.frame:Show()
-        self.dungeonPanel:Show()
         self:UpdateRosterList()
         return
     end
@@ -108,6 +107,7 @@ function Roster:ShowRoster()
         self.frame:Hide()
         self.frame = nil
         self.scroll = nil
+        self.contentFrame = nil
         if self.dungeonPanel then
             self.dungeonPanel:Hide()
             self.dungeonPanel = nil
@@ -159,6 +159,7 @@ function Roster:ShowRoster()
     local contentFrame = CreateFrame("Frame", nil, self.frame, "BackdropTemplate")
     contentFrame:SetPoint("TOPLEFT", titlebar, "BOTTOMLEFT", 5, -5)
     contentFrame:SetPoint("BOTTOMRIGHT", -5, 20)
+    self.contentFrame = contentFrame
     
     self.scroll = AceGUI:Create("ScrollFrame")
     self.scroll:SetLayout("Flow")
@@ -185,6 +186,7 @@ function Roster:Toggle()
         self.frame:Hide()
         self.frame = nil
         self.scroll = nil
+        self.contentFrame = nil
     else
         self:ShowRoster()
     end
@@ -285,6 +287,7 @@ function Roster:UpdateRosterList()
     local DataHandle = VesperGuild:GetModule("DataHandle", true)
     local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
     local playerRealm = GetRealmName()
+    local playerRealmNormalized = GetNormalizedRealmName()
     local playerFaction = UnitFactionGroup("player")
 
     -- Build group member lookup table for O(1) checks
@@ -307,7 +310,7 @@ function Roster:UpdateRosterList()
             local displayName = name:match("([^-]+)") or name
             local fullName = name
             if not string.find(name, "-") then
-                fullName = name .. "-" .. playerRealm
+                fullName = name .. "-" .. playerRealmNormalized
             end
 
             -- Faction
@@ -323,14 +326,24 @@ function Roster:UpdateRosterList()
             -- iLvl
             local ilvlNum = 0
             if DataHandle then
-                local ilvlData = DataHandle:GetIlvlForPlayer(name)
+                local ilvlData = DataHandle:GetIlvlForPlayer(fullName)
+                    or DataHandle:GetIlvlForPlayer(name)
+                    or DataHandle:GetIlvlForPlayer(displayName)
+                    or DataHandle:GetIlvlForPlayer(displayName .. "-" .. playerRealm)
                 if ilvlData then ilvlNum = ilvlData.ilvl end
             end
 
             -- Rating
             local ratingNum = 0
-            if VesperGuild.db.global.keystones and VesperGuild.db.global.keystones[name] and VesperGuild.db.global.keystones[name].rating then
-                ratingNum = VesperGuild.db.global.keystones[name].rating
+            local keyData = VesperGuild.db.global.keystones
+                and (
+                    VesperGuild.db.global.keystones[fullName]
+                    or VesperGuild.db.global.keystones[name]
+                    or VesperGuild.db.global.keystones[displayName]
+                    or VesperGuild.db.global.keystones[displayName .. "-" .. playerRealm]
+                )
+            if keyData and keyData.rating then
+                ratingNum = keyData.rating
             end
 
             -- Keystone
@@ -338,19 +351,21 @@ function Roster:UpdateRosterList()
             local keystoneMapID = nil
             local keyLevel = 0
             if KeystoneSync then
-                keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName) or "-"
-                if VesperGuild.db.global.keystones and VesperGuild.db.global.keystones[fullName] then
-                    keystoneMapID = VesperGuild.db.global.keystones[fullName].mapID
-                    keyLevel = VesperGuild.db.global.keystones[fullName].level or 0
+                keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName)
+                    or KeystoneSync:GetKeystoneForPlayer(name)
+                    or "-"
+                if keyData then
+                    keystoneMapID = keyData.mapID
+                    keyLevel = keyData.level or 0
                 end
             end
 
             table.insert(members, {
                 name = displayName,
-                fullName = name,
+                fullName = fullName,
                 classFileName = classFileName,
                 faction = factionText,
-                zone = zone or "Unknown",
+                zone = zone or UNKNOWN,
                 status = statusRaw,
                 ilvl = ilvlNum,
                 rating = ratingNum,
@@ -475,7 +490,7 @@ function Roster:UpdateRosterList()
         rowFrame.vesperBg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
 
         -- Row overlay button: left-click = portal cast, right-click = context menu
-        local rowBtn = CreateFrame("Button", nil, contentFrame, "InsecureActionButtonTemplate")
+        local rowBtn = CreateFrame("Button", nil, row.frame, "InsecureActionButtonTemplate")
         rowBtn:SetPoint("TOPLEFT", row.frame, "TOPLEFT")
         rowBtn:SetPoint("BOTTOMRIGHT", row.frame, "BOTTOMRIGHT")
         rowBtn:SetFrameLevel(row.frame:GetFrameLevel() + 20)
@@ -488,7 +503,7 @@ function Roster:UpdateRosterList()
             if dungInfo then
                 local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
                 local spellName = spellInfo and spellInfo.name
-                local hasPortal = C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
+                local hasPortal = C_SpellBook and C_SpellBook.IsSpellInSpellBook and C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
                 if spellName and hasPortal then
                     portalSpellName = spellName
                     rowBtn:SetAttribute("type1", "spell")

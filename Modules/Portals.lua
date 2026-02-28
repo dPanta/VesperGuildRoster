@@ -59,7 +59,7 @@ function Portals:CreatePortalFrame()
         return
     end
 
-    local curSeason = C_ChallengeMode.GetMapTable()
+    local curSeason = C_ChallengeMode.GetMapTable() or {}
     local curSeasonDungs = {}
     for _, id in ipairs(curSeason) do
         local dungInfo = DataHandle:GetDungeonByMapID(id)
@@ -73,7 +73,7 @@ function Portals:CreatePortalFrame()
             local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
             local spellName = spellInfo and spellInfo.name
             local iconFileID = spellInfo and (spellInfo.iconID or spellInfo.originalIconID)
-            local known = C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
+            local known = C_SpellBook and C_SpellBook.IsSpellInSpellBook and C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
             local btn = CreateFrame("Button", "PortalButton" .. index, self.VesperPortalsUI, "InsecureActionButtonTemplate")
                 btn:SetSize(52, 52)
                 
