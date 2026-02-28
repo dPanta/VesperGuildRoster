@@ -25,6 +25,13 @@ if AceLocale then
     L = AceLocale:GetLocale(addonName)
 end
 
+local function RequestGuildRosterUpdate()
+    if C_GuildInfo and C_GuildInfo.GuildRoster then
+        C_GuildInfo.GuildRoster()
+    elseif GuildRoster then
+        GuildRoster()
+    end
+end
 
 function VesperGuild:OnInitialize()
     -- Called when the addon is loaded
@@ -49,6 +56,49 @@ function VesperGuild:OnInitialize()
     self:Print(L["ADDON_LOADED_MESSAGE"])
 end
 
+function VesperGuild:GetOnlineGuildMembers()
+    local members = {}
+    if not IsInGuild() then
+        return members
+    end
+
+    local numMembers = GetNumGuildMembers()
+    for i = 1, numMembers do
+        local name, _, _, level, _, zone, _, _, isOnline = GetGuildRosterInfo(i)
+        if isOnline and name then
+            local displayName = name:match("([^-]+)") or name
+            table.insert(members, {
+                name = displayName,
+                level = level or 0,
+                zone = (zone and zone ~= "" and zone) or UNKNOWN,
+            })
+        end
+    end
+
+    table.sort(members, function(a, b)
+        return a.name < b.name
+    end)
+
+    return members
+end
+
+function VesperGuild:UpdateFloatingIconOnlineCount()
+    if not self.iconButton or not self.iconButton.onlineCountText then
+        return
+    end
+
+    local count = 0
+    if IsInGuild() then
+        count = #self:GetOnlineGuildMembers()
+    end
+
+    self.iconButton.onlineCountText:SetText(tostring(count))
+end
+
+function VesperGuild:OnGuildRosterUpdate()
+    self:UpdateFloatingIconOnlineCount()
+end
+
 -- Baaaaaaa, create a sheep
 function VesperGuild:CreateFloatingIcon()
     local btn = CreateFrame("Button", "VesperGuildIcon", UIParent)
@@ -66,6 +116,16 @@ function VesperGuild:CreateFloatingIcon()
     tex:SetAllPoints()
     tex:SetTexture("Interface\\Icons\\Spell_Nature_Polymorph")
     btn.texture = tex
+    
+    local countText = btn:CreateFontString(nil, "OVERLAY")
+    countText:SetPoint("CENTER", 0, 0)
+    countText:SetFont("Interface\\AddOns\\VesperGuild\\Media\\UbuntuNerdFont-Bold.ttf", 20, "OUTLINE")
+    countText:SetTextColor(1, 1, 1, 1)
+    countText:SetShadowOffset(1, -1)
+    countText:SetShadowColor(0, 0, 0, 1)
+    countText:SetText("0")
+    btn.onlineCountText = countText
+    self.iconButton = btn
 
     -- Drag Script - only drag if Shift+LeftButton is held
     btn:SetScript("OnDragStart", function(self)
@@ -94,10 +154,36 @@ function VesperGuild:CreateFloatingIcon()
 
     -- Tooltip
     btn:SetScript("OnEnter", function(self)
+        if IsInGuild() then
+            RequestGuildRosterUpdate()
+        end
+
+        local onlineMembers = VesperGuild:GetOnlineGuildMembers()
+
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetText("VesperGuild", 1, 1, 1)
         GameTooltip:AddLine("Left-Click: Toggle Roster", 0.8, 0.8, 0.8)
         GameTooltip:AddLine("Shift+Left-Click & Drag: Move Icon", 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(" ")
+        GameTooltip:AddLine(string.format("Guild Online: %d", #onlineMembers), 1, 0.82, 0)
+
+        if #onlineMembers == 0 then
+            if IsInGuild() then
+                GameTooltip:AddLine("No guild members online", 0.6, 0.6, 0.6)
+            else
+                GameTooltip:AddLine("You are not in a guild", 0.6, 0.6, 0.6)
+            end
+        else
+            for _, member in ipairs(onlineMembers) do
+                GameTooltip:AddDoubleLine(
+                    string.format("%s (Lv %d)", member.name, member.level),
+                    member.zone,
+                    1, 1, 1,
+                    0.8, 0.8, 0.8
+                )
+            end
+        end
+
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
@@ -119,6 +205,12 @@ function VesperGuild:OnEnable()
     end
     
     self:CreateFloatingIcon()
+    self:RegisterEvent("GUILD_ROSTER_UPDATE", "OnGuildRosterUpdate")
+    self:RegisterEvent("PLAYER_GUILD_UPDATE", "OnGuildRosterUpdate")
+    if IsInGuild() then
+        RequestGuildRosterUpdate()
+    end
+    self:UpdateFloatingIconOnlineCount()
 end
 
 function VesperGuild:OnDisable()
