@@ -38,6 +38,62 @@ function Roster:OnDisable()
     -- Called when the module is disabled
 end
 
+-- Lazily create one dropdown frame used by legacy fallback context menus.
+function Roster:GetContextMenuDropdown()
+    if self.contextMenuDropdown and self.contextMenuDropdown.GetName then
+        return self.contextMenuDropdown
+    end
+
+    self.contextMenuDropdown = CreateFrame("Frame", "VesperGuildRosterContextMenu", UIParent, "UIDropDownMenuTemplate")
+    return self.contextMenuDropdown
+end
+
+-- Open manual roster right-click menu with stable cross-client fallbacks.
+function Roster:OpenRosterContextMenu(anchorButton, fullName)
+    local resolvedFullName = strtrim(tostring(fullName or ""))
+    if resolvedFullName == "" then
+        return false
+    end
+
+    local function invitePlayer()
+        if C_PartyInfo and C_PartyInfo.InviteUnit then
+            C_PartyInfo.InviteUnit(resolvedFullName)
+        elseif InviteUnit then
+            InviteUnit(resolvedFullName)
+        end
+    end
+
+    local function whisperPlayer()
+        if ChatFrame_OpenChat then
+            ChatFrame_OpenChat("/w " .. resolvedFullName .. " ")
+        elseif ChatFrame_SendTell then
+            ChatFrame_SendTell(resolvedFullName)
+        end
+    end
+
+    if anchorButton and MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
+        MenuUtil.CreateContextMenu(anchorButton, function(_, rootDescription)
+            rootDescription:CreateButton("Invite", invitePlayer)
+            rootDescription:CreateButton("Whisper", whisperPlayer)
+            rootDescription:CreateButton("Close", function() end)
+        end)
+        return true
+    end
+
+    if EasyMenu then
+        local menu = {
+            { text = "Invite", func = invitePlayer, notCheckable = true },
+            { text = "Whisper", func = whisperPlayer, notCheckable = true },
+            { text = "Close", func = function() end, notCheckable = true },
+        }
+        local dropdown = self:GetContextMenuDropdown()
+        EasyMenu(menu, dropdown, "cursor", 0, 0, "MENU")
+        return true
+    end
+
+    return false
+end
+
 -- --- GUI Creation ---
 
 function Roster:ShowRoster()
@@ -306,7 +362,7 @@ function Roster:UpdateRosterList()
         ApplyWidgetFont(header, rosterFontSize, "")
         CenterLabelV(header)
 
-        header:SetCallback("OnClick", function(_, _, button)
+        header:SetCallback("OnClick", function()
             if self.sortColumn == col.key then
                 self.sortAscending = not self.sortAscending
             else
@@ -364,7 +420,7 @@ function Roster:UpdateRosterList()
     local members = {}
     local numMembers = GetNumGuildMembers()
     for i = 1, numMembers do
-        local name, _, _, level, _, zone, _, _, isOnline, status, classFileName = GetGuildRosterInfo(i)
+        local name, _, _, _, _, zone, _, _, isOnline, status, classFileName = GetGuildRosterInfo(i)
 
         if isOnline then
             -- Normalize "Name-Realm" variants so lookups match across different data producers.
@@ -568,7 +624,8 @@ function Roster:UpdateRosterList()
             if dungInfo then
                 local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
                 local spellName = spellInfo and spellInfo.name
-                local hasPortal = C_SpellBook and C_SpellBook.IsSpellInSpellBook and C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
+                local hasPortal = C_SpellBook and C_SpellBook.IsSpellInSpellBook
+                    and C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
                 if spellName and hasPortal then
                     portalSpellName = spellName
                     rowBtn:SetAttribute("type1", "spell")
@@ -577,32 +634,23 @@ function Roster:UpdateRosterList()
             end
         end
 
-        -- Use HookScript so secure left-click casting remains intact while adding right-click menu.
+        -- Use HookScript so secure left-click casting remains intact while adding right-click behavior.
+        local rosterModule = self
         local memberFullName = m.fullName
-        local memberDisplayName = m.name
-        rowBtn:HookScript("OnClick", function(self, button, down)
-            if button == "RightButton" and not down and MenuUtil then
-                MenuUtil.CreateContextMenu(self, function(owner, rootDescription)
-                    rootDescription:CreateTitle(memberDisplayName)
-                    rootDescription:CreateButton("Whisper", function()
-                        ChatFrame_OpenChat("/w " .. memberFullName .. " ")
-                    end)
-                    rootDescription:CreateButton("Invite", function()
-                        C_PartyInfo.InviteUnit(memberFullName)
-                    end)
-                    rootDescription:CreateButton("Cancel", function() end)
-                end)
+        rowBtn:HookScript("OnClick", function(selfButton, button, down)
+            if button == "RightButton" and not down then
+                rosterModule:OpenRosterContextMenu(selfButton, memberFullName)
             end
         end)
 
         -- Tooltip with best keys for this dungeon
         local tooltipMapID = m.keystoneMapID
-        rowBtn:SetScript("OnEnter", function(self)
+        rowBtn:SetScript("OnEnter", function(rowButton)
             -- Highlight row background
             if rowFrame.vesperBg then
                 rowFrame.vesperBg:SetColorTexture(0.24, 0.24, 0.24, 1)
             end
-            GameTooltip:SetOwner(self, "ANCHOR_TOPLEFT")
+            GameTooltip:SetOwner(rowButton, "ANCHOR_TOPLEFT")
             if portalSpellName then
                 GameTooltip:SetText("Left-click: " .. portalSpellName .. "\nRight-click: Menu")
             else
@@ -627,7 +675,11 @@ function Roster:UpdateRosterList()
                                 if info and info.level and info.level > 0 then
                                     local shortName = playerName:match("([^-]+)") or playerName
                                     seen[shortName] = true
-                                    table.insert(entries, { name = shortName, level = info.level, inTime = info.inTime })
+                                    table.insert(entries, {
+                                        name = shortName,
+                                        level = info.level,
+                                        inTime = info.inTime
+                                    })
                                 end
                             end
                         end
@@ -665,7 +717,7 @@ function Roster:UpdateRosterList()
 
             GameTooltip:Show()
         end)
-        rowBtn:SetScript("OnLeave", function(self)
+        rowBtn:SetScript("OnLeave", function()
             -- Restore row background
             if rowFrame.vesperBg then
                 rowFrame.vesperBg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)

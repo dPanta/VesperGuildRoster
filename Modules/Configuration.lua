@@ -102,6 +102,12 @@ local function ensureProfile()
 
     profile.portals = profile.portals or {}
     profile.portals.primaryHearthstoneItemID = tonumber(profile.portals.primaryHearthstoneItemID) or 6948
+    local minButtonSize, maxButtonSize, defaultButtonSize = VesperGuild:GetTopUtilityButtonSizeBounds()
+    profile.portals.utilityButtonSize = clamp(
+        math.floor((tonumber(profile.portals.utilityButtonSize) or defaultButtonSize) + 0.5),
+        minButtonSize,
+        maxButtonSize
+    )
     if type(profile.portals.utilityToyWhitelist) ~= "table" then
         profile.portals.utilityToyWhitelist = {}
     else
@@ -137,6 +143,7 @@ function Configuration:OnInitialize()
     self.toyNameInput = nil
     self.toyNameAddButton = nil
     self.toyLookupStatusText = nil
+    self.utilityButtonSizeSlider = nil
     self.opacitySliders = {}
     self.fontSizeSliders = {}
     self._isRefreshing = false
@@ -371,6 +378,33 @@ function Configuration:CreateFontSizeSlider(name, parent, labelText, anchor, yOf
     return slider
 end
 
+-- Create a standardized slider for top utility (hearthstone/toy) button size.
+function Configuration:CreateUtilityButtonSizeSlider(name, parent, labelText, anchor, yOffset, minSize, maxSize)
+    local slider = CreateFrame("Slider", name, parent, "OptionsSliderTemplate")
+    slider:SetWidth(290)
+    slider:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", 0, yOffset)
+    slider:SetMinMaxValues(minSize, maxSize)
+    slider:SetValueStep(1)
+    slider:SetObeyStepOnDrag(true)
+
+    local low = _G[name .. "Low"]
+    local high = _G[name .. "High"]
+    local text = _G[name .. "Text"]
+
+    if low then
+        setFontStringTextSafe(low, tostring(minSize), 10, "", GameFontNormalSmall)
+    end
+    if high then
+        setFontStringTextSafe(high, tostring(maxSize), 10, "", GameFontNormalSmall)
+    end
+    if text then
+        setFontStringTextSafe(text, "", 12, "", GameFontNormal)
+    end
+
+    slider._baseLabel = labelText
+    return slider
+end
+
 -- Keep slider title in sync with current numeric value.
 function Configuration:UpdateSliderLabel(slider)
     if not slider then
@@ -403,6 +437,25 @@ function Configuration:UpdateFontSizeSliderLabel(slider)
         setFontStringTextSafe(
             text,
             string.format("%s: %d", slider._baseLabel or "Font Size", value),
+            12,
+            "",
+            GameFontNormal
+        )
+    end
+end
+
+-- Keep utility button-size slider title in sync with selected icon size.
+function Configuration:UpdateUtilityButtonSizeSliderLabel(slider)
+    if not slider then
+        return
+    end
+
+    local value = math.floor((tonumber(slider:GetValue()) or 52) + 0.5)
+    local text = _G[slider:GetName() .. "Text"]
+    if text then
+        setFontStringTextSafe(
+            text,
+            string.format("%s: %d", slider._baseLabel or "Utility Button Size", value),
             12,
             "",
             GameFontNormal
@@ -1252,7 +1305,7 @@ function Configuration:BuildPanel()
 
     -- Tab row: each frame now has its own settings pane.
     local rosterTabButton = self:CreateTabButton(panel, "roster", "Roster", fontDropdown, 0, -20, 136)
-    local portalsTabButton = self:CreateTabButton(panel, "portals", "Portals", fontDropdown, 142, -20, 136)
+    self:CreateTabButton(panel, "portals", "Portals", fontDropdown, 142, -20, 136)
     local bestKeysTabButton = self:CreateTabButton(panel, "bestKeys", "Best Keys", fontDropdown, 284, -20, 136)
 
     local contentRoot = CreateFrame("Frame", nil, panel)
@@ -1311,9 +1364,19 @@ function Configuration:BuildPanel()
         portalsFontSizeSlider,
         -30
     )
+    local minUtilityButtonSize, maxUtilityButtonSize = VesperGuild:GetTopUtilityButtonSizeBounds()
+    local utilityButtonSizeSlider = self:CreateUtilityButtonSizeSlider(
+        "VesperGuildConfigTopUtilityButtonSizeSlider",
+        portalsTab,
+        "Hearthstone/Toy Button Size",
+        portalsOpacitySlider,
+        -30,
+        minUtilityButtonSize,
+        maxUtilityButtonSize
+    )
 
     local hearthstoneLabel = portalsTab:CreateFontString(nil, "ARTWORK")
-    hearthstoneLabel:SetPoint("TOPLEFT", portalsOpacitySlider, "BOTTOMLEFT", 0, -34)
+    hearthstoneLabel:SetPoint("TOPLEFT", utilityButtonSizeSlider, "BOTTOMLEFT", 0, -34)
     setFontStringTextSafe(hearthstoneLabel, "Primary Hearthstone", 12, "", GameFontNormal)
 
     local hearthstoneDropdown = self:CreateFlatDropdown(
@@ -1448,6 +1511,28 @@ function Configuration:BuildPanel()
         end)
     end
 
+    -- Live-write top utility button size used by hearthstone/toy controls.
+    local function bindUtilityButtonSizeSlider(slider)
+        slider:SetScript("OnValueChanged", function(changedSlider, value)
+            local profile = ensureProfile()
+            if not profile then
+                return
+            end
+            local minSize, maxSize, defaultSize = VesperGuild:GetTopUtilityButtonSizeBounds()
+            local normalized = clamp(roundToStep(tonumber(value) or defaultSize, 1), minSize, maxSize)
+            normalized = math.floor(normalized + 0.5)
+            if math.abs(normalized - value) > 0.0001 then
+                changedSlider:SetValue(normalized)
+                return
+            end
+            profile.portals.utilityButtonSize = normalized
+            self:UpdateUtilityButtonSizeSliderLabel(changedSlider)
+            if not self._isRefreshing then
+                self:NotifyConfigChanged()
+            end
+        end)
+    end
+
     bindOpacitySlider(rosterOpacitySlider, "roster")
     bindOpacitySlider(portalsOpacitySlider, "portals")
     bindOpacitySlider(bestKeysOpacitySlider, "bestKeys")
@@ -1455,6 +1540,7 @@ function Configuration:BuildPanel()
     bindFontSizeSlider(rosterFontSizeSlider, "roster")
     bindFontSizeSlider(portalsFontSizeSlider, "portals")
     bindFontSizeSlider(bestKeysFontSizeSlider, "bestKeys")
+    bindUtilityButtonSizeSlider(utilityButtonSizeSlider)
 
     panel:SetScript("OnShow", function()
         self:SetActiveTab(self.activeTab or "roster")
@@ -1476,6 +1562,7 @@ function Configuration:BuildPanel()
     self.toyNameInput = toyNameInput
     self.toyNameAddButton = toyAddButton
     self.toyLookupStatusText = toyLookupStatusText
+    self.utilityButtonSizeSlider = utilityButtonSizeSlider
     self:SetActiveTab(self.activeTab or "roster")
 end
 
@@ -1499,6 +1586,12 @@ function Configuration:RefreshControls()
     local rosterFontSize = clamp(tonumber(profile.style.fontSize.roster) or 12, 8, 24)
     local portalsFontSize = clamp(tonumber(profile.style.fontSize.portals) or 12, 8, 24)
     local bestKeysFontSize = clamp(tonumber(profile.style.fontSize.bestKeys) or 11, 8, 24)
+    local minUtilityButtonSize, maxUtilityButtonSize, defaultUtilityButtonSize = VesperGuild:GetTopUtilityButtonSizeBounds()
+    local utilityButtonSize = clamp(
+        math.floor((tonumber(profile.portals.utilityButtonSize) or defaultUtilityButtonSize) + 0.5),
+        minUtilityButtonSize,
+        maxUtilityButtonSize
+    )
 
     if self.opacitySliders.roster then
         self.opacitySliders.roster:SetValue(rosterValue)
@@ -1523,6 +1616,10 @@ function Configuration:RefreshControls()
     if self.fontSizeSliders.bestKeys then
         self.fontSizeSliders.bestKeys:SetValue(bestKeysFontSize)
         self:UpdateFontSizeSliderLabel(self.fontSizeSliders.bestKeys)
+    end
+    if self.utilityButtonSizeSlider then
+        self.utilityButtonSizeSlider:SetValue(utilityButtonSize)
+        self:UpdateUtilityButtonSizeSliderLabel(self.utilityButtonSizeSlider)
     end
 
     -- Keep toy name-add controls in sync with real toy availability.

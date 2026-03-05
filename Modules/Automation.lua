@@ -10,9 +10,16 @@ local BESTKEYS_PREFIX = "VGBestKeys"
 local BESTKEYS_REQ_PREFIX = "VGBKReq"
 -- Shared cooldown for outgoing broadcasts to avoid chat-throttle spam.
 local SYNC_COOLDOWN = 30 -- seconds between broadcasts to avoid spam
+-- Incoming "request best keys" spam guard:
+-- 1) throttle repeated requests from same sender,
+-- 2) coalesce many valid requests into one delayed response broadcast.
+local BESTKEYS_REQUEST_COOLDOWN = 15
+local BESTKEYS_REQUEST_RESPONSE_DELAY = 2
 local lastIlvlBroadcast = 0
 local lastBestKeysBroadcast = 0
 local cachedRealmName = nil
+local lastBestKeysRequestBySender = {}
+local pendingBestKeysRequestResponse = false
 
 function Automation:OnEnable()
     -- Register all communication channels used by this module.
@@ -38,6 +45,10 @@ function Automation:OnEnable()
         DataHandle:CleanupStaleIlvl()
         DataHandle:CleanupStaleBestKeys()
     end
+
+    -- Reset runtime-only anti-spam state on module (re)enable.
+    lastBestKeysRequestBySender = {}
+    pendingBestKeysRequestResponse = false
 end
 
 function Automation:OnAddonOpened()
@@ -179,12 +190,53 @@ function Automation:OnBestKeysReceived(prefix, message, distribution, sender)
     end
 end
 
--- Handle incoming best keys request — respond by broadcasting our own best keys
-function Automation:OnBestKeysRequested(prefix, message, distribution, sender)
+-- Handle incoming best keys request — respond by broadcasting our own best keys.
+-- Requests are throttled per sender and merged into one delayed response.
+function Automation:OnBestKeysRequested(prefix, _, distribution, sender)
     if prefix ~= BESTKEYS_REQ_PREFIX or distribution ~= "GUILD" then return end
+
+    local senderName = type(sender) == "string" and sender or ""
+    if senderName == "" then
+        return
+    end
+
+    -- Normalize sender identity so cooldown is stable across clients with/without realm suffix.
+    if not string.find(senderName, "-") then
+        cachedRealmName = cachedRealmName or GetNormalizedRealmName()
+        senderName = senderName .. "-" .. cachedRealmName
+    end
+
+    -- Ignore our own request packets; these happen during local sync flows.
+    cachedRealmName = cachedRealmName or GetNormalizedRealmName()
+    local selfName = UnitName("player") .. "-" .. cachedRealmName
+    if senderName == selfName then
+        return
+    end
+
+    local now = GetTime()
+    local lastRequestAt = tonumber(lastBestKeysRequestBySender[senderName]) or 0
+    if (now - lastRequestAt) < BESTKEYS_REQUEST_COOLDOWN then
+        return
+    end
+    lastBestKeysRequestBySender[senderName] = now
+
+    -- Keep sender throttle table bounded by pruning stale entries opportunistically.
+    for name, ts in pairs(lastBestKeysRequestBySender) do
+        if (now - (tonumber(ts) or 0)) > (BESTKEYS_REQUEST_COOLDOWN * 4) then
+            lastBestKeysRequestBySender[name] = nil
+        end
+    end
+
+    -- If a response timer is already pending, the current request is already covered.
+    if pendingBestKeysRequestResponse then
+        return
+    end
+
+    pendingBestKeysRequestResponse = true
     -- Request M+ data load, then respond after a short delay so APIs have time to populate.
     C_MythicPlus.RequestMapInfo()
-    C_Timer.After(2, function()
+    C_Timer.After(BESTKEYS_REQUEST_RESPONSE_DELAY, function()
+        pendingBestKeysRequestResponse = false
         lastBestKeysBroadcast = 0
         self:BroadcastBestKeys()
     end)

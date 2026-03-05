@@ -36,6 +36,9 @@ end
 -- Shared default font used when profile-specific value is missing or invalid.
 local DEFAULT_FONT_PATH = "Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf"
 local DEFAULT_PRIMARY_HEARTHSTONE_ID = 6948
+local DEFAULT_TOP_UTILITY_BUTTON_SIZE = 52
+local MIN_TOP_UTILITY_BUTTON_SIZE = 32
+local MAX_TOP_UTILITY_BUTTON_SIZE = 72
 
 -- Curated font options exposed in configuration UI.
 local FONT_OPTIONS = {
@@ -448,6 +451,31 @@ function VesperGuild:GetConfiguredPrimaryHearthstoneID()
     return configured
 end
 
+-- Shared range used by both config UI and runtime layout for top utility button sizing.
+function VesperGuild:GetTopUtilityButtonSizeBounds()
+    return MIN_TOP_UTILITY_BUTTON_SIZE, MAX_TOP_UTILITY_BUTTON_SIZE, DEFAULT_TOP_UTILITY_BUTTON_SIZE
+end
+
+-- Read saved utility button size with sanitized bounds and default fallback.
+function VesperGuild:GetConfiguredTopUtilityButtonSize()
+    local minSize, maxSize, defaultSize = self:GetTopUtilityButtonSizeBounds()
+    local profile = self.db and self.db.profile
+    if not profile then
+        return defaultSize
+    end
+
+    profile.portals = profile.portals or {}
+    local configured = math.floor((tonumber(profile.portals.utilityButtonSize) or defaultSize) + 0.5)
+    if configured < minSize then
+        configured = minSize
+    elseif configured > maxSize then
+        configured = maxSize
+    end
+
+    profile.portals.utilityButtonSize = configured
+    return configured
+end
+
 -- Resolve usable primary hearthstone.
 -- If configured value is unavailable, auto-fallback to first available and persist it.
 function VesperGuild:ResolvePrimaryHearthstoneID()
@@ -697,6 +725,8 @@ function VesperGuild:OnInitialize()
                 primaryHearthstoneItemID = DEFAULT_PRIMARY_HEARTHSTONE_ID,
                 -- Toy IDs shown in the utility flyout button above portals.
                 utilityToyWhitelist = {},
+                -- Icon size used by top utility hearthstone/toy buttons.
+                utilityButtonSize = DEFAULT_TOP_UTILITY_BUTTON_SIZE,
             },
         },
         global = {

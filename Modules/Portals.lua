@@ -2,10 +2,9 @@ local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild
 local Portals = VesperGuild:NewModule("Portals", "AceConsole-3.0", "AceEvent-3.0")
 local FALLBACK_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_QuestionMark"
 local TOY_FLYOUT_BUTTON_ICON = "Interface\\Icons\\INV_Misc_Toy_10"
-local TOP_UTILITY_BUTTON_SIZE = 52
 local TOP_UTILITY_BUTTON_GAP = 10
 local TOP_UTILITY_PADDING = 10
-local TOP_UTILITY_HEIGHT = 72
+local TOP_UTILITY_FRAME_VERTICAL_PADDING = 20
 local TOY_FLYOUT_BUTTON_GAP = 8
 local TOY_FLYOUT_PADDING = 8
 
@@ -124,6 +123,16 @@ function Portals:OnInitialize()
     self:RegisterEvent("PLAYER_LOGIN")
 end
 
+-- Read configured top utility icon size (hearthstones/toys) with stable fallback.
+function Portals:GetTopUtilityButtonSize()
+    return VesperGuild:GetConfiguredTopUtilityButtonSize()
+end
+
+-- Keep utility panel height proportional to icon size while preserving current spacing.
+function Portals:GetTopUtilityFrameHeight(buttonSize)
+    return math.floor((tonumber(buttonSize) or self:GetTopUtilityButtonSize()) + TOP_UTILITY_FRAME_VERTICAL_PADDING)
+end
+
 function Portals:OnEnable()
     self:RegisterMessage("VESPERGUILD_CONFIG_CHANGED", "OnConfigChanged")
     self:RegisterEvent("BAG_UPDATE_DELAYED")
@@ -157,8 +166,10 @@ end
 function Portals:PLAYER_REGEN_ENABLED()
     if self.pendingUtilityRefresh then
         self.pendingUtilityRefresh = false
+        self:LayoutTopUtilityButtons()
         self:RefreshHearthstoneButtons()
         self:RefreshToyFlyout()
+        self:RefreshMageTravelButtons()
     end
 end
 
@@ -188,6 +199,7 @@ end
 -- If portal UI is visible, rebuild best-keys panel to refresh font + opacity.
 function Portals:OnConfigChanged()
     self:ApplyBackdropOpacity()
+    self:LayoutTopUtilityButtons()
     self:RefreshHearthstoneButtons()
     self:RefreshToyFlyout()
     self:RefreshMageTravelButtons()
@@ -360,24 +372,32 @@ function Portals:LayoutTopUtilityButtons()
         return
     end
 
-    local buttons = self:GetTopUtilityButtons()
-    local count = #buttons
-    if count == 0 then
-        self.topUtilityFrame:SetSize(TOP_UTILITY_PADDING * 2, TOP_UTILITY_HEIGHT)
+    if InCombatLockdown() then
+        self.pendingUtilityRefresh = true
         return
     end
 
-    local frameWidth = (TOP_UTILITY_PADDING * 2) + (count * TOP_UTILITY_BUTTON_SIZE) + ((count - 1) * TOP_UTILITY_BUTTON_GAP)
-    self.topUtilityFrame:SetSize(frameWidth, TOP_UTILITY_HEIGHT)
+    local buttonSize = self:GetTopUtilityButtonSize()
+    local frameHeight = self:GetTopUtilityFrameHeight(buttonSize)
+    local buttons = self:GetTopUtilityButtons()
+    local count = #buttons
+    if count == 0 then
+        self.topUtilityFrame:SetSize(TOP_UTILITY_PADDING * 2, frameHeight)
+        return
+    end
+
+    local frameWidth = (TOP_UTILITY_PADDING * 2) + (count * buttonSize) + ((count - 1) * TOP_UTILITY_BUTTON_GAP)
+    self.topUtilityFrame:SetSize(frameWidth, frameHeight)
 
     for i = 1, count do
         local button = buttons[i]
+        button:SetSize(buttonSize, buttonSize)
         button:ClearAllPoints()
         button:SetPoint(
             "LEFT",
             self.topUtilityFrame,
             "LEFT",
-            TOP_UTILITY_PADDING + ((i - 1) * (TOP_UTILITY_BUTTON_SIZE + TOP_UTILITY_BUTTON_GAP)),
+            TOP_UTILITY_PADDING + ((i - 1) * (buttonSize + TOP_UTILITY_BUTTON_GAP)),
             0
         )
     end
@@ -389,8 +409,9 @@ function Portals:CreateToyFlyoutFrame()
         return
     end
 
+    local buttonSize = self:GetTopUtilityButtonSize()
     self.toyFlyoutFrame = CreateFrame("Frame", "VesperGuildToyFlyoutFrame", self.topUtilityFrame, "BackdropTemplate")
-    self.toyFlyoutFrame:SetSize(TOP_UTILITY_BUTTON_SIZE + (TOY_FLYOUT_PADDING * 2), TOP_UTILITY_BUTTON_SIZE + (TOY_FLYOUT_PADDING * 2))
+    self.toyFlyoutFrame:SetSize(buttonSize + (TOY_FLYOUT_PADDING * 2), buttonSize + (TOY_FLYOUT_PADDING * 2))
     self.toyFlyoutFrame:SetFrameStrata("MEDIUM")
     self.toyFlyoutFrame:SetFrameLevel((self.topUtilityFrame:GetFrameLevel() or 0) + 2)
     self.toyFlyoutFrame:SetBackdrop({
@@ -399,7 +420,7 @@ function Portals:CreateToyFlyoutFrame()
         edgeSize = 1,
     })
     self.toyFlyoutFrame:SetBackdropColor(0.07, 0.07, 0.07, VesperGuild:GetConfiguredOpacity("portals"))
-    self.toyFlyoutFrame:SetBackdropBorderColor(self.classColor.r, self.classColor.g, self.classColor.b, 1)
+    self.toyFlyoutFrame:SetBackdropBorderColor(0, 0, 0, 0)
     self.toyFlyoutFrame:Hide()
 
     -- Keep flyout visible while hovered and hide once cursor leaves both anchor and flyout.
@@ -476,7 +497,8 @@ end
 -- Create one action button in the toy flyout panel.
 function Portals:CreateToyFlyoutActionButton(parent)
     local button = self:CreateTopUtilityButton(parent, "SecureActionButtonTemplate")
-    button:SetSize(TOP_UTILITY_BUTTON_SIZE, TOP_UTILITY_BUTTON_SIZE)
+    local buttonSize = self:GetTopUtilityButtonSize()
+    button:SetSize(buttonSize, buttonSize)
     button:RegisterForClicks("AnyUp", "AnyDown")
     return button
 end
@@ -489,6 +511,7 @@ function Portals:RefreshToyFlyout()
 
     local toys = VesperGuild:GetWhitelistedOwnedToyOptions()
     local hasToys = type(toys) == "table" and #toys > 0
+    local buttonSize = self:GetTopUtilityButtonSize()
 
     if hasToys then
         self.toyFlyoutButton.icon:SetTexture(toys[1].icon or TOY_FLYOUT_BUTTON_ICON)
@@ -525,16 +548,17 @@ function Portals:RefreshToyFlyout()
     end
 
     for i = 1, #self.toyFlyoutButtons do
+        self.toyFlyoutButtons[i]:SetSize(buttonSize, buttonSize)
         self.toyFlyoutButtons[i]:Hide()
     end
 
     if not hasToys then
-        self.toyFlyoutFrame:SetSize(TOP_UTILITY_BUTTON_SIZE + (TOY_FLYOUT_PADDING * 2), TOP_UTILITY_BUTTON_SIZE + (TOY_FLYOUT_PADDING * 2))
+        self.toyFlyoutFrame:SetSize(buttonSize + (TOY_FLYOUT_PADDING * 2), buttonSize + (TOY_FLYOUT_PADDING * 2))
         return
     end
 
-    local flyoutHeight = (TOY_FLYOUT_PADDING * 2) + (#toys * TOP_UTILITY_BUTTON_SIZE) + ((#toys - 1) * TOY_FLYOUT_BUTTON_GAP)
-    self.toyFlyoutFrame:SetSize(TOP_UTILITY_BUTTON_SIZE + (TOY_FLYOUT_PADDING * 2), flyoutHeight)
+    local flyoutHeight = (TOY_FLYOUT_PADDING * 2) + (#toys * buttonSize) + ((#toys - 1) * TOY_FLYOUT_BUTTON_GAP)
+    self.toyFlyoutFrame:SetSize(buttonSize + (TOY_FLYOUT_PADDING * 2), flyoutHeight)
 
     for i = 1, #toys do
         local option = toys[i]
@@ -550,7 +574,7 @@ function Portals:RefreshToyFlyout()
             self.toyFlyoutFrame,
             "BOTTOM",
             0,
-            TOY_FLYOUT_PADDING + ((i - 1) * (TOP_UTILITY_BUTTON_SIZE + TOY_FLYOUT_BUTTON_GAP))
+            TOY_FLYOUT_PADDING + ((i - 1) * (buttonSize + TOY_FLYOUT_BUTTON_GAP))
         )
 
         button.icon:SetTexture(option.icon or FALLBACK_ICON_TEXTURE)
@@ -577,7 +601,8 @@ function Portals:CreateTopUtilityButton(parent, templateName)
     else
         button = CreateFrame("Button", nil, parent)
     end
-    button:SetSize(TOP_UTILITY_BUTTON_SIZE, TOP_UTILITY_BUTTON_SIZE)
+    local buttonSize = self:GetTopUtilityButtonSize()
+    button:SetSize(buttonSize, buttonSize)
     button:RegisterForClicks("AnyUp", "AnyDown")
 
     -- Match portal/great-vault icon framing so the icon is always visible above backdrop.
@@ -626,8 +651,10 @@ function Portals:CreateTopUtilityFrame()
     local _, playerClass = UnitClass("player")
     self.isMage = (playerClass == "MAGE")
 
+    local buttonSize = self:GetTopUtilityButtonSize()
+    local frameHeight = self:GetTopUtilityFrameHeight(buttonSize)
     self.topUtilityFrame = CreateFrame("Frame", "VesperGuildTopUtilityFrame", self.VesperPortalsUI, "BackdropTemplate")
-    self.topUtilityFrame:SetSize(134, TOP_UTILITY_HEIGHT)
+    self.topUtilityFrame:SetSize((TOP_UTILITY_PADDING * 2) + (2 * buttonSize) + TOP_UTILITY_BUTTON_GAP, frameHeight)
     self.topUtilityFrame:SetPoint("BOTTOM", self.VesperPortalsUI, "TOP", 0, 10)
     self.topUtilityFrame:SetFrameStrata("MEDIUM")
 
@@ -757,18 +784,18 @@ function Portals:ApplyHearthstoneOption(button, option)
             icon = normalizeTextureToken(C_Item.GetItemIconByID(option.itemID))
         end
         if not icon and C_Item and C_Item.GetItemInfoInstant then
-            local i1, i2, i3, i4, i5, i6, i7, i8, i9, i10 = C_Item.GetItemInfoInstant(option.itemID)
-            icon = normalizeTextureToken(i3)
-                or normalizeTextureToken(i5)
-                or normalizeTextureToken(i10)
+            local _, _, itemIconA, _, itemIconB, _, _, _, _, itemIconC = C_Item.GetItemInfoInstant(option.itemID)
+            icon = normalizeTextureToken(itemIconA)
+                or normalizeTextureToken(itemIconB)
+                or normalizeTextureToken(itemIconC)
                 or icon
         end
         if not icon and C_ToyBox and C_ToyBox.GetToyInfo then
-            local t1, t2, t3, t4, t5 = C_ToyBox.GetToyInfo(option.itemID)
-            icon = normalizeTextureToken(t3)
-                or normalizeTextureToken(t2)
-                or normalizeTextureToken(t4)
-                or normalizeTextureToken(t5)
+            local _, toyIconA, toyIconB, toyIconC, toyIconD = C_ToyBox.GetToyInfo(option.itemID)
+            icon = normalizeTextureToken(toyIconB)
+                or normalizeTextureToken(toyIconA)
+                or normalizeTextureToken(toyIconC)
+                or normalizeTextureToken(toyIconD)
                 or icon
         end
         if not icon and C_Item and C_Item.GetItemSpell and C_Spell and C_Spell.GetSpellInfo then
@@ -779,10 +806,10 @@ function Portals:ApplyHearthstoneOption(button, option)
             end
         end
         if not icon then
-            local i1, i2, i3, i4, i5, i6, i7, i8, i9, i10 = GetItemInfoInstant(option.itemID)
-            icon = normalizeTextureToken(i3)
-                or normalizeTextureToken(i5)
-                or normalizeTextureToken(i10)
+            local _, _, itemIconA, _, itemIconB, _, _, _, _, itemIconC = GetItemInfoInstant(option.itemID)
+            icon = normalizeTextureToken(itemIconA)
+                or normalizeTextureToken(itemIconB)
+                or normalizeTextureToken(itemIconC)
                 or icon
         end
 
@@ -883,18 +910,18 @@ function Portals:CreatePortalFrame()
         }
     end)
     self.VesperPortalsUI:Hide()
-    
-     self.VesperPortalsUI:SetBackdrop({
-         bgFile = "Interface\\Buttons\\WHITE8x8",
-         edgeFile = "Interface\\Buttons\\WHITE8x8",
-         edgeSize = 1,
-     })
-     self.VesperPortalsUI:SetBackdropColor(0.07, 0.07, 0.07, VesperGuild:GetConfiguredOpacity("portals")) -- #121212
-     self.VesperPortalsUI:SetBackdropBorderColor(classColor.r, classColor.g, classColor.b, 1)
+
+    self.VesperPortalsUI:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    self.VesperPortalsUI:SetBackdropColor(0.07, 0.07, 0.07, VesperGuild:GetConfiguredOpacity("portals")) -- #121212
+    self.VesperPortalsUI:SetBackdropBorderColor(classColor.r, classColor.g, classColor.b, 1)
 
     local DataHandle = VesperGuild:GetModule("DataHandle", true)
     if not DataHandle then
-        print("ERROR: DataHandle module not found!")
+        VesperGuild:Print("ERROR: DataHandle module not found!")
         return
     end
 
@@ -913,8 +940,14 @@ function Portals:CreatePortalFrame()
             local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
             local spellName = spellInfo and spellInfo.name
             local iconFileID = spellInfo and (spellInfo.iconID or spellInfo.originalIconID)
-            local known = C_SpellBook and C_SpellBook.IsSpellInSpellBook and C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
-            local btn = CreateFrame("Button", "PortalButton" .. index, self.VesperPortalsUI, "InsecureActionButtonTemplate")
+            local known = C_SpellBook and C_SpellBook.IsSpellInSpellBook
+                and C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
+            local btn = CreateFrame(
+                "Button",
+                "PortalButton" .. index,
+                self.VesperPortalsUI,
+                "InsecureActionButtonTemplate"
+            )
                 btn:SetSize(52, 52)
                 
                 -- Arrange in 4x2 grid (4 columns, 2 rows)
@@ -957,12 +990,12 @@ function Portals:CreatePortalFrame()
 
             -- Tooltip
             btn.dungeonName = dungInfo.dungeonName
-            btn:SetScript("OnEnter", function(self)
-                GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-                GameTooltip:SetText(self.dungeonName, 1, 1, 1)
+            btn:SetScript("OnEnter", function(portalButton)
+                GameTooltip:SetOwner(portalButton, "ANCHOR_RIGHT")
+                GameTooltip:SetText(portalButton.dungeonName, 1, 1, 1)
                 GameTooltip:Show()
             end)
-            btn:SetScript("OnLeave", function(self)
+            btn:SetScript("OnLeave", function()
                 GameTooltip:Hide()
             end)
 
@@ -1014,8 +1047,8 @@ function Portals:CreateVaultFrame()
         end
     end)
 
-    btn:SetScript("OnEnter", function(self)
-        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    btn:SetScript("OnEnter", function(vaultButton)
+        GameTooltip:SetOwner(vaultButton, "ANCHOR_RIGHT")
         GameTooltip:SetText("Great Vault", 1, 1, 1)
         GameTooltip:Show()
     end)
@@ -1155,12 +1188,12 @@ end
 function Portals:Toggle()
     if InCombatLockdown() then
         -- Portal buttons use secure attributes; prevent show/hide rebuilds in combat lockdown.
-        print("Can't toggle UI during combat.")
+        VesperGuild:Print("Can't toggle UI during combat.")
         return
     end
 
     if not self.VesperPortalsUI then
-        print("Portal UI not initialized yet.")
+        VesperGuild:Print("Portal UI not initialized yet.")
         return
     end
 
