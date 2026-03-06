@@ -46,7 +46,8 @@
 			"UNKNOWN",
 			"STANDARD_TEXT_FONT",
 			"UISpecialFrames",
-			"MouseIsOver"
+			"MouseIsOver",
+			"ChatFrame_SendTell"
 		],
 		"Lua.type.weakUnionCheck": true
 	}

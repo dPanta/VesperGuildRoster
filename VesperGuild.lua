@@ -36,6 +36,7 @@ end
 -- Shared default font used when profile-specific value is missing or invalid.
 local DEFAULT_FONT_PATH = "Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf"
 local DEFAULT_PRIMARY_HEARTHSTONE_ID = 6948
+local PREFERRED_SECONDARY_HEARTHSTONE_ID = 253629 -- Personal Key to the Arcantina
 local DEFAULT_TOP_UTILITY_BUTTON_SIZE = 52
 local MIN_TOP_UTILITY_BUTTON_SIZE = 32
 local MAX_TOP_UTILITY_BUTTON_SIZE = 72
@@ -81,12 +82,13 @@ local HEARTHSTONE_CATALOG = {
     236687, -- Explosive Hearthstone
     245970, -- P.O.S.T. Master's Express Hearthstone
     246565, -- Cosmic Hearthstone
+    253629, -- Personal Key to the Arcantina
 }
 
 -- Primary dropdown excludes these so first button focuses on non-default utility choices.
 local PRIMARY_HEARTHSTONE_BLACKLIST = {
     [110560] = true, -- Garrison Hearthstone
-    [140192] = true, -- Dalaran Hearthstone
+    [253629] = true, -- Personal Key to the Arcantina
 }
 
 local function normalizeIcon(iconValue)
@@ -503,7 +505,7 @@ function VesperGuild:ResolvePrimaryHearthstoneID()
     return fallbackID
 end
 
--- Resolve secondary hearthstone with Dalaran-first preference.
+-- Resolve secondary hearthstone with Arcantina-first preference.
 function VesperGuild:GetSecondaryHearthstoneID(primaryID)
     local options = self:GetAvailableHearthstoneOptions()
     if #options == 0 then
@@ -512,8 +514,9 @@ function VesperGuild:GetSecondaryHearthstoneID(primaryID)
 
     local resolvedPrimary = tonumber(primaryID)
     for i = 1, #options do
-        if options[i].itemID == 140192 then
-            return 140192
+        local optionID = options[i].itemID
+        if optionID == PREFERRED_SECONDARY_HEARTHSTONE_ID and optionID ~= resolvedPrimary then
+            return optionID
         end
     end
 
