@@ -699,11 +699,6 @@ function VesperGuild:OnInitialize()
     -- Called when the addon is loaded
     self.db = LibStub("AceDB-3.0"):New("VesperGuildDB", {
         profile = {
-            minimap = {
-                hide = false,
-                -- Angle used for minimap-ring launcher placement.
-                angle = 220,
-            },
             icon = {
                 point = "CENTER",
                 x = 0,
@@ -738,6 +733,10 @@ function VesperGuild:OnInitialize()
             bestKeys = {},  -- Persistent best M+ keys from guild sync
         },
     }, true)
+
+    if self.db.profile and self.db.profile.minimap ~= nil then
+        self.db.profile.minimap = nil
+    end
 
     self:Print(L["ADDON_LOADED_MESSAGE"])
 end

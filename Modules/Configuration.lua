@@ -1,11 +1,10 @@
 local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild")
-local Configuration = VesperGuild:NewModule("Configuration", "AceEvent-3.0")
+local Configuration = VesperGuild:NewModule("Configuration")
 
 -- Configuration module responsibilities:
--- 1) Own minimap launcher lifecycle and position persistence.
--- 2) Build and manage the custom config window.
--- 3) Persist style options (font + frame opacities) into profile DB.
--- 4) Broadcast a single refresh message consumed by UI modules.
+-- 1) Build and manage the custom config window.
+-- 2) Persist style options (font + frame opacities) into profile DB.
+-- 3) Broadcast a single refresh message consumed by UI modules.
 local WINDOW_WIDTH = 460
 local WINDOW_HEIGHT = 520
 local DEFAULT_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -71,12 +70,6 @@ local function ensureProfile()
     local profile = VesperGuild.db.profile or {}
     VesperGuild.db.profile = profile
 
-    profile.minimap = profile.minimap or {}
-    if profile.minimap.hide == nil then
-        profile.minimap.hide = false
-    end
-    profile.minimap.angle = tonumber(profile.minimap.angle) or 220
-
     profile.style = profile.style or {}
     if type(profile.style.fontPath) ~= "string" or profile.style.fontPath == "" then
         profile.style.fontPath = VesperGuild:GetConfiguredFontPath()
@@ -129,7 +122,6 @@ end
 -- Module state bootstrap.
 function Configuration:OnInitialize()
     self.panel = nil
-    self.minimapButton = nil
     self.activeTab = "roster"
     self.tabButtons = {}
     self.tabFrames = {}
@@ -149,178 +141,9 @@ function Configuration:OnInitialize()
     self._isRefreshing = false
 end
 
--- Create minimap launcher as soon as Minimap exists.
-function Configuration:OnEnable()
-    if Minimap then
-        self:CreateMinimapLauncher()
-    else
-        self:RegisterEvent("PLAYER_LOGIN", "OnPlayerLogin")
-    end
-end
-
--- Deferred minimap launcher creation for startup ordering edge cases.
-function Configuration:OnPlayerLogin()
-    self:UnregisterEvent("PLAYER_LOGIN")
-    self:CreateMinimapLauncher()
-end
-
 -- Broadcast a single "config changed" message consumed by UI modules.
 function Configuration:NotifyConfigChanged()
     VesperGuild:SendMessage("VESPERGUILD_CONFIG_CHANGED")
-end
-
--- Place the launcher on the minimap ring using the saved angle.
-function Configuration:UpdateMinimapButtonPosition()
-    if not self.minimapButton then
-        return
-    end
-
-    local profile = ensureProfile()
-    if not profile then
-        return
-    end
-
-    if profile.minimap.hide then
-        self.minimapButton:Hide()
-        return
-    end
-
-    self.minimapButton:Show()
-
-    local angle = tonumber(profile.minimap.angle) or 220
-    local radius = (Minimap:GetWidth() * 0.5) + 6
-    local radians = math.rad(angle)
-    local x = math.cos(radians) * radius
-    local y = math.sin(radians) * radius
-
-    self.minimapButton:ClearAllPoints()
-    self.minimapButton:SetPoint("CENTER", Minimap, "CENTER", x, y)
-end
-
--- Build the minimap "V" launcher and wire interactions:
--- left-click opens config, shift+drag repositions around minimap.
-function Configuration:CreateMinimapLauncher()
-    if self.minimapButton then
-        self:UpdateMinimapButtonPosition()
-        return
-    end
-
-    local button = CreateFrame("Button", "VesperGuildMinimapLauncher", Minimap)
-    button:SetSize(26, 26)
-    button:SetFrameStrata("MEDIUM")
-    button:SetFrameLevel((Minimap:GetFrameLevel() or 0) + 8)
-    button:EnableMouse(true)
-    button:RegisterForClicks("LeftButtonUp")
-    button:RegisterForDrag("LeftButton")
-
-    local bg = button:CreateTexture(nil, "ARTWORK")
-    bg:SetAllPoints()
-    bg:SetTexture("Interface\\Buttons\\WHITE8x8")
-    bg:SetVertexColor(0.12, 0.65, 0.28, 0.95)
-    button.Background = bg
-
-    local borderTop = button:CreateTexture(nil, "BORDER")
-    borderTop:SetPoint("TOPLEFT")
-    borderTop:SetPoint("TOPRIGHT")
-    borderTop:SetHeight(1)
-    borderTop:SetColorTexture(1, 1, 1, 0.25)
-
-    local borderBottom = button:CreateTexture(nil, "BORDER")
-    borderBottom:SetPoint("BOTTOMLEFT")
-    borderBottom:SetPoint("BOTTOMRIGHT")
-    borderBottom:SetHeight(1)
-    borderBottom:SetColorTexture(0, 0, 0, 0.5)
-
-    local borderLeft = button:CreateTexture(nil, "BORDER")
-    borderLeft:SetPoint("TOPLEFT")
-    borderLeft:SetPoint("BOTTOMLEFT")
-    borderLeft:SetWidth(1)
-    borderLeft:SetColorTexture(1, 1, 1, 0.25)
-
-    local borderRight = button:CreateTexture(nil, "BORDER")
-    borderRight:SetPoint("TOPRIGHT")
-    borderRight:SetPoint("BOTTOMRIGHT")
-    borderRight:SetWidth(1)
-    borderRight:SetColorTexture(0, 0, 0, 0.5)
-
-    local label = button:CreateFontString(nil, "OVERLAY")
-    label:SetPoint("CENTER", 0, 0)
-    local applied = VesperGuild:ApplyConfiguredFont(label, 12, "OUTLINE")
-    if not applied then
-        if GameFontHighlightSmall then
-            label:SetFontObject(GameFontHighlightSmall)
-        else
-            pcall(label.SetFont, label, STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
-        end
-    end
-    -- Set text through a guarded helper so missing font assets do not hard-error.
-    setFontStringTextSafe(label, "V", 12, "OUTLINE", GameFontHighlightSmall)
-    label:SetTextColor(1, 1, 1, 1)
-    label:SetShadowOffset(1, -1)
-    label:SetShadowColor(0, 0, 0, 1)
-    button.Label = label
-
-    local hover = button:CreateTexture(nil, "HIGHLIGHT")
-    hover:SetAllPoints()
-    hover:SetTexture("Interface\\Buttons\\WHITE8x8")
-    hover:SetVertexColor(1, 1, 1, 0.12)
-    button:SetHighlightTexture(hover)
-
-    button:SetScript("OnClick", function()
-        if InCombatLockdown() then
-            return
-        end
-        self:OpenConfig()
-    end)
-
-    button:SetScript("OnEnter", function(selfButton)
-        GameTooltip:SetOwner(selfButton, "ANCHOR_LEFT")
-        GameTooltip:SetText("VesperGuild", 1, 1, 1)
-        GameTooltip:AddLine("Left-click: Open configuration", 0.85, 0.85, 0.85)
-        GameTooltip:AddLine("Shift+Left-drag: Move button", 0.75, 0.75, 0.75)
-        GameTooltip:Show()
-    end)
-
-    button:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-
-    button:SetScript("OnDragStart", function(selfButton)
-        if not IsShiftKeyDown() then
-            return
-        end
-
-        -- Track cursor angle continuously while dragging so position persists naturally.
-        selfButton:SetScript("OnUpdate", function()
-            local profile = ensureProfile()
-            if not profile then
-                return
-            end
-
-            local scale = Minimap:GetEffectiveScale() or 1
-            local centerX, centerY = Minimap:GetCenter()
-            local cursorX, cursorY = GetCursorPosition()
-            cursorX = cursorX / scale
-            cursorY = cursorY / scale
-
-            local deltaX = cursorX - centerX
-            local deltaY = cursorY - centerY
-            local angle = math.deg(math.atan2(deltaY, deltaX))
-            if angle < 0 then
-                angle = angle + 360
-            end
-
-            profile.minimap.angle = angle
-            self:UpdateMinimapButtonPosition()
-        end)
-    end)
-
-    button:SetScript("OnDragStop", function(selfButton)
-        selfButton:SetScript("OnUpdate", nil)
-    end)
-
-    self.minimapButton = button
-    self:UpdateMinimapButtonPosition()
 end
 
 -- Create a standardized opacity slider control for frame background alpha.
@@ -1643,7 +1466,7 @@ function Configuration:RefreshControls()
     self._isRefreshing = false
 end
 
--- Public entrypoint used by slash command and minimap button.
+-- Public entrypoint used by slash commands and in-panel UI actions.
 function Configuration:OpenConfig()
     self:BuildPanel()
     if not self.panel then
