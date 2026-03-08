@@ -108,6 +108,7 @@ local defaults = {
     NO_LIB_MODE_MESSAGE = "Running in No-Lib mode. Please install Ace3.",
     PLAYER_NOT_IN_GUILD = "You are not in a guild!",
     PORTALS_DATAHANDLE_MODULE_NOT_FOUND = "ERROR: DataHandle module not found!",
+    PORTALS_MISSING_SEASON_DUNGEONS_FMT = "Missing portal metadata for current season dungeons: %s",
     PORTALS_MODULE_WARNING = "WARNING: Portals module not found!",
     PORTALS_TOGGLE_IN_COMBAT = "Can't toggle UI during combat.",
     PORTALS_UI_NOT_INITIALIZED = "Portal UI not initialized yet.",

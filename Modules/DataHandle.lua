@@ -74,7 +74,7 @@ local dungList = {
         { exp = "TWW", mapID = 525, spellID = 1216786, dungeonName = "Operation: Floodgate" },
         { exp = "TWW", mapID = 542, spellID = 1237215, dungeonName = "Eco-Dome Al'dani" },
         
-        -- Midnight (Mid) - not yet released
+        -- Midnight (Mid) - Season 1 portal catalog
         { exp = "Mid", mapID = 161, spellID = 1254557, dungeonName = "Skyreach" },
         { exp = "Mid", mapID = 239, spellID = 1254551, dungeonName = "Seat of the Triumvirate" },
         { exp = "Mid", mapID = 556, spellID = 1254555, dungeonName = "Pit of Saron" },
@@ -117,6 +117,22 @@ end
 function DataHandle:GetSpellIDByMapID(mapID)
     local dungInfo = self:GetDungeonByMapID(mapID)
     return dungInfo and dungInfo.spellID or nil
+end
+
+function DataHandle:GetMissingDungeonsForMapIDs(mapIDs)
+    local missing = {}
+    if type(mapIDs) ~= "table" then
+        return missing
+    end
+
+    for i = 1, #mapIDs do
+        local mapID = tonumber(mapIDs[i])
+        if mapID and not self:GetDungeonByMapID(mapID) then
+            missing[#missing + 1] = mapID
+        end
+    end
+
+    return missing
 end
 
 function DataHandle:GetDB()

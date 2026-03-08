@@ -9,18 +9,16 @@ local L = VesperGuild.L
 -- 3) Provide formatted display text for roster cells.
 local cachedRealmName = nil
 
--- Dungeon abbreviation lookup (TWW Season 3 dungeons)
+-- Dungeon abbreviation lookup for the current Midnight Season 1 rotation.
 local DUNGEON_ABBREV = {
-    -- The War Within Season 3
-    [499] = "PRIORY",               -- Priory of Sacred Flame
-    [542] = "ECOJUMP",              -- Eco Dome Almahdani
-    [378] = "HALLS",                -- Halls of Atonement
-    [525] = "FLOOD",                -- Operation Floodgate
-    [503] = "ARA",                  -- Ara-Kara
-    [392] = "MRGLGL!",              -- Gambit
-    [391] = "STREETS",              -- Ulice hrichu
-    [505] = "DAWN",                 -- Dawnbreaker
-    -- Add more as needed for current season
+    [161] = "SR",                   -- Skyreach
+    [239] = "SEAT",                 -- Seat of the Triumvirate
+    [402] = "AA",                   -- Algeth'ar Academy
+    [556] = "POS",                  -- Pit of Saron
+    [557] = "WS",                   -- Windrunner Spire
+    [558] = "MGT",                  -- Magisters' Terrace
+    [559] = "NPX",                  -- Nexus-Point Xenas
+    [560] = "MAIS",                 -- Maisara Caverns
 }
 
 function KeystoneSync:OnEnable()

@@ -876,6 +876,33 @@ function Portals:RefreshHearthstoneButtons()
     self:ApplyHearthstoneOption(self.secondaryHearthstoneButton, secondaryID and optionsByID[secondaryID] or nil)
 end
 
+function Portals:WarnMissingSeasonDungeonMetadata(curSeason, dataHandle)
+    if not dataHandle or type(dataHandle.GetMissingDungeonsForMapIDs) ~= "function" then
+        return
+    end
+
+    local missingMapIDs = dataHandle:GetMissingDungeonsForMapIDs(curSeason)
+    if #missingMapIDs == 0 then
+        return
+    end
+
+    self.reportedMissingSeasonDungeonMapIDs = self.reportedMissingSeasonDungeonMapIDs or {}
+
+    local unresolved = {}
+    for i = 1, #missingMapIDs do
+        local mapID = missingMapIDs[i]
+        if not self.reportedMissingSeasonDungeonMapIDs[mapID] then
+            local dungeonName = C_ChallengeMode.GetMapUIInfo(mapID) or L["UNKNOWN_DUNGEON"]
+            unresolved[#unresolved + 1] = string.format("%s (%d)", dungeonName, mapID)
+            self.reportedMissingSeasonDungeonMapIDs[mapID] = true
+        end
+    end
+
+    if #unresolved > 0 then
+        VesperGuild:Print(string.format(L["PORTALS_MISSING_SEASON_DUNGEONS_FMT"], table.concat(unresolved, ", ")))
+    end
+end
+
 function Portals:CreatePortalFrame()
     local _, englishClass = UnitClass("player")
     local classColor = C_ClassColor.GetClassColor(englishClass)
@@ -927,6 +954,7 @@ function Portals:CreatePortalFrame()
     end
 
     local curSeason = C_ChallengeMode.GetMapTable() or {}
+    self:WarnMissingSeasonDungeonMetadata(curSeason, DataHandle)
     local curSeasonDungs = {}
     -- Keep only maps we have metadata for; unknown mapIDs are skipped safely.
     for _, id in ipairs(curSeason) do
