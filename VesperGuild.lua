@@ -40,6 +40,7 @@ local PREFERRED_SECONDARY_HEARTHSTONE_ID = 253629 -- Personal Key to the Arcanti
 local DEFAULT_TOP_UTILITY_BUTTON_SIZE = 52
 local MIN_TOP_UTILITY_BUTTON_SIZE = 32
 local MAX_TOP_UTILITY_BUTTON_SIZE = 72
+local ADDON_WINDOW_STRATA = "DIALOG"
 
 -- Curated font options exposed in configuration UI.
 local FONT_OPTIONS = {
@@ -211,6 +212,11 @@ end
 -- Return available bundled font options for config UI.
 function VesperGuild:GetFontOptions()
     return FONT_OPTIONS
+end
+
+-- Use one fixed strata for addon-owned windows so they stay above normal UI viewers.
+function VesperGuild:GetAddonWindowStrata()
+    return ADDON_WINDOW_STRATA
 end
 
 -- Return ordered canonical hearthstone IDs.

@@ -99,6 +99,7 @@ end
 function Roster:ShowRoster()
     if self.frame then
         self.frame:Show()
+        self.frame:Raise()
         self:UpdateRosterList()
         return
     end
@@ -115,7 +116,7 @@ function Roster:ShowRoster()
         self.frame:SetPoint("RIGHT", UIParent, "CENTER", -250, 0)
     end
 
-    self.frame:SetFrameStrata("MEDIUM")
+    self.frame:SetFrameStrata(VesperGuild:GetAddonWindowStrata())
     self.frame:SetMovable(true)
     self.frame:EnableMouse(true)
     self.frame:SetResizable(true)
@@ -254,7 +255,7 @@ function Roster:ShowRoster()
     self.scroll.frame:SetAllPoints()
     self.scroll.frame:Show()
 
-
+    self.frame:Raise()
 
     self:UpdateRosterList()
 end
