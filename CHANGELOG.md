@@ -1,12 +1,4 @@
-# Changelog
-
-This file is the manual changelog used for CurseForge packaging.
-Keep the newest release at the top and match the version heading to `VesperGuild.toc`.
-
-Format:
-`## <version> - <YYYY-MM-DD>`
-
-## 1.4.0 - 2026-03-08
+## 1.4.2 - 2026-03-08
 
 ### Added
 - Added a runtime warning when the live Mythic+ season contains a dungeon missing from the static portal metadata catalog.
