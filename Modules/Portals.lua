@@ -1,5 +1,6 @@
 local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild")
 local Portals = VesperGuild:NewModule("Portals", "AceConsole-3.0", "AceEvent-3.0")
+local L = VesperGuild.L
 local FALLBACK_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_QuestionMark"
 local TOY_FLYOUT_BUTTON_ICON = "Interface\\Icons\\INV_Misc_Toy_10"
 local TOP_UTILITY_BUTTON_GAP = 10
@@ -303,7 +304,7 @@ function Portals:OpenMageTravelMenu(button, kind)
         return
     end
 
-    local menuTitle = (kind == "portal") and "Mage Portals" or "Mage Teleports"
+    local menuTitle = (kind == "portal") and L["MAGE_PORTALS"] or L["MAGE_TELEPORTS"]
     if MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
         MenuUtil.CreateContextMenu(button, function(_, rootDescription)
             rootDescription:CreateTitle(menuTitle)
@@ -518,18 +519,18 @@ function Portals:RefreshToyFlyout()
         self.toyFlyoutButton.icon:SetDesaturated(false)
         self.toyFlyoutButton.icon:SetAlpha(1)
         self.toyFlyoutButton._isAvailable = true
-        self.toyFlyoutButton._displayName = "Utility Toys"
-        self.toyFlyoutButton._tooltipHint = "Mouseover: Open flyout"
-        self.toyFlyoutButton._unavailableText = "No Whitelisted Toys"
+        self.toyFlyoutButton._displayName = L["UTILITY_TOYS"]
+        self.toyFlyoutButton._tooltipHint = L["UTILITY_TOYS_HINT"]
+        self.toyFlyoutButton._unavailableText = L["NO_WHITELISTED_TOYS"]
         self.toyFlyoutButton:EnableMouse(true)
     else
         self.toyFlyoutButton.icon:SetTexture(TOY_FLYOUT_BUTTON_ICON)
         self.toyFlyoutButton.icon:SetDesaturated(true)
         self.toyFlyoutButton.icon:SetAlpha(0.45)
         self.toyFlyoutButton._isAvailable = false
-        self.toyFlyoutButton._displayName = "Utility Toys"
-        self.toyFlyoutButton._tooltipHint = "Mouseover: Open flyout"
-        self.toyFlyoutButton._unavailableText = "No Whitelisted Toys"
+        self.toyFlyoutButton._displayName = L["UTILITY_TOYS"]
+        self.toyFlyoutButton._tooltipHint = L["UTILITY_TOYS_HINT"]
+        self.toyFlyoutButton._unavailableText = L["NO_WHITELISTED_TOYS"]
         self.toyFlyoutButton:EnableMouse(true)
         self:HideToyFlyout()
     end
@@ -584,9 +585,9 @@ function Portals:RefreshToyFlyout()
         button:SetAttribute("type1", "macro")
         button:SetAttribute("macrotext1", "/use item:" .. tostring(option.itemID))
         button._isAvailable = true
-        button._displayName = option.name or ("Toy " .. tostring(option.itemID))
-        button._tooltipHint = "Left-click: Use"
-        button._unavailableText = "Unavailable"
+        button._displayName = option.name or string.format(L["ITEM_FALLBACK_FMT"], tostring(option.itemID))
+        button._tooltipHint = L["UTILITY_TOOLTIP_USE"]
+        button._unavailableText = L["UTILITY_TOOLTIP_UNAVAILABLE"]
         button:Show()
     end
 end
@@ -628,10 +629,10 @@ function Portals:CreateTopUtilityButton(parent, templateName)
     button:SetScript("OnEnter", function(selfButton)
         GameTooltip:SetOwner(selfButton, "ANCHOR_RIGHT")
         if selfButton._isAvailable then
-            GameTooltip:SetText(selfButton._displayName or "Utility", 1, 1, 1)
-            GameTooltip:AddLine(selfButton._tooltipHint or "Left-click: Use", 0.85, 0.85, 0.85)
+            GameTooltip:SetText(selfButton._displayName or L["UTILITY_FALLBACK"], 1, 1, 1)
+            GameTooltip:AddLine(selfButton._tooltipHint or L["UTILITY_TOOLTIP_USE"], 0.85, 0.85, 0.85)
         else
-            GameTooltip:SetText(selfButton._unavailableText or "Unavailable", 1, 0.4, 0.4)
+            GameTooltip:SetText(selfButton._unavailableText or L["UTILITY_TOOLTIP_UNAVAILABLE"], 1, 0.4, 0.4)
         end
         GameTooltip:Show()
     end)
@@ -757,16 +758,16 @@ function Portals:RefreshMageTravelButtons()
     self:ApplyMageTravelButtonState(
         self.mageTeleportButton,
         self.knownMageTeleportSpells,
-        "Mage Teleports",
-        "No Teleport Spells Known",
-        "Left-click: Open teleport flyout"
+        L["MAGE_TELEPORTS"],
+        L["NO_TELEPORT_SPELLS_KNOWN"],
+        L["LEFT_CLICK_OPEN_TELEPORT"]
     )
     self:ApplyMageTravelButtonState(
         self.magePortalButton,
         self.knownMagePortalSpells,
-        "Mage Portals",
-        "No Portal Spells Known",
-        "Left-click: Open portal flyout"
+        L["MAGE_PORTALS"],
+        L["NO_PORTAL_SPELLS_KNOWN"],
+        L["LEFT_CLICK_OPEN_PORTAL"]
     )
 end
 
@@ -826,9 +827,9 @@ function Portals:ApplyHearthstoneOption(button, option)
         button:SetAttribute("macrotext1", "/use item:" .. tostring(option.itemID))
 
         button._isAvailable = true
-        button._displayName = option.name or ("Item " .. tostring(option.itemID))
-        button._tooltipHint = "Left-click: Use"
-        button._unavailableText = "No Hearthstones Available"
+        button._displayName = option.name or string.format(L["ITEM_FALLBACK_FMT"], tostring(option.itemID))
+        button._tooltipHint = L["UTILITY_TOOLTIP_USE"]
+        button._unavailableText = L["NO_HEARTHSTONES_AVAILABLE"]
         button._itemID = option.itemID
     else
         button.icon:SetTexture(FALLBACK_ICON_TEXTURE)
@@ -844,9 +845,9 @@ function Portals:ApplyHearthstoneOption(button, option)
         button:SetAttribute("type1", nil)
 
         button._isAvailable = false
-        button._displayName = "Hearthstone"
-        button._tooltipHint = "Left-click: Use"
-        button._unavailableText = "No Hearthstones Available"
+        button._displayName = L["HEARTHSTONE"]
+        button._tooltipHint = L["UTILITY_TOOLTIP_USE"]
+        button._unavailableText = L["NO_HEARTHSTONES_AVAILABLE"]
         button._itemID = nil
     end
 end
@@ -921,7 +922,7 @@ function Portals:CreatePortalFrame()
 
     local DataHandle = VesperGuild:GetModule("DataHandle", true)
     if not DataHandle then
-        VesperGuild:Print("ERROR: DataHandle module not found!")
+        VesperGuild:Print(L["PORTALS_DATAHANDLE_MODULE_NOT_FOUND"])
         return
     end
 
@@ -1049,7 +1050,7 @@ function Portals:CreateVaultFrame()
 
     btn:SetScript("OnEnter", function(vaultButton)
         GameTooltip:SetOwner(vaultButton, "ANCHOR_RIGHT")
-        GameTooltip:SetText("Great Vault", 1, 1, 1)
+        GameTooltip:SetText(L["GREAT_VAULT"], 1, 1, 1)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function()
@@ -1075,7 +1076,7 @@ function Portals:CreateMPlusProgFrame(curSeason)
     VesperGuild:ApplyConfiguredFont(measure, bestKeysFontSize, "")
     local maxNameWidth = 0
     for _, mapID in ipairs(curSeason) do
-        local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or "Unknown"
+        local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or L["UNKNOWN_DUNGEON"]
         measure:SetText(dungName)
         local w = measure:GetStringWidth()
         if w > maxNameWidth then maxNameWidth = w end
@@ -1104,17 +1105,17 @@ function Portals:CreateMPlusProgFrame(curSeason)
     local nameHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
     VesperGuild:ApplyConfiguredFont(nameHeader, bestKeysFontSize, "")
     nameHeader:SetPoint("TOPLEFT", padding, -padding)
-    nameHeader:SetText("|cffFFFFFFDungeon|r")
+    nameHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_DUNGEON"] .. "|r")
 
     local keyHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
     VesperGuild:ApplyConfiguredFont(keyHeader, bestKeysFontSize, "")
     keyHeader:SetPoint("TOPRIGHT", bestColRight, -padding)
-    keyHeader:SetText("|cffFFFFFFBest|r")
+    keyHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_BEST"] .. "|r")
 
     local timeHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
     VesperGuild:ApplyConfiguredFont(timeHeader, bestKeysFontSize, "")
     timeHeader:SetPoint("TOPRIGHT", timeColRight, -padding)
-    timeHeader:SetText("|cffFFFFFFTime|r")
+    timeHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_TIME"] .. "|r")
 
     -- Rows
     for i, mapID in ipairs(curSeason) do
@@ -1131,7 +1132,7 @@ function Portals:CreateMPlusProgFrame(curSeason)
         end
 
         -- Dungeon name
-        local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or "Unknown"
+        local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or L["UNKNOWN_DUNGEON"]
         local nameText = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
         VesperGuild:ApplyConfiguredFont(nameText, bestKeysFontSize, "")
         nameText:SetPoint("LEFT", self.mplusProgFrame, "TOPLEFT", padding, rowCenter)
@@ -1188,12 +1189,12 @@ end
 function Portals:Toggle()
     if InCombatLockdown() then
         -- Portal buttons use secure attributes; prevent show/hide rebuilds in combat lockdown.
-        VesperGuild:Print("Can't toggle UI during combat.")
+        VesperGuild:Print(L["PORTALS_TOGGLE_IN_COMBAT"])
         return
     end
 
     if not self.VesperPortalsUI then
-        VesperGuild:Print("Portal UI not initialized yet.")
+        VesperGuild:Print(L["PORTALS_UI_NOT_INITIALIZED"])
         return
     end
 

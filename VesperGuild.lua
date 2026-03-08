@@ -1,4 +1,5 @@
 local addonName, addonTable = ...
+local localeDefaults = addonTable.LocaleDefaults or {}
 
 -- Helper to safely get localee
 local L = addonTable.L or {}
@@ -6,13 +7,13 @@ setmetatable(L, { __index = function(t, k) return k end })
 
 -- Check dependencies
 if not LibStub or not LibStub("AceAddon-3.0", true) then
-    print("|cffFF0000" .. addonName .. ":|r Ace3 libraries not found. Please install Ace3 in the Libs/ folder.")
+    print("|cffFF0000" .. addonName .. ":|r " .. (localeDefaults.ACE3_LIBRARIES_MISSING or "Ace3 libraries not found. Please install Ace3 in the Libs/ folder."))
     
     -- Fallback simple slash command to prove the addon is actually loaded
     SLASH_VESPERGUILD1 = "/vg"
     SLASH_VESPERGUILD2 = "/vesper"
     SlashCmdList["VESPERGUILD"] = function(msg)
-        print("|cffFF0000" .. addonName .. ":|r Running in No-Lib mode. Please install Ace3.")
+        print("|cffFF0000" .. addonName .. ":|r " .. (localeDefaults.NO_LIB_MODE_MESSAGE or "Running in No-Lib mode. Please install Ace3."))
     end
     return
 end
@@ -24,6 +25,8 @@ local AceLocale = LibStub("AceLocale-3.0", true)
 if AceLocale then
     L = AceLocale:GetLocale(addonName)
 end
+addonTable.L = L
+VesperGuild.L = L
 
 local function RequestGuildRosterUpdate()
     if C_GuildInfo and C_GuildInfo.GuildRoster then
@@ -200,7 +203,7 @@ local function getItemNameAndIcon(itemID)
     end
 
     if not name or name == "" then
-        name = "Item " .. tostring(itemID)
+        name = string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
     end
     if not icon then
         icon = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -576,7 +579,7 @@ function VesperGuild:GetFontLabelByPath(path)
             return option.label
         end
     end
-    return path or "Unknown"
+    return path or L["UNKNOWN_LABEL"]
 end
 
 -- Apply current configured font to a FontString with defensive fallbacks.
@@ -698,7 +701,7 @@ function VesperGuild:OpenConfig()
         Configuration:OpenConfig()
         return
     end
-    self:Print("Configuration module not found!")
+    self:Print(L["CONFIG_MODULE_NOT_FOUND"])
 end
 
 function VesperGuild:OnInitialize()
@@ -852,22 +855,22 @@ function VesperGuild:CreateFloatingIcon()
         local onlineMembers = VesperGuild:GetOnlineGuildMembers()
 
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-        GameTooltip:SetText("VesperGuild", 1, 1, 1)
-        GameTooltip:AddLine("Left-Click: Toggle Roster", 0.8, 0.8, 0.8)
-        GameTooltip:AddLine("Shift+Left-Click & Drag: Move Icon", 0.8, 0.8, 0.8)
+        GameTooltip:SetText(L["MINIMAP_TOOLTIP_TITLE"], 1, 1, 1)
+        GameTooltip:AddLine(L["MINIMAP_TOOLTIP_TOGGLE"], 0.8, 0.8, 0.8)
+        GameTooltip:AddLine(L["MINIMAP_TOOLTIP_MOVE"], 0.8, 0.8, 0.8)
         GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(string.format("Guild Online: %d", #onlineMembers), 1, 0.82, 0)
+        GameTooltip:AddLine(string.format(L["MINIMAP_TOOLTIP_GUILD_ONLINE_FMT"], #onlineMembers), 1, 0.82, 0)
 
         if #onlineMembers == 0 then
             if IsInGuild() then
-                GameTooltip:AddLine("No guild members online", 0.6, 0.6, 0.6)
+                GameTooltip:AddLine(L["MINIMAP_TOOLTIP_NO_GUILD_ONLINE"], 0.6, 0.6, 0.6)
             else
-                GameTooltip:AddLine("You are not in a guild", 0.6, 0.6, 0.6)
+                GameTooltip:AddLine(L["MINIMAP_TOOLTIP_NOT_IN_GUILD"], 0.6, 0.6, 0.6)
             end
         else
             for _, member in ipairs(onlineMembers) do
                 GameTooltip:AddDoubleLine(
-                    string.format("%s (Lv %d)", member.name, member.level),
+                    string.format(L["MINIMAP_TOOLTIP_MEMBER_FMT"], member.name, member.level),
                     member.zone,
                     1, 1, 1,
                     0.8, 0.8, 0.8
@@ -889,10 +892,10 @@ function VesperGuild:OnEnable()
     local Roster = self:GetModule("Roster", true)
     local Portals = self:GetModule("Portals", true)
     if not Roster then
-        self:Print("WARNING: Roster module not found!")
+        self:Print(L["ROSTER_MODULE_WARNING"])
     end
     if not Portals then
-        self:Print("WARNING: Portals module not found!")
+        self:Print(L["PORTALS_MODULE_WARNING"])
     end
     
     self:CreateFloatingIcon()
@@ -922,7 +925,7 @@ function VesperGuild:HandleChatCommand(input)
             Portals:Toggle()
             self:SendMessage("VESPERGUILD_ADDON_OPENED")
         else
-            self:Print("Roster or Portals module not found!")
+            self:Print(L["ROSTER_OR_PORTALS_MODULE_MISSING"])
         end
     elseif loweredInput == "config" or loweredInput == "options" then
         -- Keep both aliases for convenience and discoverability.
@@ -952,13 +955,13 @@ function VesperGuild:HandleChatCommand(input)
             portalFrame:SetPoint("LEFT", UIParent, "CENTER", 250, 0)
         end
 
-        self:Print("All frame positions have been reset.")
+        self:Print(L["ALL_FRAME_POSITIONS_RESET"])
     elseif loweredInput == "sync" then
         local Auto = self:GetModule("Automation", true)
         if Auto then
             Auto:ManualSync()
         else
-            self:Print("Automation module not found!")
+            self:Print(L["AUTOMATION_MODULE_NOT_FOUND"])
         end
     elseif loweredInput == "debug" or loweredInput == "keys" then
         -- Debug: Dump keystone database
@@ -966,21 +969,21 @@ function VesperGuild:HandleChatCommand(input)
         if KeystoneSync then
             KeystoneSync:DebugDumpKeystones()
         else
-            self:Print("KeystoneSync module not found!")
+            self:Print(L["KEYSTONE_SYNC_MODULE_NOT_FOUND"])
         end
     elseif loweredInput == "bestkeys" then
         -- Debug: Dump best keys database
         local DataHandle = self:GetModule("DataHandle", true)
         if not DataHandle then
-            self:Print("DataHandle module not found!")
+            self:Print(L["DATA_HANDLE_MODULE_NOT_FOUND"])
             return
         end
         local db = DataHandle:GetBestKeysDB()
         if not db or not next(db) then
-            self:Print("Best keys database is empty.")
+            self:Print(L["BEST_KEYS_DATABASE_EMPTY"])
             return
         end
-        self:Print("=== Best Keys Database ===")
+        self:Print(L["BEST_KEYS_DATABASE_HEADER"])
         local count = 0
         for playerName, data in pairs(db) do
             local entries = {}
@@ -988,20 +991,20 @@ function VesperGuild:HandleChatCommand(input)
                 if type(info) == "table" and info.level then
                     local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or tostring(mapID)
                     local timeStr = string.format("%d:%02d", math.floor(info.duration / 60), info.duration % 60)
-                    local timedStr = info.inTime and "timed" or "over"
-                    table.insert(entries, string.format("  %s: +%d (%s, %s)", dungName, info.level, timeStr, timedStr))
+                    local timedStr = info.inTime and L["BEST_KEYS_STATUS_TIMED"] or L["BEST_KEYS_STATUS_OVER"]
+                    table.insert(entries, string.format(L["BEST_KEYS_DATABASE_LINE_FMT"], dungName, info.level, timeStr, timedStr))
                 end
             end
             local age = data.timestamp and (time() - data.timestamp) or 0
-            self:Print(string.format("%s (age: %ds):", playerName, age))
+            self:Print(string.format(L["BEST_KEYS_DATABASE_ENTRY_HEADER_FMT"], playerName, age))
             for _, e in ipairs(entries) do
                 self:Print(e)
             end
             count = count + 1
         end
-        self:Print(string.format("Total: %d players", count))
+        self:Print(string.format(L["BEST_KEYS_DATABASE_TOTAL_FMT"], count))
     else
-        self:Print("Unknown command: " .. normalizedInput)
-        self:Print("Usage: /vg [config|reset|sync|debug|keys|bestkeys]")
+        self:Print(string.format(L["UNKNOWN_COMMAND_FMT"], normalizedInput))
+        self:Print(L["SLASH_USAGE"])
     end
 end

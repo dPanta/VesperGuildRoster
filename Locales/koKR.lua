@@ -1,4 +1,4 @@
-local addonName = ...
+local addonName, addonTable = ...
 local L
 
 if LibStub and LibStub("AceLocale-3.0", true) then
@@ -11,3 +11,12 @@ end
 
 L["ADDON_LOADED_MESSAGE"] = "VesperGuild가 정상적으로 로드되었습니다!"
 L["SLASH_COMMAND_HELP"] = "VesperGuild 창 열기"
+
+local defaults = addonTable and addonTable.LocaleDefaults or nil
+if defaults then
+    for key, value in pairs(defaults) do
+        if L[key] == nil then
+            L[key] = value
+        end
+    end
+end

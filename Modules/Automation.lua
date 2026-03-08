@@ -1,5 +1,6 @@
 local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild")
 local Automation = VesperGuild:NewModule("Automation", "AceConsole-3.0", "AceEvent-3.0", "AceComm-3.0")
+local L = VesperGuild.L
 
 -- Automation module responsibilities:
 -- 1) Guild-wide ilvl + best-key broadcasts (AceComm).
@@ -277,7 +278,7 @@ function Automation:ShowKeyReminder()
         local text = f:CreateFontString(nil, "OVERLAY")
         text:SetFont("Interface\\AddOns\\VesperGuild\\Media\\Expressway.ttf", 60, "OUTLINE")
         text:SetPoint("CENTER", 0, 200)
-        text:SetText("|cffFFFF00DID YOU WANT TO CHANGE KEYS?|r")
+        text:SetText("|cffFFFF00" .. L["KEY_REMINDER_TEXT"] .. "|r")
         f.text = text
 
         f:Hide()
@@ -301,5 +302,5 @@ function Automation:ManualSync()
     self:BroadcastIlvl()
     self:BroadcastBestKeys()
     self:RequestBestKeys()
-    VesperGuild:Print("Sync broadcasted to guild.")
+    VesperGuild:Print(L["SYNC_BROADCASTED_MESSAGE"])
 end

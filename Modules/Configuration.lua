@@ -1,5 +1,6 @@
 local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild")
 local Configuration = VesperGuild:NewModule("Configuration")
+local L = VesperGuild.L
 
 -- Configuration module responsibilities:
 -- 1) Build and manage the custom config window.
@@ -240,7 +241,7 @@ function Configuration:UpdateSliderLabel(slider)
     if text then
         setFontStringTextSafe(
             text,
-            string.format("%s: %d%%", slider._baseLabel or "Opacity", percent),
+            string.format("%s: %d%%", slider._baseLabel or L["CONFIG_SLIDER_OPACITY"], percent),
             12,
             "",
             GameFontNormal
@@ -259,7 +260,7 @@ function Configuration:UpdateFontSizeSliderLabel(slider)
     if text then
         setFontStringTextSafe(
             text,
-            string.format("%s: %d", slider._baseLabel or "Font Size", value),
+            string.format("%s: %d", slider._baseLabel or L["CONFIG_SLIDER_FONT_SIZE"], value),
             12,
             "",
             GameFontNormal
@@ -278,7 +279,7 @@ function Configuration:UpdateUtilityButtonSizeSliderLabel(slider)
     if text then
         setFontStringTextSafe(
             text,
-            string.format("%s: %d", slider._baseLabel or "Utility Button Size", value),
+            string.format("%s: %d", slider._baseLabel or L["CONFIG_SLIDER_UTILITY_BUTTON_SIZE"], value),
             12,
             "",
             GameFontNormal
@@ -397,7 +398,7 @@ function Configuration:CreateFlatActionButton(name, parent, text, anchor, relati
 
     local label = button:CreateFontString(nil, "ARTWORK")
     label:SetPoint("CENTER", 0, 0)
-    setFontStringTextSafe(label, text or "Add", 12, "", GameFontNormal)
+    setFontStringTextSafe(label, text or L["CONFIG_ADD_BUTTON"], 12, "", GameFontNormal)
     button.Label = label
 
     return button
@@ -491,7 +492,7 @@ function Configuration:OpenFontPicker(anchorButton)
 
     if MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
         MenuUtil.CreateContextMenu(anchorButton, function(_, rootDescription)
-            rootDescription:CreateTitle("VesperGuild Font")
+            rootDescription:CreateTitle(L["CONFIG_FONT_MENU_TITLE"])
 
             for i = 1, #options do
                 local option = options[i]
@@ -540,7 +541,7 @@ function Configuration:RefreshHearthstoneDropdownText()
         self.hearthstoneDropdown:SetAlpha(0.55)
         setFontStringTextSafe(
             self.hearthstoneDropdownText,
-            "No Hearthstones Available",
+            L["CONFIG_NO_HEARTHSTONES_AVAILABLE"],
             12,
             "",
             GameFontHighlightSmall
@@ -564,7 +565,11 @@ function Configuration:RefreshHearthstoneDropdownText()
     end
 
     local icon = selectedOption.icon or DEFAULT_ICON_TEXTURE
-    local label = string.format("|T%s:14:14:0:0|t %s", icon, selectedOption.name or ("Item " .. tostring(selectedOption.itemID)))
+    local label = string.format(
+        "|T%s:14:14:0:0|t %s",
+        icon,
+        selectedOption.name or string.format(L["ITEM_FALLBACK_FMT"], tostring(selectedOption.itemID))
+    )
     setFontStringTextSafe(self.hearthstoneDropdownText, label, 12, "", GameFontHighlightSmall)
 end
 
@@ -579,7 +584,7 @@ function Configuration:RefreshToyWhitelistDropdownText()
     if ownedCount == 0 then
         self.toyWhitelistDropdown:Disable()
         self.toyWhitelistDropdown:SetAlpha(0.55)
-        setFontStringTextSafe(self.toyWhitelistDropdownText, "No Toys Available", 12, "", GameFontHighlightSmall)
+        setFontStringTextSafe(self.toyWhitelistDropdownText, L["CONFIG_NO_TOYS_AVAILABLE"], 12, "", GameFontHighlightSmall)
         return
     end
 
@@ -589,13 +594,13 @@ function Configuration:RefreshToyWhitelistDropdownText()
     local whitelist = VesperGuild:GetConfiguredToyWhitelist()
     local whitelistCount = #whitelist
     if whitelistCount == 0 then
-        setFontStringTextSafe(self.toyWhitelistDropdownText, "Toy Flyout Whitelist: none", 12, "", GameFontHighlightSmall)
+        setFontStringTextSafe(self.toyWhitelistDropdownText, L["CONFIG_TOY_FLYOUT_WHITELIST_NONE"], 12, "", GameFontHighlightSmall)
         return
     end
 
     setFontStringTextSafe(
         self.toyWhitelistDropdownText,
-        string.format("Toy Flyout Whitelist: %d selected", whitelistCount),
+        string.format(L["CONFIG_TOY_FLYOUT_WHITELIST_SELECTED_FMT"], whitelistCount),
         12,
         "",
         GameFontHighlightSmall
@@ -617,12 +622,16 @@ function Configuration:OpenHearthstonePicker(anchorButton)
 
     if MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
         MenuUtil.CreateContextMenu(anchorButton, function(_, rootDescription)
-            rootDescription:CreateTitle("Primary Hearthstone")
+            rootDescription:CreateTitle(L["CONFIG_PRIMARY_HEARTHSTONE_MENU_TITLE"])
 
             for i = 1, #options do
                 local option = options[i]
                 local icon = option.icon or DEFAULT_ICON_TEXTURE
-                local optionLabel = string.format("|T%s:16:16:0:0|t %s", icon, option.name or ("Item " .. tostring(option.itemID)))
+                local optionLabel = string.format(
+                    "|T%s:16:16:0:0|t %s",
+                    icon,
+                    option.name or string.format(L["ITEM_FALLBACK_FMT"], tostring(option.itemID))
+                )
                 if option.itemID == profile.portals.primaryHearthstoneItemID then
                     optionLabel = "|cff81c784" .. optionLabel .. "|r"
                 end
@@ -812,7 +821,7 @@ function Configuration:RefreshToyWhitelistMenu()
             row.Icon:SetVertexColor(0.6, 0.6, 0.6, 1)
             row.Icon:SetDesaturated(false)
             row.Icon:SetAlpha(1)
-            setFontStringTextSafe(row.Text, "No owned toys available", 12, "", GameFontHighlightSmall)
+            setFontStringTextSafe(row.Text, L["CONFIG_NO_OWNED_TOYS_AVAILABLE"], 12, "", GameFontHighlightSmall)
             row.Text:SetTextColor(0.8, 0.8, 0.8, 1)
             row.Check:Hide()
             row:SetScript("OnClick", nil)
@@ -821,7 +830,7 @@ function Configuration:RefreshToyWhitelistMenu()
             row.Icon:SetVertexColor(1, 0.4, 0.4, 1)
             row.Icon:SetDesaturated(false)
             row.Icon:SetAlpha(1)
-            setFontStringTextSafe(row.Text, "Clear Whitelist", 12, "", GameFontHighlightSmall)
+            setFontStringTextSafe(row.Text, L["CONFIG_CLEAR_WHITELIST"], 12, "", GameFontHighlightSmall)
             row.Text:SetTextColor(1, 0.75, 0.75, 1)
             row.Check:Hide()
             row:SetScript("OnClick", function()
@@ -836,7 +845,7 @@ function Configuration:RefreshToyWhitelistMenu()
             local icon = option.icon or DEFAULT_ICON_TEXTURE
             local label = option.name
             if type(label) ~= "string" or label == "" then
-                label = "Item " .. tostring(option.itemID)
+                label = string.format(L["ITEM_FALLBACK_FMT"], tostring(option.itemID))
             end
 
             row.Icon:SetTexture(icon)
@@ -954,7 +963,7 @@ function Configuration:AddToyToWhitelistByName()
 
     local query = strtrim(self.toyNameInput:GetText() or "")
     if query == "" then
-        self:SetToyLookupStatus("Enter a toy name first.", 1, 0.7, 0.2)
+        self:SetToyLookupStatus(L["CONFIG_ENTER_TOY_NAME"], 1, 0.7, 0.2)
         return
     end
 
@@ -963,19 +972,21 @@ function Configuration:AddToyToWhitelistByName()
     if numericID and numericID > 0 then
         local toyID = math.floor(numericID + 0.5)
         if not (PlayerHasToy and PlayerHasToy(toyID)) then
-            self:SetToyLookupStatus("You do not own that toy itemID.", 1, 0.4, 0.4)
+            self:SetToyLookupStatus(L["CONFIG_TOY_ID_NOT_OWNED"], 1, 0.4, 0.4)
             return
         end
 
         if VesperGuild:IsToyWhitelisted(toyID) then
-            self:SetToyLookupStatus("Already whitelisted: item " .. tostring(toyID), 1, 0.7, 0.2)
+            self:SetToyLookupStatus(string.format(L["CONFIG_ALREADY_WHITELISTED_ITEM_FMT"], tostring(toyID)), 1, 0.7, 0.2)
             return
         end
 
         VesperGuild:SetToyWhitelisted(toyID, true)
 
-        local toyName = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(toyID)) or GetItemInfo(toyID) or ("Item " .. tostring(toyID))
-        self:SetToyLookupStatus("Added: " .. toyName, 0.5, 1, 0.5)
+        local toyName = (C_Item and C_Item.GetItemNameByID and C_Item.GetItemNameByID(toyID))
+            or GetItemInfo(toyID)
+            or string.format(L["ITEM_FALLBACK_FMT"], tostring(toyID))
+        self:SetToyLookupStatus(string.format(L["CONFIG_ADDED_FMT"], toyName), 0.5, 1, 0.5)
         self.toyNameInput:SetText(toyName)
         self:RefreshControls()
         self:NotifyConfigChanged()
@@ -984,23 +995,23 @@ function Configuration:AddToyToWhitelistByName()
 
     local ownedToyOptions = VesperGuild:GetOwnedToyOptions()
     if #ownedToyOptions == 0 then
-        self:SetToyLookupStatus("Toy list not ready. Try exact toy itemID.", 1, 0.7, 0.2)
+        self:SetToyLookupStatus(L["CONFIG_TOY_LIST_NOT_READY"], 1, 0.7, 0.2)
         return
     end
 
     local match = self:FindOwnedToyByName(query, ownedToyOptions)
     if not match then
-        self:SetToyLookupStatus("No owned toy matches that name.", 1, 0.4, 0.4)
+        self:SetToyLookupStatus(L["CONFIG_NO_OWNED_TOY_MATCH"], 1, 0.4, 0.4)
         return
     end
 
     if VesperGuild:IsToyWhitelisted(match.itemID) then
-        self:SetToyLookupStatus("Already whitelisted: " .. (match.name or "Toy"), 1, 0.7, 0.2)
+        self:SetToyLookupStatus(string.format(L["CONFIG_ALREADY_WHITELISTED_FMT"], match.name or L["TOY_FALLBACK"]), 1, 0.7, 0.2)
         return
     end
 
     VesperGuild:SetToyWhitelisted(match.itemID, true)
-    self:SetToyLookupStatus("Added: " .. (match.name or "Toy"), 0.5, 1, 0.5)
+    self:SetToyLookupStatus(string.format(L["CONFIG_ADDED_FMT"], match.name or L["TOY_FALLBACK"]), 0.5, 1, 0.5)
     self.toyNameInput:SetText(match.name or "")
     self:RefreshControls()
     self:NotifyConfigChanged()
@@ -1107,12 +1118,12 @@ function Configuration:BuildPanel()
 
     local subtitle = panel:CreateFontString(nil, "ARTWORK")
     subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
-    setFontStringTextSafe(subtitle, "Configuration", 12, "", GameFontHighlightSmall)
+    setFontStringTextSafe(subtitle, L["CONFIG_TITLE"], 12, "", GameFontHighlightSmall)
     subtitle:SetTextColor(0.86, 0.86, 0.86, 1)
 
     local sharedLabel = panel:CreateFontString(nil, "ARTWORK")
     sharedLabel:SetPoint("TOPLEFT", subtitle, "BOTTOMLEFT", 0, -12)
-    setFontStringTextSafe(sharedLabel, "Shared Font Family", 12, "OUTLINE", GameFontHighlight)
+    setFontStringTextSafe(sharedLabel, L["CONFIG_SHARED_FONT_FAMILY"], 12, "OUTLINE", GameFontHighlight)
 
     local fontDropdown = self:CreateFlatDropdown(
         "VesperGuildConfigFontDropdown",
@@ -1127,9 +1138,9 @@ function Configuration:BuildPanel()
     local fontText = fontDropdown.Text
 
     -- Tab row: each frame now has its own settings pane.
-    local rosterTabButton = self:CreateTabButton(panel, "roster", "Roster", fontDropdown, 0, -20, 136)
-    self:CreateTabButton(panel, "portals", "Portals", fontDropdown, 142, -20, 136)
-    local bestKeysTabButton = self:CreateTabButton(panel, "bestKeys", "Best Keys", fontDropdown, 284, -20, 136)
+    local rosterTabButton = self:CreateTabButton(panel, "roster", L["CONFIG_TAB_ROSTER"], fontDropdown, 0, -20, 136)
+    self:CreateTabButton(panel, "portals", L["CONFIG_TAB_PORTALS"], fontDropdown, 142, -20, 136)
+    local bestKeysTabButton = self:CreateTabButton(panel, "bestKeys", L["CONFIG_TAB_BEST_KEYS"], fontDropdown, 284, -20, 136)
 
     local contentRoot = CreateFrame("Frame", nil, panel)
     contentRoot:SetPoint("TOPLEFT", rosterTabButton, "BOTTOMLEFT", 0, -10)
@@ -1152,38 +1163,38 @@ function Configuration:BuildPanel()
 
     local rosterSectionTitle = rosterTab:CreateFontString(nil, "ARTWORK")
     rosterSectionTitle:SetPoint("TOPLEFT", 0, -2)
-    setFontStringTextSafe(rosterSectionTitle, "Roster Frame", 13, "OUTLINE", GameFontHighlight)
+    setFontStringTextSafe(rosterSectionTitle, L["CONFIG_SECTION_ROSTER_FRAME"], 13, "OUTLINE", GameFontHighlight)
 
     local rosterFontSizeSlider = self:CreateFontSizeSlider(
         "VesperGuildConfigRosterFontSizeSlider",
         rosterTab,
-        "Roster Font Size",
+        L["CONFIG_ROSTER_FONT_SIZE"],
         rosterSectionTitle,
         -16
     )
     local rosterOpacitySlider = self:CreateOpacitySlider(
         "VesperGuildConfigRosterOpacitySlider",
         rosterTab,
-        "Roster Opacity",
+        L["CONFIG_ROSTER_OPACITY"],
         rosterFontSizeSlider,
         -30
     )
 
     local portalsSectionTitle = portalsTab:CreateFontString(nil, "ARTWORK")
     portalsSectionTitle:SetPoint("TOPLEFT", 0, -2)
-    setFontStringTextSafe(portalsSectionTitle, "Portals Frame", 13, "OUTLINE", GameFontHighlight)
+    setFontStringTextSafe(portalsSectionTitle, L["CONFIG_SECTION_PORTALS_FRAME"], 13, "OUTLINE", GameFontHighlight)
 
     local portalsFontSizeSlider = self:CreateFontSizeSlider(
         "VesperGuildConfigPortalsFontSizeSlider",
         portalsTab,
-        "Portals Font Size",
+        L["CONFIG_PORTALS_FONT_SIZE"],
         portalsSectionTitle,
         -16
     )
     local portalsOpacitySlider = self:CreateOpacitySlider(
         "VesperGuildConfigPortalsOpacitySlider",
         portalsTab,
-        "Portals Opacity",
+        L["CONFIG_PORTALS_OPACITY"],
         portalsFontSizeSlider,
         -30
     )
@@ -1191,7 +1202,7 @@ function Configuration:BuildPanel()
     local utilityButtonSizeSlider = self:CreateUtilityButtonSizeSlider(
         "VesperGuildConfigTopUtilityButtonSizeSlider",
         portalsTab,
-        "Hearthstone/Toy Button Size",
+        L["CONFIG_TOP_UTILITY_BUTTON_SIZE"],
         portalsOpacitySlider,
         -30,
         minUtilityButtonSize,
@@ -1200,7 +1211,7 @@ function Configuration:BuildPanel()
 
     local hearthstoneLabel = portalsTab:CreateFontString(nil, "ARTWORK")
     hearthstoneLabel:SetPoint("TOPLEFT", utilityButtonSizeSlider, "BOTTOMLEFT", 0, -34)
-    setFontStringTextSafe(hearthstoneLabel, "Primary Hearthstone", 12, "", GameFontNormal)
+    setFontStringTextSafe(hearthstoneLabel, L["CONFIG_PRIMARY_HEARTHSTONE"], 12, "", GameFontNormal)
 
     local hearthstoneDropdown = self:CreateFlatDropdown(
         "VesperGuildConfigPrimaryHearthstoneDropdown",
@@ -1216,7 +1227,7 @@ function Configuration:BuildPanel()
 
     local toyWhitelistLabel = portalsTab:CreateFontString(nil, "ARTWORK")
     toyWhitelistLabel:SetPoint("TOPLEFT", hearthstoneDropdown, "BOTTOMLEFT", 0, -16)
-    setFontStringTextSafe(toyWhitelistLabel, "Toy Flyout Whitelist", 12, "", GameFontNormal)
+    setFontStringTextSafe(toyWhitelistLabel, L["CONFIG_TOY_FLYOUT_WHITELIST"], 12, "", GameFontNormal)
 
     local toyWhitelistDropdown = self:CreateFlatDropdown(
         "VesperGuildConfigToyWhitelistDropdown",
@@ -1232,7 +1243,7 @@ function Configuration:BuildPanel()
 
     local toyNameLabel = portalsTab:CreateFontString(nil, "ARTWORK")
     toyNameLabel:SetPoint("TOPLEFT", toyWhitelistDropdown, "BOTTOMLEFT", 0, -16)
-    setFontStringTextSafe(toyNameLabel, "Add Toy By Name", 12, "", GameFontNormal)
+    setFontStringTextSafe(toyNameLabel, L["CONFIG_ADD_TOY_BY_NAME"], 12, "", GameFontNormal)
 
     local toyNameInput = self:CreateFlatInput(
         "VesperGuildConfigToyNameInput",
@@ -1249,7 +1260,7 @@ function Configuration:BuildPanel()
     local toyAddButton = self:CreateFlatActionButton(
         "VesperGuildConfigToyNameAddButton",
         portalsTab,
-        "Add",
+        L["CONFIG_ADD_BUTTON"],
         toyNameInput,
         "TOPRIGHT",
         6,
@@ -1269,19 +1280,19 @@ function Configuration:BuildPanel()
 
     local bestKeysSectionTitle = bestKeysTab:CreateFontString(nil, "ARTWORK")
     bestKeysSectionTitle:SetPoint("TOPLEFT", 0, -2)
-    setFontStringTextSafe(bestKeysSectionTitle, "Best Keys Frame", 13, "OUTLINE", GameFontHighlight)
+    setFontStringTextSafe(bestKeysSectionTitle, L["CONFIG_SECTION_BEST_KEYS_FRAME"], 13, "OUTLINE", GameFontHighlight)
 
     local bestKeysFontSizeSlider = self:CreateFontSizeSlider(
         "VesperGuildConfigBestKeysFontSizeSlider",
         bestKeysTab,
-        "Best Keys Font Size",
+        L["CONFIG_BEST_KEYS_FONT_SIZE"],
         bestKeysSectionTitle,
         -16
     )
     local bestKeysOpacitySlider = self:CreateOpacitySlider(
         "VesperGuildConfigBestKeysOpacitySlider",
         bestKeysTab,
-        "BestKeys Opacity",
+        L["CONFIG_BEST_KEYS_OPACITY"],
         bestKeysFontSizeSlider,
         -30
     )
@@ -1458,8 +1469,8 @@ function Configuration:RefreshControls()
         self.toyNameAddButton:SetAlpha(1)
     end
     if not hasOwnedToys then
-        self:SetToyLookupStatus("No toys detected yet. Name lookup may be limited.", 1, 0.7, 0.2)
-    elseif self.toyLookupStatusText and self.toyLookupStatusText:GetText() == "No toys detected yet. Name lookup may be limited." then
+        self:SetToyLookupStatus(L["CONFIG_NO_TOYS_DETECTED"], 1, 0.7, 0.2)
+    elseif self.toyLookupStatusText and self.toyLookupStatusText:GetText() == L["CONFIG_NO_TOYS_DETECTED"] then
         self:SetToyLookupStatus("", 0.78, 0.82, 0.9)
     end
 

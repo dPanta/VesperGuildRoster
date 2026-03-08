@@ -1,6 +1,7 @@
 local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild")
 local Roster = VesperGuild:NewModule("Roster", "AceConsole-3.0", "AceEvent-3.0")
 local AceGUI = LibStub("AceGUI-3.0")
+local L = VesperGuild.L
 
 function Roster:OnInitialize()
     -- Called when the module is initialized
@@ -73,18 +74,18 @@ function Roster:OpenRosterContextMenu(anchorButton, fullName)
 
     if anchorButton and MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
         MenuUtil.CreateContextMenu(anchorButton, function(_, rootDescription)
-            rootDescription:CreateButton("Invite", invitePlayer)
-            rootDescription:CreateButton("Whisper", whisperPlayer)
-            rootDescription:CreateButton("Close", function() end)
+            rootDescription:CreateButton(L["CONTEXT_MENU_INVITE"], invitePlayer)
+            rootDescription:CreateButton(L["CONTEXT_MENU_WHISPER"], whisperPlayer)
+            rootDescription:CreateButton(L["CONTEXT_MENU_CLOSE"], function() end)
         end)
         return true
     end
 
     if EasyMenu then
         local menu = {
-            { text = "Invite", func = invitePlayer, notCheckable = true },
-            { text = "Whisper", func = whisperPlayer, notCheckable = true },
-            { text = "Close", func = function() end, notCheckable = true },
+            { text = L["CONTEXT_MENU_INVITE"], func = invitePlayer, notCheckable = true },
+            { text = L["CONTEXT_MENU_WHISPER"], func = whisperPlayer, notCheckable = true },
+            { text = L["CONTEXT_MENU_CLOSE"], func = function() end, notCheckable = true },
         }
         local dropdown = self:GetContextMenuDropdown()
         EasyMenu(menu, dropdown, "cursor", 0, 0, "MENU")
@@ -146,7 +147,7 @@ function Roster:ShowRoster()
     local title = titlebar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", 10, 0)
     local guildName = GetGuildInfo("player")
-    title:SetText(guildName or "Guild Roster")
+    title:SetText(guildName or L["ROSTER_TITLE_FALLBACK"])
     VesperGuild:ApplyConfiguredFont(title, VesperGuild:GetConfiguredFontSize("roster", 12, 8, 24) + 4, "")
     self.titleText = title
     
@@ -219,7 +220,7 @@ function Roster:ShowRoster()
     local syncBtn = CreateFrame("Button", nil, titlebar, "UIPanelButtonTemplate")
     syncBtn:SetPoint("RIGHT", closeBtn, "LEFT", -5, 0)
     syncBtn:SetSize(80, 22)
-    syncBtn:SetText("Sync")
+    syncBtn:SetText(L["ROSTER_BUTTON_SYNC"])
     syncBtn:SetScript("OnClick", function()
         local KeystoneSync = VesperGuild:GetModule("KeystoneSync", true)
         if KeystoneSync then
@@ -236,7 +237,7 @@ function Roster:ShowRoster()
     local confBtn = CreateFrame("Button", nil, titlebar, "UIPanelButtonTemplate")
     confBtn:SetPoint("RIGHT", syncBtn, "LEFT", -5, 0)
     confBtn:SetSize(60, 22)
-    confBtn:SetText("Conf")
+    confBtn:SetText(L["ROSTER_BUTTON_CONFIG"])
     confBtn:SetScript("OnClick", function(_, mouseButton)
         if mouseButton == "LeftButton" then
             VesperGuild:OpenConfig()
@@ -320,13 +321,13 @@ local ARROW_DOWN = " |TInterface\\Buttons\\Arrow-Down-Up:12:12|t"
 
 -- Column definitions: key, label, width, sort type
 local COLUMNS = {
-    { key = "name",    label = "Name",   width = 0.15, sort = "string" },
-    { key = "faction", label = "F",      width = 0.05, sort = "string" },
-    { key = "zone",    label = "Zone",   width = 0.20, sort = "string" },
-    { key = "status",  label = "Status", width = 0.10, sort = "string" },
-    { key = "ilvl",    label = "iLvl",   width = 0.10, sort = "number" },
-    { key = "rating",  label = "R",      width = 0.1,  sort = "number" },
-    { key = "keyLevel", label = "KEY",   width = 0.2,  sort = "number" },
+    { key = "name",    label = L["ROSTER_COLUMN_NAME"], width = 0.15, sort = "string" },
+    { key = "faction", label = L["ROSTER_COLUMN_FACTION"], width = 0.05, sort = "string" },
+    { key = "zone",    label = L["ROSTER_COLUMN_ZONE"], width = 0.20, sort = "string" },
+    { key = "status",  label = L["ROSTER_COLUMN_STATUS"], width = 0.10, sort = "string" },
+    { key = "ilvl",    label = L["ROSTER_COLUMN_ILVL"], width = 0.10, sort = "number" },
+    { key = "rating",  label = L["ROSTER_COLUMN_RATING"], width = 0.1, sort = "number" },
+    { key = "keyLevel", label = L["ROSTER_COLUMN_KEY"], width = 0.2, sort = "number" },
 }
 
 function Roster:UpdateRosterList()
@@ -376,7 +377,7 @@ function Roster:UpdateRosterList()
 
         header:SetCallback("OnEnter", function(widget)
             GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
-            GameTooltip:SetText("Click to sort by " .. col.label)
+            GameTooltip:SetText(string.format(L["ROSTER_SORT_BY_FMT"], col.label))
             GameTooltip:Show()
         end)
         header:SetCallback("OnLeave", function() GameTooltip:Hide() end)
@@ -433,13 +434,13 @@ function Roster:UpdateRosterList()
 
             -- Faction
             local factionText = "?"
-            if playerFaction == "Alliance" then factionText = "A"
-            elseif playerFaction == "Horde" then factionText = "H" end
+            if playerFaction == "Alliance" then factionText = L["FACTION_ALLIANCE_SHORT"]
+            elseif playerFaction == "Horde" then factionText = L["FACTION_HORDE_SHORT"] end
 
             -- Status
-            local statusRaw = "Online"
-            if status == 1 then statusRaw = "AFK"
-            elseif status == 2 then statusRaw = "DND" end
+            local statusRaw = L["STATUS_ONLINE"]
+            if status == 1 then statusRaw = L["STATUS_AFK"]
+            elseif status == 2 then statusRaw = L["STATUS_DND"] end
 
             -- iLvl
             local ilvlNum = 0
@@ -533,8 +534,8 @@ function Roster:UpdateRosterList()
 
         -- Faction
         local factionColor = "|cffFFFFFF"
-        if m.faction == "A" then factionColor = "|cff0070DD"
-        elseif m.faction == "H" then factionColor = "|cffA335EE" end
+        if m.faction == L["FACTION_ALLIANCE_SHORT"] then factionColor = "|cff0070DD"
+        elseif m.faction == L["FACTION_HORDE_SHORT"] then factionColor = "|cffA335EE" end
 
         local factionLabel = AceGUI:Create("Label")
         factionLabel:SetText(factionColor .. m.faction .. "|r")
@@ -553,8 +554,11 @@ function Roster:UpdateRosterList()
 
         -- Status
         local statusDisplay = m.status
-        if m.status == "AFK" then statusDisplay = "|cffFFFF00AFK|r"
-        elseif m.status == "DND" then statusDisplay = "|cffFF0000DND|r" end
+        if m.status == L["STATUS_AFK"] then
+            statusDisplay = "|cffFFFF00" .. L["STATUS_AFK"] .. "|r"
+        elseif m.status == L["STATUS_DND"] then
+            statusDisplay = "|cffFF0000" .. L["STATUS_DND"] .. "|r"
+        end
 
         local statusLabel = AceGUI:Create("Label")
         statusLabel:SetText(statusDisplay)
@@ -653,16 +657,16 @@ function Roster:UpdateRosterList()
             end
             GameTooltip:SetOwner(rowButton, "ANCHOR_TOPLEFT")
             if portalSpellName then
-                GameTooltip:SetText("Left-click: " .. portalSpellName .. "\nRight-click: Menu")
+                GameTooltip:SetText(string.format(L["ROSTER_ROW_TOOLTIP_LEFT_RIGHT_FMT"], portalSpellName))
             else
-                GameTooltip:SetText("Right-click: Menu")
+                GameTooltip:SetText(L["ROSTER_ROW_TOOLTIP_RIGHT_ONLY"])
             end
 
             if tooltipMapID then
                 local dungName = C_ChallengeMode.GetMapUIInfo(tooltipMapID)
                 if dungName then
                     GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine(dungName .. " - Guild Best", 1, 0.82, 0, true)
+                    GameTooltip:AddLine(string.format(L["ROSTER_ROW_TOOLTIP_GUILD_BEST_FMT"], dungName), 1, 0.82, 0, true)
 
                     local entries = {}
                     local seen = {}
@@ -711,7 +715,7 @@ function Roster:UpdateRosterList()
                         GameTooltip:AddDoubleLine(e.name, colorCode .. "+" .. e.level .. "|r", 1, 1, 1, r, g, b)
                     end
                     if #entries == 0 then
-                        GameTooltip:AddLine("No data", 0.5, 0.5, 0.5)
+                        GameTooltip:AddLine(L["ROSTER_ROW_TOOLTIP_NO_DATA"], 0.5, 0.5, 0.5)
                     end
                 end
             end

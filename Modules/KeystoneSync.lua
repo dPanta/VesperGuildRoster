@@ -1,6 +1,7 @@
 local VesperGuild = VesperGuild or LibStub("AceAddon-3.0"):GetAddon("VesperGuild")
 local KeystoneSync = VesperGuild:NewModule("KeystoneSync", "AceEvent-3.0", "AceTimer-3.0")
 local LibKeystone = LibStub("LibKeystone")
+local L = VesperGuild.L
 
 -- KeystoneSync responsibilities:
 -- 1) Receive guild keystone payloads from LibKeystone.
@@ -37,15 +38,15 @@ end
 
 function KeystoneSync:DebugDumpKeystones()
     if not VesperGuild.db.global.keystones then
-        VesperGuild:Print("Keystone database is empty mon, POPULATE IT!")
+        VesperGuild:Print(L["KEYSTONE_DATABASE_EMPTY"])
         return
     end
 
-    VesperGuild:Print("=== Keystone Database ===")
+    VesperGuild:Print(L["KEYSTONE_DATABASE_HEADER"])
     local count = 0
     for playerName, data in pairs(VesperGuild.db.global.keystones) do
-        local ratingText = data.rating and string.format(" [%d rating]", data.rating) or ""
-        VesperGuild:Print(string.format("%s: %s +%d%s (age: %ds)",
+        local ratingText = data.rating and string.format(L["KEYSTONE_RATING_FMT"], data.rating) or ""
+        VesperGuild:Print(string.format(L["KEYSTONE_DATABASE_ENTRY_FMT"],
             playerName,
             self:GetDungeonAbbrev(data.mapID),
             data.level,
@@ -53,7 +54,7 @@ function KeystoneSync:DebugDumpKeystones()
             time() - data.timestamp))
         count = count + 1
     end
-    VesperGuild:Print(string.format("Total: %d keystones", count))
+    VesperGuild:Print(string.format(L["KEYSTONE_DATABASE_TOTAL_FMT"], count))
 end
 
 function KeystoneSync:OnDisable()
@@ -92,12 +93,12 @@ end
 -- Request keystones from guild using LibKeystone
 function KeystoneSync:RequestGuildKeystones()
     if not LibKeystone then
-        VesperGuild:Print("LibKeystone is not loaded!")
+        VesperGuild:Print(L["LIBKEYSTONE_NOT_LOADED"])
         return false
     end
 
     if not IsInGuild() then
-        VesperGuild:Print("You are not in a guild!")
+        VesperGuild:Print(L["PLAYER_NOT_IN_GUILD"])
         return false
     end
 
@@ -105,7 +106,7 @@ function KeystoneSync:RequestGuildKeystones()
     -- This will trigger all guild members running LibKeystone to respond with their keystone data
     LibKeystone.Request("GUILD")
 
-    VesperGuild:Print("Requesting keystones from guild members...")
+    VesperGuild:Print(L["REQUESTING_KEYSTONES"])
     return true
 end
 
@@ -179,7 +180,7 @@ function KeystoneSync:GetDungeonAbbrev(mapID)
         return abbrev
     end
     
-    return "???" -- Unknown dungeon
+    return L["KEYSTONE_UNKNOWN_ABBREV"] -- Unknown dungeon
 end
 
 function KeystoneSync:CleanupStaleEntries()
@@ -199,6 +200,6 @@ function KeystoneSync:CleanupStaleEntries()
     end
     
     if removed > 0 then
-        VesperGuild:Print(string.format("Cleaned up %d stale keystone entries", removed))
+        VesperGuild:Print(string.format(L["CLEANED_STALE_KEYSTONE_ENTRIES_FMT"], removed))
     end
 end
