@@ -8,6 +8,7 @@ local TOP_UTILITY_PADDING = 10
 local TOP_UTILITY_FRAME_VERTICAL_PADDING = 20
 local TOY_FLYOUT_BUTTON_GAP = 8
 local TOY_FLYOUT_PADDING = 8
+local COOLDOWN_TEXT_UPDATE_INTERVAL = 0.1
 
 -- Curated mage travel catalogs. We still supplement this with spellbook scanning so
 -- newly added/seasonal travel spells can appear without hardcoding every edge case.
@@ -114,6 +115,26 @@ end
 local TELEPORT_TOKEN = buildTravelToken({ 3561, 3567, 53140 }, "Teleport")
 local PORTAL_TOKEN = buildTravelToken({ 10059, 11417, 53142 }, "Portal")
 
+local function formatCooldownRemaining(seconds)
+    local remaining = tonumber(seconds) or 0
+    if remaining <= 0 then
+        return ""
+    end
+    if remaining >= 86400 then
+        return string.format("%dd", math.floor((remaining / 86400) + 0.5))
+    end
+    if remaining >= 3600 then
+        return string.format("%dh", math.floor((remaining / 3600) + 0.5))
+    end
+    if remaining >= 60 then
+        return string.format("%dm", math.floor((remaining / 60) + 0.5))
+    end
+    if remaining >= 10 then
+        return tostring(math.floor(remaining + 0.5))
+    end
+    return string.format("%.1f", remaining)
+end
+
 function Portals:OnInitialize()
     -- Tracks deferred secure-button updates blocked by combat lockdown.
     self.pendingUtilityRefresh = false
@@ -121,6 +142,8 @@ function Portals:OnInitialize()
     self.knownMageTeleportSpells = {}
     self.knownMagePortalSpells = {}
     self.toyFlyoutButtons = {}
+    self.cooldownButtons = {}
+    self.cooldownUpdateElapsed = 0
     self:RegisterEvent("PLAYER_LOGIN")
 end
 
@@ -137,8 +160,10 @@ end
 function Portals:OnEnable()
     self:RegisterMessage("VESPERGUILD_CONFIG_CHANGED", "OnConfigChanged")
     self:RegisterEvent("BAG_UPDATE_DELAYED")
+    self:RegisterEvent("BAG_UPDATE_COOLDOWN")
     self:RegisterEvent("TOYS_UPDATED")
     self:RegisterEvent("SPELLS_CHANGED")
+    self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
 end
 
@@ -150,17 +175,28 @@ end
 -- Refresh hearthstone buttons when bag contents change.
 function Portals:BAG_UPDATE_DELAYED()
     self:RefreshHearthstoneButtons()
+    self:RefreshActionCooldowns()
+end
+
+function Portals:BAG_UPDATE_COOLDOWN()
+    self:RefreshActionCooldowns()
 end
 
 -- Refresh hearthstone buttons when toy ownership state changes.
 function Portals:TOYS_UPDATED()
     self:RefreshHearthstoneButtons()
     self:RefreshToyFlyout()
+    self:RefreshActionCooldowns()
 end
 
 -- Refresh mage travel menus/icons when spellbook changes (newly learned spells, etc.).
 function Portals:SPELLS_CHANGED()
     self:RefreshMageTravelButtons()
+    self:RefreshActionCooldowns()
+end
+
+function Portals:SPELL_UPDATE_COOLDOWN()
+    self:RefreshActionCooldowns()
 end
 
 -- Combat lockdown can block secure attribute writes; apply queued updates here.
@@ -171,6 +207,7 @@ function Portals:PLAYER_REGEN_ENABLED()
         self:RefreshHearthstoneButtons()
         self:RefreshToyFlyout()
         self:RefreshMageTravelButtons()
+        self:RefreshActionCooldowns()
     end
 end
 
@@ -204,6 +241,7 @@ function Portals:OnConfigChanged()
     self:RefreshHearthstoneButtons()
     self:RefreshToyFlyout()
     self:RefreshMageTravelButtons()
+    self:RefreshActionCooldowns()
 
     if self.VesperPortalsUI and self.VesperPortalsUI:IsShown() then
         if self.mplusProgFrame then
@@ -401,6 +439,308 @@ function Portals:LayoutTopUtilityButtons()
             TOP_UTILITY_PADDING + ((i - 1) * (buttonSize + TOP_UTILITY_BUTTON_GAP)),
             0
         )
+        self:UpdateCooldownTextFont(button)
+    end
+end
+
+-- Track one action button so cooldown visuals can be refreshed centrally.
+function Portals:RegisterCooldownButton(button)
+    if not button or button._vesperCooldownRegistered then
+        return
+    end
+
+    self.cooldownButtons = self.cooldownButtons or {}
+    self.cooldownButtons[#self.cooldownButtons + 1] = button
+    button._vesperCooldownRegistered = true
+end
+
+-- Keep cooldown text sized to the underlying icon.
+function Portals:UpdateCooldownTextFont(button)
+    if not button or not button.cooldownText then
+        return
+    end
+
+    if button.cooldownFrame then
+        button.cooldownFrame:SetFrameLevel((button:GetFrameLevel() or 0) + 2)
+    end
+    if button.cooldownTextFrame then
+        button.cooldownTextFrame:SetFrameLevel((button:GetFrameLevel() or 0) + 3)
+    end
+
+    local buttonSize = tonumber(button:GetWidth()) or tonumber(button:GetHeight()) or 52
+    local fontSize = math.max(10, math.floor((buttonSize * 0.32) + 0.5))
+    VesperGuild:ApplyConfiguredFont(button.cooldownText, fontSize, "OUTLINE")
+    button.cooldownText:SetShadowColor(0, 0, 0, 1)
+    button.cooldownText:SetShadowOffset(1, -1)
+end
+
+-- Reset one button back to an idle no-cooldown state.
+function Portals:ClearButtonCooldown(button)
+    if not button then
+        return false
+    end
+
+    button._cooldownStart = nil
+    button._cooldownDuration = nil
+    button._cooldownModRate = nil
+
+    if button.cooldownFrame then
+        pcall(button.cooldownFrame.SetCooldown, button.cooldownFrame, 0, 0, 1)
+        button.cooldownFrame:Hide()
+    end
+
+    if button.cooldownText then
+        button.cooldownText:SetText("")
+        button.cooldownText:Hide()
+    end
+
+    return false
+end
+
+-- Create spiral + numeric countdown visuals once for any portal-related action button.
+function Portals:EnsureCooldownOverlay(button)
+    if not button then
+        return
+    end
+
+    if not button.cooldownFrame then
+        button.cooldownFrame = CreateFrame("Cooldown", nil, button, "CooldownFrameTemplate")
+        button.cooldownFrame:SetAllPoints(button)
+    end
+
+    if button.cooldownFrame.SetDrawBling then
+        button.cooldownFrame:SetDrawBling(false)
+    end
+    if button.cooldownFrame.SetDrawEdge then
+        button.cooldownFrame:SetDrawEdge(false)
+    end
+    if button.cooldownFrame.SetHideCountdownNumbers then
+        button.cooldownFrame:SetHideCountdownNumbers(true)
+    end
+    if button.cooldownFrame.SetSwipeColor then
+        button.cooldownFrame:SetSwipeColor(0, 0, 0, 0.75)
+    end
+    button.cooldownFrame:Hide()
+
+    if not button.cooldownTextFrame then
+        button.cooldownTextFrame = CreateFrame("Frame", nil, button)
+        button.cooldownTextFrame:SetAllPoints(button)
+        button.cooldownTextFrame:EnableMouse(false)
+    end
+
+    if not button.cooldownText then
+        button.cooldownText = button.cooldownTextFrame:CreateFontString(nil, "OVERLAY")
+        button.cooldownText:SetPoint("CENTER", button.cooldownTextFrame, "CENTER", 0, 0)
+        button.cooldownText:SetJustifyH("CENTER")
+        button.cooldownText:SetJustifyV("MIDDLE")
+        button.cooldownText:Hide()
+    end
+
+    self:UpdateCooldownTextFont(button)
+    self:RegisterCooldownButton(button)
+    self:ClearButtonCooldown(button)
+end
+
+-- Assign the source queried for this button's cooldown visuals.
+function Portals:SetButtonCooldownSource(button, sourceType, sourceID)
+    if not button then
+        return
+    end
+
+    local normalizedType = (sourceType == "spell" or sourceType == "item") and sourceType or nil
+    local normalizedID = tonumber(sourceID)
+
+    button._cooldownSourceType = normalizedType
+    button._cooldownSourceID = (normalizedType and normalizedID and normalizedID > 0) and normalizedID or nil
+
+    if not button._cooldownSourceType or not button._cooldownSourceID then
+        self:ClearButtonCooldown(button)
+    end
+end
+
+-- Resolve the active cooldown tuple for one tracked button.
+function Portals:GetButtonCooldownInfo(button)
+    if not button then
+        return 0, 0, 0, 1
+    end
+
+    local sourceType = button._cooldownSourceType
+    local sourceID = tonumber(button._cooldownSourceID)
+    if not sourceType or not sourceID or sourceID <= 0 then
+        return 0, 0, 0, 1
+    end
+
+    if sourceType == "spell" then
+        -- Mainline 11.1+: DurationObject API
+        if C_Spell and C_Spell.GetSpellCooldownDuration then
+            local dur = C_Spell.GetSpellCooldownDuration(sourceID)
+            if dur and not dur:IsZero() then
+                return tonumber(dur:GetStartTime()) or 0,
+                    tonumber(dur:GetTotalDuration()) or 0,
+                    1, 1
+            end
+            return 0, 0, 0, 1
+        end
+        -- Classic: SpellCooldownInfo table
+        if C_Spell and C_Spell.GetSpellCooldown then
+            local info = C_Spell.GetSpellCooldown(sourceID)
+            if info then
+                local enabled = info.isEnabled and 1 or 0
+                return tonumber(info.startTime) or 0,
+                    tonumber(info.duration) or 0,
+                    enabled,
+                    tonumber(info.modRate) or 1
+            end
+            return 0, 0, 0, 1
+        end
+        -- Legacy global (pre-11.x)
+        if GetSpellCooldown then
+            local start, duration, enabled, modRate = GetSpellCooldown(sourceID)
+            return tonumber(start) or 0, tonumber(duration) or 0, (enabled and enabled ~= 0) and 1 or 0, tonumber(modRate) or 1
+        end
+    elseif sourceType == "item" then
+        -- Mainline: C_Item returns multiple values (start, duration, enableBool)
+        if C_Item and C_Item.GetItemCooldown then
+            local start, duration, enable = C_Item.GetItemCooldown(sourceID)
+            return tonumber(start) or 0, tonumber(duration) or 0, (enable and enable ~= 0) and 1 or 0, 1
+        end
+        -- Legacy global
+        if GetItemCooldown then
+            local start, duration, enable = GetItemCooldown(sourceID)
+            return tonumber(start) or 0, tonumber(duration) or 0, (enable and enable ~= 0) and 1 or 0, 1
+        end
+    end
+
+    return 0, 0, 0, 1
+end
+
+-- Update the numeric countdown text for one active cooldown.
+function Portals:UpdateButtonCooldownText(button, now)
+    if not button or not button.cooldownText then
+        return false
+    end
+
+    local start = tonumber(button._cooldownStart)
+    local duration = tonumber(button._cooldownDuration)
+    if not start or not duration or duration <= 0 then
+        return self:ClearButtonCooldown(button)
+    end
+
+    local modRate = tonumber(button._cooldownModRate) or 1
+    if modRate <= 0 then
+        modRate = 1
+    end
+
+    local remaining = ((start + duration) - (now or GetTime())) / modRate
+    if remaining <= 0.05 then
+        return self:ClearButtonCooldown(button)
+    end
+
+    local label = formatCooldownRemaining(remaining)
+    if label == "" then
+        button.cooldownText:SetText("")
+        button.cooldownText:Hide()
+        return true
+    end
+
+    local r, g, b = 1, 1, 1
+    if remaining < 10 then
+        r, g, b = 1, 0.35, 0.35
+    elseif remaining < 60 then
+        r, g, b = 1, 0.82, 0.25
+    end
+
+    button.cooldownText:SetTextColor(r, g, b, 1)
+    button.cooldownText:SetText(label)
+    button.cooldownText:Show()
+    return true
+end
+
+-- Query fresh spell/item cooldown data and drive the swirl for one tracked button.
+function Portals:RefreshButtonCooldown(button, now)
+    if not button or not button.cooldownFrame then
+        return false
+    end
+
+    self:UpdateCooldownTextFont(button)
+
+    local start, duration, enabled, modRate = self:GetButtonCooldownInfo(button)
+    if enabled == 0 or duration <= 1.5 or start <= 0 then
+        return self:ClearButtonCooldown(button)
+    end
+
+    button._cooldownStart = start
+    button._cooldownDuration = duration
+    button._cooldownModRate = (tonumber(modRate) and tonumber(modRate) > 0) and tonumber(modRate) or 1
+    button.cooldownFrame:Show()
+
+    local ok = pcall(button.cooldownFrame.SetCooldown, button.cooldownFrame, start, duration, button._cooldownModRate)
+    if not ok then
+        pcall(button.cooldownFrame.SetCooldown, button.cooldownFrame, start, duration)
+    end
+
+    return self:UpdateButtonCooldownText(button, now)
+end
+
+-- Periodically update numeric cooldown text while at least one action is on cooldown.
+function Portals:OnCooldownUpdate(elapsed)
+    if not self.VesperPortalsUI or not self.VesperPortalsUI:IsShown() then
+        return
+    end
+
+    self.cooldownUpdateElapsed = (tonumber(self.cooldownUpdateElapsed) or 0) + (tonumber(elapsed) or 0)
+    if self.cooldownUpdateElapsed < COOLDOWN_TEXT_UPDATE_INTERVAL then
+        return
+    end
+    self.cooldownUpdateElapsed = 0
+
+    local hasActiveCooldown = false
+    local now = GetTime()
+    for i = 1, #(self.cooldownButtons or {}) do
+        local button = self.cooldownButtons[i]
+        if button and button:IsShown() and button._cooldownStart then
+            if self:UpdateButtonCooldownText(button, now) then
+                hasActiveCooldown = true
+            end
+        end
+    end
+
+    if not hasActiveCooldown then
+        self.VesperPortalsUI:SetScript("OnUpdate", nil)
+    end
+end
+
+-- Refresh all tracked portal/utility button cooldowns from current game state.
+function Portals:RefreshActionCooldowns()
+    local buttons = self.cooldownButtons
+    if type(buttons) ~= "table" or #buttons == 0 then
+        return
+    end
+
+    local hasActiveCooldown = false
+    local now = GetTime()
+    for i = 1, #buttons do
+        local button = buttons[i]
+        if button and button.cooldownFrame then
+            if button:IsShown() then
+                if self:RefreshButtonCooldown(button, now) then
+                    hasActiveCooldown = true
+                end
+            else
+                if button.cooldownText then
+                    button.cooldownText:Hide()
+                end
+            end
+        end
+    end
+
+    if self.VesperPortalsUI and self.VesperPortalsUI:IsShown() and hasActiveCooldown then
+        self.cooldownUpdateElapsed = 0
+        self.VesperPortalsUI:SetScript("OnUpdate", function(_, elapsed)
+            self:OnCooldownUpdate(elapsed)
+        end)
+    elseif self.VesperPortalsUI then
+        self.VesperPortalsUI:SetScript("OnUpdate", nil)
     end
 end
 
@@ -549,6 +889,8 @@ function Portals:RefreshToyFlyout()
 
     for i = 1, #self.toyFlyoutButtons do
         self.toyFlyoutButtons[i]:SetSize(buttonSize, buttonSize)
+        self:UpdateCooldownTextFont(self.toyFlyoutButtons[i])
+        self:SetButtonCooldownSource(self.toyFlyoutButtons[i], nil, nil)
         self.toyFlyoutButtons[i]:Hide()
     end
 
@@ -587,8 +929,11 @@ function Portals:RefreshToyFlyout()
         button._displayName = option.name or string.format(L["ITEM_FALLBACK_FMT"], tostring(option.itemID))
         button._tooltipHint = L["UTILITY_TOOLTIP_USE"]
         button._unavailableText = L["UTILITY_TOOLTIP_UNAVAILABLE"]
+        self:SetButtonCooldownSource(button, "item", option.itemID)
         button:Show()
     end
+
+    self:RefreshActionCooldowns()
 end
 
 -- Build one icon-only hearthstone action button in the same visual style as Great Vault.
@@ -624,6 +969,7 @@ function Portals:CreateTopUtilityButton(parent, templateName)
     highlight:SetAllPoints()
     highlight:SetColorTexture(1, 1, 0, 0.4)
     button:SetHighlightTexture(highlight)
+    self:EnsureCooldownOverlay(button)
 
     button:SetScript("OnEnter", function(selfButton)
         GameTooltip:SetOwner(selfButton, "ANCHOR_RIGHT")
@@ -830,6 +1176,7 @@ function Portals:ApplyHearthstoneOption(button, option)
         button._tooltipHint = L["UTILITY_TOOLTIP_USE"]
         button._unavailableText = L["NO_HEARTHSTONES_AVAILABLE"]
         button._itemID = option.itemID
+        self:SetButtonCooldownSource(button, "item", option.itemID)
     else
         button.icon:SetTexture(FALLBACK_ICON_TEXTURE)
         button.icon:SetDrawLayer("ARTWORK", 1)
@@ -848,6 +1195,7 @@ function Portals:ApplyHearthstoneOption(button, option)
         button._tooltipHint = L["UTILITY_TOOLTIP_USE"]
         button._unavailableText = L["NO_HEARTHSTONES_AVAILABLE"]
         button._itemID = nil
+        self:SetButtonCooldownSource(button, nil, nil)
     end
 end
 
@@ -873,6 +1221,7 @@ function Portals:RefreshHearthstoneButtons()
 
     self:ApplyHearthstoneOption(self.primaryHearthstoneButton, primaryID and optionsByID[primaryID] or nil)
     self:ApplyHearthstoneOption(self.secondaryHearthstoneButton, secondaryID and optionsByID[secondaryID] or nil)
+    self:RefreshActionCooldowns()
 end
 
 function Portals:WarnMissingSeasonDungeonMetadata(curSeason, dataHandle)
@@ -1000,9 +1349,8 @@ function Portals:CreatePortalFrame()
                 icon:SetTexture(iconFileID or "Interface\\ICONS\\INV_Misc_QuestionMark")
                 btn.icon = icon
 
-            -- CD
-            btn.cooldownFrame = CreateFrame("Cooldown", nil, btn, "CooldownFrameTemplate")
-			btn.cooldownFrame:SetAllPoints(btn)
+            -- Cooldown swipe + numeric counter
+            self:EnsureCooldownOverlay(btn)
 
             -- Disable click when portal spell is not learned.
             -- This avoids secure-action errors and matches visual desaturation state.
@@ -1010,10 +1358,12 @@ function Portals:CreatePortalFrame()
 				icon:SetDesaturated(true)
 				icon:SetAlpha(0.5)
 				btn:EnableMouse(false)
+                self:SetButtonCooldownSource(btn, nil, nil)
 			else
 				icon:SetDesaturated(false)
 				icon:SetAlpha(1)
 				btn:EnableMouse(true)
+                self:SetButtonCooldownSource(btn, "spell", dungInfo.spellID)
 			end
 
             -- Tooltip
@@ -1040,6 +1390,7 @@ function Portals:CreatePortalFrame()
     self:RefreshToyFlyout()
     self:RefreshMageTravelButtons()
     self:CreateVaultFrame()
+    self:RefreshActionCooldowns()
 end
 
 function Portals:CreateVaultFrame()
@@ -1241,5 +1592,6 @@ function Portals:Toggle()
         end
         self.VesperPortalsUI:Show()
         self.VesperPortalsUI:Raise()
+        self:RefreshActionCooldowns()
     end
 end

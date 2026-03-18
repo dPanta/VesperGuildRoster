@@ -1,3 +1,8 @@
+## 1.5.1 - 2026-03-18
+
+### Fixed
+- Fixed cooldown text and swipe not appearing on portal and utility buttons by updating spell cooldown queries to use the current Mainline `C_Spell.GetSpellCooldownDuration` API and fixing boolean-to-number conversion for the enabled field across all cooldown paths.
+
 ## 1.5.0 - 2026-03-11
 
 ### Changed

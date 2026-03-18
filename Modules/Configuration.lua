@@ -126,6 +126,7 @@ function Configuration:OnInitialize()
     self.activeTab = "roster"
     self.tabButtons = {}
     self.tabFrames = {}
+    self.contextMenuAnchor = nil
     self.fontDropdown = nil
     self.fontDropdownText = nil
     self.hearthstoneDropdown = nil
@@ -344,6 +345,45 @@ function Configuration:CreateFlatDropdown(name, parent, anchor, yOffset, width, 
     return dropdown
 end
 
+-- Create a neutral top-level anchor so MenuUtil popups render above the config panel.
+function Configuration:GetContextMenuAnchor(anchorButton)
+    local anchorLevel = 80
+    if self.panel and self.panel.GetFrameLevel then
+        anchorLevel = math.max(anchorLevel, (self.panel:GetFrameLevel() or 0) + 40)
+    end
+
+    if not (self.contextMenuAnchor and self.contextMenuAnchor.GetName) then
+        self.contextMenuAnchor = CreateFrame("Frame", "VesperGuildConfigContextMenuAnchor", UIParent)
+        self.contextMenuAnchor:SetSize(2, 2)
+        self.contextMenuAnchor:SetClampedToScreen(true)
+    end
+
+    local anchor = self.contextMenuAnchor
+    anchor:SetFrameStrata("TOOLTIP")
+    anchor:SetFrameLevel(anchorLevel)
+    anchor:SetToplevel(true)
+    anchor:Show()
+    anchor:ClearAllPoints()
+
+    local uiScale = UIParent:GetEffectiveScale() or 1
+    local cursorX, cursorY = GetCursorPosition()
+    if uiScale > 0 and cursorX and cursorY and cursorX > 0 and cursorY > 0 then
+        anchor:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", cursorX / uiScale, cursorY / uiScale)
+        return anchor
+    end
+
+    if anchorButton and anchorButton.GetCenter then
+        local centerX, centerY = anchorButton:GetCenter()
+        if centerX and centerY then
+            anchor:SetPoint("CENTER", UIParent, "BOTTOMLEFT", centerX, centerY)
+            return anchor
+        end
+    end
+
+    anchor:SetPoint("CENTER", UIParent, "CENTER")
+    return anchor
+end
+
 -- Create a flat-styled single-line input field matching the custom config controls.
 function Configuration:CreateFlatInput(name, parent, anchor, yOffset, width)
     local input = CreateFrame("EditBox", name, parent, "BackdropTemplate")
@@ -491,7 +531,8 @@ function Configuration:OpenFontPicker(anchorButton)
     end
 
     if MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
-        MenuUtil.CreateContextMenu(anchorButton, function(_, rootDescription)
+        local menuAnchor = self:GetContextMenuAnchor(anchorButton)
+        MenuUtil.CreateContextMenu(menuAnchor, function(_, rootDescription)
             rootDescription:CreateTitle(L["CONFIG_FONT_MENU_TITLE"])
 
             for i = 1, #options do
@@ -621,7 +662,8 @@ function Configuration:OpenHearthstonePicker(anchorButton)
     end
 
     if MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
-        MenuUtil.CreateContextMenu(anchorButton, function(_, rootDescription)
+        local menuAnchor = self:GetContextMenuAnchor(anchorButton)
+        MenuUtil.CreateContextMenu(menuAnchor, function(_, rootDescription)
             rootDescription:CreateTitle(L["CONFIG_PRIMARY_HEARTHSTONE_MENU_TITLE"])
 
             for i = 1, #options do

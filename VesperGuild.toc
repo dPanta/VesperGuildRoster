@@ -2,8 +2,9 @@
 ## Title: VesperGuildRoster
 ## Notes: Guild M+ helper.
 ## Author: dPanta
-## Version: 1.5.0
+## Version: 1.5.1
 ## SavedVariables: VesperGuildDB
+## X-Wago-ID: XKqAw8Ky
 
 ## OptionalDeps: Ace3
 
