@@ -26,6 +26,7 @@ local HEADER_ACTION_BUTTON_GAP = 6
 local TITLEBAR_SEARCH_WIDTH = 220
 local TITLEBAR_SEARCH_HEIGHT = 22
 local TITLEBAR_SEARCH_CLEAR_BUTTON_SIZE = 14
+local CATEGORY_TOGGLE_BUTTON_SIZE = 14
 local CHARACTER_DROPDOWN_ARROW_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\DropdownArrow-50"
 local EQUIPPED_BAG_IDS = {}
 local REAGENT_BAG_ID = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or nil
@@ -1348,11 +1349,27 @@ function BagsWindow:AcquireSectionFrame()
     local index = #self.sectionFrames + 1
     local section = CreateFrame("Frame", nil, self.content)
     section:SetHeight(HEADER_HEIGHT)
-    section:EnableMouse(true)
+
+    local toggleButton = CreateFrame("Button", nil, section)
+    toggleButton:SetPoint("TOPLEFT", section, "TOPLEFT", 0, -2)
+    toggleButton:SetSize(CATEGORY_TOGGLE_BUTTON_SIZE, CATEGORY_TOGGLE_BUTTON_SIZE)
+    toggleButton:RegisterForClicks("LeftButtonUp")
+    toggleButton:SetHitRectInsets(-3, -3, -3, -3)
+    toggleButton:SetHighlightTexture("Interface\\Buttons\\WHITE8x8", "ADD")
+    toggleButton:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.08)
+
+    local toggleIcon = toggleButton:CreateTexture(nil, "ARTWORK")
+    toggleIcon:SetAllPoints()
+    toggleIcon:SetTexture(CHARACTER_DROPDOWN_ARROW_TEXTURE)
+    toggleIcon:SetVertexColor(1, 1, 1, 0.98)
+    toggleButton.icon = toggleIcon
+    section.toggleButton = toggleButton
 
     local title = section:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
-    title:SetPoint("TOPLEFT", 0, 0)
+    title:SetPoint("TOPLEFT", toggleButton, "TOPRIGHT", 4, 1)
+    title:SetPoint("RIGHT", section, "RIGHT", 0, 0)
     title:SetJustifyH("LEFT")
+    title:SetWordWrap(false)
     vesperTools:ApplyConfiguredFont(title, 14, "")
     section.title = title
 
@@ -1990,15 +2007,17 @@ function BagsWindow:RefreshWindow()
                 section.title:SetText(string.format("%s (%d) (%s)", category.label, category.count, L["BAGS_HIDDEN"]))
                 section.title:SetTextColor(0.8, 0.8, 0.8, 1)
                 section.divider:SetColorTexture(1, 1, 1, 0.05)
+                section.toggleButton.icon:SetRotation(math.pi)
+                section.toggleButton.icon:SetVertexColor(0.8, 0.8, 0.8, 0.98)
             else
                 section.title:SetText(string.format("%s (%d)", category.label, category.count))
                 section.title:SetTextColor(1, 1, 1, 1)
                 section.divider:SetColorTexture(1, 1, 1, 0.08)
+                section.toggleButton.icon:SetRotation(0)
+                section.toggleButton.icon:SetVertexColor(1, 1, 1, 0.98)
             end
-            section:SetScript("OnMouseUp", function(_, mouseButton)
-                if mouseButton == "LeftButton" then
-                    self:ToggleCategoryCollapsed(selectedCharacter.key, category.key)
-                end
+            section.toggleButton:SetScript("OnClick", function()
+                self:ToggleCategoryCollapsed(selectedCharacter.key, category.key)
             end)
             section:Show()
 

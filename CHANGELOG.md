@@ -1,3 +1,13 @@
+## 2.2.0 - 2026-03-22
+
+### Changed
+- Updated bag and bank category headers to use a dedicated arrow icon for collapsing and expanding sections instead of making the full header row clickable.
+- Added an explicit collapsed-state arrow direction so hidden categories now display an upward-pointing arrow.
+- Corrected packager metadata so release packages are named `vesperTools`.
+
+### Notes
+- This release focuses on inventory UI polish and release packaging consistency.
+
 ## 2.1.0 - 2026-03-22
 
 ### Changed
