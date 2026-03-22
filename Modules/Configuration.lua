@@ -44,21 +44,59 @@ local function setFontStringTextSafe(fontString, text, size, flags, fallbackObje
     local resolvedFlags = type(flags) == "string" and flags or ""
 
     local hasFont = fontString.GetFont and fontString:GetFont()
-    if not hasFont then
-        local applied = vesperTools:ApplyConfiguredFont(fontString, resolvedSize, resolvedFlags)
-        if not applied then
-            local fallback = fallbackObject or GameFontHighlightSmall or GameFontNormal or SystemFont_Shadow_Med1
-            if fallback then
-                pcall(fontString.SetFontObject, fontString, fallback)
-            end
+    local applied = vesperTools:ApplyConfiguredFont(fontString, resolvedSize, resolvedFlags)
+    if not applied and not hasFont then
+        local fallback = fallbackObject or GameFontHighlightSmall or GameFontNormal or SystemFont_Shadow_Med1
+        if fallback then
+            pcall(fontString.SetFontObject, fontString, fallback)
+        end
 
-            if not (fontString.GetFont and fontString:GetFont()) then
-                pcall(fontString.SetFont, fontString, STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", resolvedSize, resolvedFlags)
-            end
+        if not (fontString.GetFont and fontString:GetFont()) then
+            pcall(fontString.SetFont, fontString, STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", resolvedSize, resolvedFlags)
         end
     end
 
     pcall(fontString.SetText, fontString, text or "")
+end
+
+local function applyConfiguredFontToWidgetObject(widget)
+    if not widget or type(widget.GetFont) ~= "function" or type(widget.SetFont) ~= "function" then
+        return
+    end
+
+    local _, size, flags = widget:GetFont()
+    vesperTools:ApplyConfiguredFont(widget, size or 12, flags or "")
+end
+
+local function applyConfiguredFontRecursively(widget, visited)
+    if not widget then
+        return
+    end
+
+    visited = visited or {}
+    if visited[widget] then
+        return
+    end
+    visited[widget] = true
+
+    applyConfiguredFontToWidgetObject(widget)
+
+    if type(widget.GetRegions) == "function" then
+        local regions = { widget:GetRegions() }
+        for i = 1, #regions do
+            local region = regions[i]
+            if region and type(region.GetObjectType) == "function" and region:GetObjectType() == "FontString" then
+                applyConfiguredFontToWidgetObject(region)
+            end
+        end
+    end
+
+    if type(widget.GetChildren) == "function" then
+        local children = { widget:GetChildren() }
+        for i = 1, #children do
+            applyConfiguredFontRecursively(children[i], visited)
+        end
+    end
 end
 
 -- Ensure the expected profile subtree exists before reading/writing config values.
@@ -95,7 +133,9 @@ local function ensureProfile()
     profile.style.fontSize.bestKeys = tonumber(profile.style.fontSize.bestKeys) or 11
 
     profile.portals = profile.portals or {}
-    profile.portals.primaryHearthstoneItemID = tonumber(profile.portals.primaryHearthstoneItemID) or 6948
+    if profile.portals.primaryHearthstoneItemID ~= nil then
+        profile.portals.primaryHearthstoneItemID = tonumber(profile.portals.primaryHearthstoneItemID) or 6948
+    end
     local minButtonSize, maxButtonSize, defaultButtonSize = vesperTools:GetTopUtilityButtonSizeBounds()
     profile.portals.utilityButtonSize = clamp(
         math.floor((tonumber(profile.portals.utilityButtonSize) or defaultButtonSize) + 0.5),
@@ -107,7 +147,11 @@ local function ensureProfile()
     else
         local sanitized = {}
         local seen = {}
+        local whitelistLimit = vesperTools:GetToyWhitelistLimit()
         for i = 1, #profile.portals.utilityToyWhitelist do
+            if #sanitized >= whitelistLimit then
+                break
+            end
             local itemID = tonumber(profile.portals.utilityToyWhitelist[i])
             if itemID and itemID > 0 and not seen[itemID] then
                 sanitized[#sanitized + 1] = itemID
@@ -147,6 +191,7 @@ function Configuration:OnInitialize()
     self.bagsStackCountFontSizeSlider = nil
     self.bagsItemLevelFontSizeSlider = nil
     self.bagsQualityGlowSlider = nil
+    self.bagsAllowGuildLookupRequestsCheckbox = nil
     self.bagsReplaceBlizzardCheckbox = nil
     self.bagsShowItemLevelCheckbox = nil
     self.bankColumnsSlider = nil
@@ -164,6 +209,15 @@ end
 -- Broadcast a single "config changed" message consumed by UI modules.
 function Configuration:NotifyConfigChanged()
     vesperTools:SendMessage("VESPERTOOLS_CONFIG_CHANGED")
+end
+
+function Configuration:RefreshPanelFonts()
+    if self.panel then
+        applyConfiguredFontRecursively(self.panel)
+    end
+    if self.toyWhitelistMenuFrame then
+        applyConfiguredFontRecursively(self.toyWhitelistMenuFrame)
+    end
 end
 
 -- Create a standardized opacity slider control for frame background alpha.
@@ -703,7 +757,7 @@ function Configuration:RefreshHearthstoneDropdownText()
         return
     end
 
-    local options = vesperTools:GetPrimaryHearthstoneOptions()
+    local options = vesperTools:GetPrimaryHearthstoneSelectionOptions()
     if type(options) ~= "table" or #options == 0 then
         self.hearthstoneDropdown:Disable()
         self.hearthstoneDropdown:SetAlpha(0.55)
@@ -778,15 +832,16 @@ end
 -- Open selector for primary hearthstone with icon rows.
 -- Fallback behavior cycles through available entries when MenuUtil is unavailable.
 function Configuration:OpenHearthstonePicker(anchorButton)
-    local profile = ensureProfile()
-    if not profile then
+    if not ensureProfile() then
         return
     end
 
-    local options = vesperTools:GetPrimaryHearthstoneOptions()
+    local options = vesperTools:GetPrimaryHearthstoneSelectionOptions()
     if type(options) ~= "table" or #options == 0 then
         return
     end
+
+    local selectedID = vesperTools:ResolvePrimaryHearthstoneID() or vesperTools:GetConfiguredPrimaryHearthstoneID()
 
     if MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
         local menuAnchor = self:GetContextMenuAnchor(anchorButton)
@@ -801,12 +856,12 @@ function Configuration:OpenHearthstonePicker(anchorButton)
                     icon,
                     option.name or string.format(L["ITEM_FALLBACK_FMT"], tostring(option.itemID))
                 )
-                if option.itemID == profile.portals.primaryHearthstoneItemID then
+                if option.itemID == selectedID then
                     optionLabel = "|cff81c784" .. optionLabel .. "|r"
                 end
 
                 rootDescription:CreateButton(optionLabel, function()
-                    profile.portals.primaryHearthstoneItemID = option.itemID
+                    vesperTools:SetConfiguredPrimaryHearthstoneID(option.itemID)
                     self:RefreshControls()
                     self:NotifyConfigChanged()
                 end)
@@ -817,7 +872,7 @@ function Configuration:OpenHearthstonePicker(anchorButton)
 
     local currentIndex = 1
     for i = 1, #options do
-        if options[i].itemID == profile.portals.primaryHearthstoneItemID then
+        if options[i].itemID == selectedID then
             currentIndex = i
             break
         end
@@ -828,7 +883,7 @@ function Configuration:OpenHearthstonePicker(anchorButton)
         nextIndex = 1
     end
 
-    profile.portals.primaryHearthstoneItemID = options[nextIndex].itemID
+    vesperTools:SetConfiguredPrimaryHearthstoneID(options[nextIndex].itemID)
     self:RefreshControls()
     self:NotifyConfigChanged()
 end
@@ -944,6 +999,8 @@ function Configuration:RefreshToyWhitelistMenu()
     local sortedOptions = {}
     local whitelistMap = {}
     local whitelist = vesperTools:GetConfiguredToyWhitelist()
+    local whitelistLimit = vesperTools:GetToyWhitelistLimit()
+    local whitelistCount = #whitelist
     for i = 1, #whitelist do
         whitelistMap[whitelist[i]] = true
     end
@@ -1028,6 +1085,11 @@ function Configuration:RefreshToyWhitelistMenu()
                 row.Check:Hide()
             end
             row:SetScript("OnClick", function()
+                if not isSelected and whitelistCount >= whitelistLimit then
+                    self:SetToyLookupStatus(string.format(L["CONFIG_TOY_WHITELIST_LIMIT_FMT"], whitelistLimit), 1, 0.4, 0.4)
+                    return
+                end
+
                 vesperTools:SetToyWhitelisted(option.itemID, not isSelected)
                 self:RefreshControls()
                 self:NotifyConfigChanged()
@@ -1135,6 +1197,9 @@ function Configuration:AddToyToWhitelistByName()
         return
     end
 
+    local whitelistLimit = vesperTools:GetToyWhitelistLimit()
+    local whitelistCount = #vesperTools:GetConfiguredToyWhitelist()
+
     -- Support direct numeric itemID entry as a reliable fallback path.
     local numericID = tonumber(query)
     if numericID and numericID > 0 then
@@ -1146,6 +1211,11 @@ function Configuration:AddToyToWhitelistByName()
 
         if vesperTools:IsToyWhitelisted(toyID) then
             self:SetToyLookupStatus(string.format(L["CONFIG_ALREADY_WHITELISTED_ITEM_FMT"], tostring(toyID)), 1, 0.7, 0.2)
+            return
+        end
+
+        if whitelistCount >= whitelistLimit then
+            self:SetToyLookupStatus(string.format(L["CONFIG_TOY_WHITELIST_LIMIT_FMT"], whitelistLimit), 1, 0.4, 0.4)
             return
         end
 
@@ -1175,6 +1245,11 @@ function Configuration:AddToyToWhitelistByName()
 
     if vesperTools:IsToyWhitelisted(match.itemID) then
         self:SetToyLookupStatus(string.format(L["CONFIG_ALREADY_WHITELISTED_FMT"], match.name or L["TOY_FALLBACK"]), 1, 0.7, 0.2)
+        return
+    end
+
+    if whitelistCount >= whitelistLimit then
+        self:SetToyLookupStatus(string.format(L["CONFIG_TOY_WHITELIST_LIMIT_FMT"], whitelistLimit), 1, 0.4, 0.4)
         return
     end
 
@@ -1458,8 +1533,32 @@ function Configuration:BuildPanel()
         -30
     )
 
+    local bagsAllowGuildLookupRequestsCheckbox = self:CreateCheckButton(
+        "vesperToolsConfigBagsAllowGuildLookupRequestsCheckbox",
+        bagsTab,
+        L["CONFIG_BAGS_ALLOW_GUILD_LOOKUP_REQUESTS"],
+        bagsTab,
+        -2
+    )
+    bagsAllowGuildLookupRequestsCheckbox:ClearAllPoints()
+    bagsAllowGuildLookupRequestsCheckbox:SetPoint("TOPLEFT", 0, -2)
+
+    local bagsGuildLookupHint = bagsTab:CreateFontString(nil, "ARTWORK")
+    bagsGuildLookupHint:SetPoint("TOPLEFT", bagsAllowGuildLookupRequestsCheckbox, "BOTTOMLEFT", 4, -2)
+    bagsGuildLookupHint:SetWidth(400)
+    bagsGuildLookupHint:SetJustifyH("LEFT")
+    bagsGuildLookupHint:SetJustifyV("TOP")
+    setFontStringTextSafe(
+        bagsGuildLookupHint,
+        L["CONFIG_BAGS_ALLOW_GUILD_LOOKUP_REQUESTS_HINT"],
+        11,
+        "",
+        GameFontHighlightSmall
+    )
+    bagsGuildLookupHint:SetTextColor(0.78, 0.82, 0.9, 1)
+
     local bagsSectionTitle = bagsTab:CreateFontString(nil, "ARTWORK")
-    bagsSectionTitle:SetPoint("TOPLEFT", 0, -2)
+    bagsSectionTitle:SetPoint("TOPLEFT", bagsGuildLookupHint, "BOTTOMLEFT", -4, -12)
     setFontStringTextSafe(bagsSectionTitle, L["CONFIG_SECTION_BAGS_WINDOW"], 13, "OUTLINE", GameFontHighlight)
 
     local bagsColumnsSlider = self:CreateIntegerSlider(
@@ -1728,6 +1827,20 @@ function Configuration:BuildPanel()
         end)
     end
 
+    local function bindBagsGuildLookupCheckBox(checkbox, fieldKey)
+        checkbox:SetScript("OnClick", function(changedCheckbox)
+            local bagsProfile = ensureBagsProfile()
+            if not bagsProfile then
+                return
+            end
+            bagsProfile.guildLookup = bagsProfile.guildLookup or {}
+            bagsProfile.guildLookup[fieldKey] = changedCheckbox:GetChecked() and true or false
+            if not self._isRefreshing then
+                self:NotifyConfigChanged()
+            end
+        end)
+    end
+
     local function bindBankReplacementCheckBox(checkbox)
         checkbox:SetScript("OnClick", function(changedCheckbox)
             local bagsProfile = ensureBagsProfile()
@@ -1757,6 +1870,7 @@ function Configuration:BuildPanel()
     bindInventoryIntegerSlider(bagsStackCountFontSizeSlider, "display", "stackCountFontSize", 8, 20)
     bindInventoryIntegerSlider(bagsItemLevelFontSizeSlider, "display", "itemLevelFontSize", 8, 18)
     bindInventoryPercentSlider(bagsQualityGlowSlider, "display", "qualityGlowIntensity")
+    bindBagsGuildLookupCheckBox(bagsAllowGuildLookupRequestsCheckbox, "allowIncomingRequests")
     bindInventoryCheckBox(bagsShowItemLevelCheckbox, "display", "showItemLevel")
     bindBagsFlagCheckBox(bagsReplaceBlizzardCheckbox, "replaceBackpack")
     bindInventoryIntegerSlider(bankColumnsSlider, "bankDisplay", "columns", 1, 20)
@@ -1793,6 +1907,7 @@ function Configuration:BuildPanel()
     self.bagsStackCountFontSizeSlider = bagsStackCountFontSizeSlider
     self.bagsItemLevelFontSizeSlider = bagsItemLevelFontSizeSlider
     self.bagsQualityGlowSlider = bagsQualityGlowSlider
+    self.bagsAllowGuildLookupRequestsCheckbox = bagsAllowGuildLookupRequestsCheckbox
     self.bagsReplaceBlizzardCheckbox = bagsReplaceBlizzardCheckbox
     self.bagsShowItemLevelCheckbox = bagsShowItemLevelCheckbox
     self.bankColumnsSlider = bankColumnsSlider
@@ -1837,6 +1952,7 @@ function Configuration:RefreshControls()
     local bagsStackCountFontSize = clamp(math.floor((tonumber(bagsProfile.display.stackCountFontSize) or 11) + 0.5), 8, 20)
     local bagsItemLevelFontSize = clamp(math.floor((tonumber(bagsProfile.display.itemLevelFontSize) or 9) + 0.5), 8, 18)
     local bagsQualityGlow = clamp(tonumber(bagsProfile.display.qualityGlowIntensity) or 0.65, 0, 1)
+    local bagsAllowGuildLookupRequests = bagsProfile.guildLookup.allowIncomingRequests and true or false
     local bagsReplaceBlizzard = bagsProfile.replaceBackpack and true or false
     local bagsShowItemLevel = bagsProfile.display.showItemLevel and true or false
     local bankColumns = clamp(math.floor((tonumber(bagsProfile.bankDisplay.columns) or 10) + 0.5), 1, 20)
@@ -1895,6 +2011,9 @@ function Configuration:RefreshControls()
         self.bagsQualityGlowSlider:SetValue(bagsQualityGlow)
         self:UpdatePercentSliderLabel(self.bagsQualityGlowSlider)
     end
+    if self.bagsAllowGuildLookupRequestsCheckbox then
+        self.bagsAllowGuildLookupRequestsCheckbox:SetChecked(bagsAllowGuildLookupRequests)
+    end
     if self.bagsReplaceBlizzardCheckbox then
         self.bagsReplaceBlizzardCheckbox:SetChecked(bagsReplaceBlizzard)
     end
@@ -1945,6 +2064,8 @@ function Configuration:RefreshControls()
     elseif self.toyLookupStatusText and self.toyLookupStatusText:GetText() == L["CONFIG_NO_TOYS_DETECTED"] then
         self:SetToyLookupStatus("", 0.78, 0.82, 0.9)
     end
+
+    self:RefreshPanelFonts()
 
     self._isRefreshing = false
 end

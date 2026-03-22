@@ -20,6 +20,8 @@ local BAG_HOOK_SPECS = {
     { name = "OpenBag", action = "show", expectsBagID = true },
 }
 
+local MERCHANT_BAG_OPEN_GRACE_SECONDS = 0.5
+
 function vesperTools_ToggleBags()
     local addon = vesperTools or (LibStub and LibStub("AceAddon-3.0", true) and LibStub("AceAddon-3.0"):GetAddon("vesperTools", true))
     if not addon then
@@ -49,12 +51,18 @@ function BagsBridge:OnInitialize()
     self.bankFrameSuppressed = false
     self.activeBankInteractionType = nil
     self.bankSessionOpenedBags = false
+    self.merchantSessionActive = false
+    self.merchantSessionOpenedBags = false
+    self.pendingMerchantBagOpenAt = nil
+    self.merchantFrameHooked = false
 end
 
 function BagsBridge:OnEnable()
     self:RegisterEvent("PLAYER_LOGIN")
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
     self:RegisterEvent("UPDATE_BINDINGS")
+    self:RegisterEvent("MERCHANT_SHOW")
+    self:RegisterEvent("MERCHANT_CLOSED")
     self:RegisterEvent("BANKFRAME_OPENED")
     self:RegisterEvent("BANKFRAME_CLOSED")
     self:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
@@ -62,6 +70,7 @@ function BagsBridge:OnEnable()
     self:RegisterEvent("ADDON_LOADED")
     self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "OnConfigChanged")
     self:InstallHooks()
+    self:InstallMerchantFrameHooks()
     self:RefreshReplacementState()
 end
 
@@ -139,6 +148,24 @@ function BagsBridge:InstallButtonHooks()
     end
 end
 
+function BagsBridge:InstallMerchantFrameHooks()
+    if self.merchantFrameHooked or not MerchantFrame then
+        return
+    end
+
+    MerchantFrame:HookScript("OnShow", function()
+        if self:IsEnabled() then
+            self:HandleMerchantSessionOpened()
+        end
+    end)
+    MerchantFrame:HookScript("OnHide", function()
+        if self:IsEnabled() then
+            self:HandleMerchantSessionClosed()
+        end
+    end)
+    self.merchantFrameHooked = true
+end
+
 function BagsBridge:IsTrackedBackpackBagID(bagID)
     if type(bagID) ~= "number" then
         return false
@@ -173,7 +200,24 @@ function BagsBridge:HideBlizzardBags()
     end
 end
 
-function BagsBridge:ShowReplacementWindow()
+function BagsBridge:TrackMerchantOwnedBagOpen(source, wasShown, BagsWindow)
+    local isShown = BagsWindow and BagsWindow.frame and BagsWindow.frame:IsShown() and true or false
+    if wasShown or not isShown then
+        return
+    end
+
+    if self:IsMerchantSessionActive() then
+        self.merchantSessionOpenedBags = true
+        self.pendingMerchantBagOpenAt = nil
+        return
+    end
+
+    if source == "hook" then
+        self.pendingMerchantBagOpenAt = GetTime()
+    end
+end
+
+function BagsBridge:ShowReplacementWindow(source)
     if not self:IsBackpackReplacementEnabled() then
         return
     end
@@ -183,8 +227,10 @@ function BagsBridge:ShowReplacementWindow()
         return
     end
 
+    local wasShown = BagsWindow.frame and BagsWindow.frame:IsShown() and true or false
     self:HideBlizzardBags()
     BagsWindow:ShowWindow()
+    self:TrackMerchantOwnedBagOpen(source, wasShown, BagsWindow)
 end
 
 function BagsBridge:ToggleReplacementWindow(source)
@@ -197,8 +243,10 @@ function BagsBridge:ToggleReplacementWindow(source)
         return
     end
 
+    local wasShown = BagsWindow.frame and BagsWindow.frame:IsShown() and true or false
     self:HideBlizzardBags()
     BagsWindow:Toggle()
+    self:TrackMerchantOwnedBagOpen(source, wasShown, BagsWindow)
 end
 
 function BagsBridge:QueueReplacementAction(action)
@@ -231,7 +279,7 @@ function BagsBridge:QueueReplacementAction(action)
         if pendingAction == "toggle" then
             self:ToggleReplacementWindow("hook")
         elseif pendingAction == "show" then
-            self:ShowReplacementWindow()
+            self:ShowReplacementWindow("hook")
         end
     end)
 end
@@ -418,6 +466,23 @@ function BagsBridge:IsBankInteractionType(interactionType)
         or interactionType == Enum.PlayerInteractionType.AccountBanker
 end
 
+function BagsBridge:IsMerchantSessionActive()
+    if self.merchantSessionActive then
+        return true
+    end
+
+    return MerchantFrame and MerchantFrame:IsShown() and true or false
+end
+
+function BagsBridge:HasRecentPendingMerchantBagOpen()
+    local pendingAt = self.pendingMerchantBagOpenAt
+    if type(pendingAt) ~= "number" then
+        return false
+    end
+
+    return (GetTime() - pendingAt) <= MERCHANT_BAG_OPEN_GRACE_SECONDS
+end
+
 function BagsBridge:PLAYER_INTERACTION_MANAGER_FRAME_SHOW(_, interactionType)
     if self:IsBankInteractionType(interactionType) then
         self.activeBankInteractionType = interactionType
@@ -501,6 +566,21 @@ function BagsBridge:ShowBagsForLiveBankSession()
     self.bankSessionOpenedBags = not wasShown
 end
 
+function BagsBridge:HideBagsOpenedForMerchantSession()
+    if not self.merchantSessionOpenedBags then
+        return
+    end
+
+    self.merchantSessionOpenedBags = false
+
+    local BagsWindow = vesperTools:GetModule("BagsWindow", true)
+    if not BagsWindow or not BagsWindow.frame or not BagsWindow.frame:IsShown() then
+        return
+    end
+
+    BagsWindow.frame:Hide()
+end
+
 function BagsBridge:HideBagsOpenedForBankSession()
     if not self.bankSessionOpenedBags then
         return
@@ -520,6 +600,23 @@ function BagsBridge:HandleBankSessionClosed()
     self.activeBankInteractionType = nil
     self:HideBankReplacementWindow()
     self:HideBagsOpenedForBankSession()
+end
+
+function BagsBridge:HandleMerchantSessionOpened()
+    local BagsWindow = vesperTools:GetModule("BagsWindow", true)
+    local bagsAreShown = BagsWindow and BagsWindow.frame and BagsWindow.frame:IsShown() and true or false
+
+    self.merchantSessionActive = true
+    if bagsAreShown and self:HasRecentPendingMerchantBagOpen() then
+        self.merchantSessionOpenedBags = true
+        self.pendingMerchantBagOpenAt = nil
+    end
+end
+
+function BagsBridge:HandleMerchantSessionClosed()
+    self.merchantSessionActive = false
+    self.pendingMerchantBagOpenAt = nil
+    self:HideBagsOpenedForMerchantSession()
 end
 
 function BagsBridge:HandleBankSessionOpened()
@@ -546,7 +643,17 @@ function BagsBridge:BANKFRAME_CLOSED()
     self:HandleBankSessionClosed()
 end
 
+function BagsBridge:MERCHANT_SHOW()
+    self:HandleMerchantSessionOpened()
+end
+
+function BagsBridge:MERCHANT_CLOSED()
+    self:HandleMerchantSessionClosed()
+end
+
 function BagsBridge:ADDON_LOADED(_, addonName)
+    self:InstallMerchantFrameHooks()
+
     if addonName == "Blizzard_BankUI" then
         self:ApplyBankFrameReplacementState()
     end

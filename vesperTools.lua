@@ -44,6 +44,8 @@ end
 -- Shared default font used when profile-specific value is missing or invalid.
 local DEFAULT_FONT_PATH = "Interface\\AddOns\\vesperTools\\Media\\expressway.ttf"
 local DEFAULT_PRIMARY_HEARTHSTONE_ID = 6948
+local RANDOM_DISCO_HEARTHSTONE_ID = -1
+local RANDOM_DISCO_ICON_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\RandomDisco-64"
 local PREFERRED_SECONDARY_HEARTHSTONE_ID = 253629 -- Personal Key to the Arcantina
 local DEFAULT_TOP_UTILITY_BUTTON_SIZE = 52
 local MIN_TOP_UTILITY_BUTTON_SIZE = 32
@@ -63,6 +65,7 @@ local DEFAULT_BANK_ITEM_ICON_SIZE = 38
 local DEFAULT_BANK_STACK_COUNT_FONT_SIZE = 11
 local DEFAULT_BANK_ITEM_LEVEL_FONT_SIZE = 9
 local DEFAULT_BANK_QUALITY_GLOW_INTENSITY = 0.65
+local MAX_UTILITY_TOY_WHITELIST = 15
 local MODERN_CLOSE_BUTTON_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\CloseModern-128"
 
 -- Curated font options exposed in configuration UI.
@@ -143,6 +146,20 @@ local function normalizeIcon(iconValue)
     end
 
     return nil
+end
+
+local function sanitizePrimaryHearthstoneSelection(value)
+    local numeric = tonumber(value)
+    if numeric == RANDOM_DISCO_HEARTHSTONE_ID then
+        return RANDOM_DISCO_HEARTHSTONE_ID
+    end
+
+    numeric = math.floor((numeric or DEFAULT_PRIMARY_HEARTHSTONE_ID) + 0.5)
+    if numeric <= 0 then
+        return DEFAULT_PRIMARY_HEARTHSTONE_ID
+    end
+
+    return numeric
 end
 
 -- Resolve display name and icon with layered fallbacks (toy API -> item APIs -> question mark).
@@ -369,6 +386,27 @@ function vesperTools:GetHearthstoneCatalog()
     return HEARTHSTONE_CATALOG
 end
 
+function vesperTools:GetRandomDiscoHearthstoneID()
+    return RANDOM_DISCO_HEARTHSTONE_ID
+end
+
+function vesperTools:IsRandomDiscoHearthstoneSelection(itemID)
+    return tonumber(itemID) == RANDOM_DISCO_HEARTHSTONE_ID
+end
+
+function vesperTools:GetRandomDiscoHearthstoneOption()
+    return {
+        itemID = RANDOM_DISCO_HEARTHSTONE_ID,
+        name = L["HEARTHSTONE_RANDOM_DISCO"],
+        icon = RANDOM_DISCO_ICON_TEXTURE,
+        isRandomDisco = true,
+    }
+end
+
+function vesperTools:GetToyWhitelistLimit()
+    return MAX_UTILITY_TOY_WHITELIST
+end
+
 -- Return currently usable hearthstone variants with cached display metadata.
 function vesperTools:GetAvailableHearthstoneOptions()
     local options = {}
@@ -411,6 +449,22 @@ function vesperTools:GetPrimaryHearthstoneOptions()
     end
 
     return filtered
+end
+
+-- Return config-facing primary hearthstone choices, including the random disco mode.
+function vesperTools:GetPrimaryHearthstoneSelectionOptions()
+    local options = self:GetPrimaryHearthstoneOptions()
+    if #options == 0 then
+        return options
+    end
+
+    local selectionOptions = {}
+    for i = 1, #options do
+        selectionOptions[i] = options[i]
+    end
+
+    selectionOptions[#selectionOptions + 1] = self:GetRandomDiscoHearthstoneOption()
+    return selectionOptions
 end
 
 -- Return all currently owned toys with cached display metadata.
@@ -494,6 +548,9 @@ function vesperTools:GetConfiguredToyWhitelist()
     local seen = {}
     for i = 1, #profile.portals.utilityToyWhitelist do
         local itemID = tonumber(profile.portals.utilityToyWhitelist[i])
+        if #sanitized >= MAX_UTILITY_TOY_WHITELIST then
+            break
+        end
         if itemID and itemID > 0 and not seen[itemID] then
             sanitized[#sanitized + 1] = itemID
             seen[itemID] = true
@@ -544,6 +601,9 @@ function vesperTools:SetToyWhitelisted(itemID, isWhitelisted)
 
     if isWhitelisted then
         if not hasEntry then
+            if #whitelist >= MAX_UTILITY_TOY_WHITELIST then
+                return false
+            end
             whitelist[#whitelist + 1] = targetID
         end
     else
@@ -591,17 +651,46 @@ function vesperTools:GetWhitelistedOwnedToyOptions()
     return filtered
 end
 
--- Read saved primary hearthstone selection with profile/default fallback.
+function vesperTools:GetCharacterPortalSettings()
+    if not self.db then
+        return nil
+    end
+
+    local charSettings = self.db.char or {}
+    self.db.char = charSettings
+
+    charSettings.portals = charSettings.portals or {}
+    local portals = charSettings.portals
+
+    if portals.primaryHearthstoneItemID == nil then
+        local legacyProfile = self.db.profile
+        local legacyValue = legacyProfile and legacyProfile.portals and legacyProfile.portals.primaryHearthstoneItemID
+        portals.primaryHearthstoneItemID = sanitizePrimaryHearthstoneSelection(legacyValue)
+    else
+        portals.primaryHearthstoneItemID = sanitizePrimaryHearthstoneSelection(portals.primaryHearthstoneItemID)
+    end
+
+    return portals
+end
+
+-- Read saved primary hearthstone selection with character/default fallback.
 function vesperTools:GetConfiguredPrimaryHearthstoneID()
-    local profile = self.db and self.db.profile
-    if not profile then
+    local portals = self:GetCharacterPortalSettings()
+    if not portals then
         return DEFAULT_PRIMARY_HEARTHSTONE_ID
     end
 
-    profile.portals = profile.portals or {}
-    local configured = tonumber(profile.portals.primaryHearthstoneItemID) or DEFAULT_PRIMARY_HEARTHSTONE_ID
-    profile.portals.primaryHearthstoneItemID = configured
-    return configured
+    return portals.primaryHearthstoneItemID
+end
+
+function vesperTools:SetConfiguredPrimaryHearthstoneID(itemID)
+    local portals = self:GetCharacterPortalSettings()
+    if not portals then
+        return DEFAULT_PRIMARY_HEARTHSTONE_ID
+    end
+
+    portals.primaryHearthstoneItemID = sanitizePrimaryHearthstoneSelection(itemID)
+    return portals.primaryHearthstoneItemID
 end
 
 -- Shared range used by both config UI and runtime layout for top utility button sizing.
@@ -641,6 +730,10 @@ function vesperTools:ResolvePrimaryHearthstoneID()
         return nil
     end
 
+    if configuredID == RANDOM_DISCO_HEARTHSTONE_ID then
+        return configuredID
+    end
+
     for i = 1, #options do
         if options[i].itemID == configuredID then
             return configuredID
@@ -648,12 +741,28 @@ function vesperTools:ResolvePrimaryHearthstoneID()
     end
 
     local fallbackID = options[1].itemID
-    local profile = self.db and self.db.profile
-    if profile then
-        profile.portals = profile.portals or {}
-        profile.portals.primaryHearthstoneItemID = fallbackID
-    end
+    self:SetConfiguredPrimaryHearthstoneID(fallbackID)
     return fallbackID
+end
+
+-- Pick one currently-usable hearthstone for RANDOM DISCO mode.
+function vesperTools:GetRandomPrimaryHearthstoneOption()
+    local options = self:GetPrimaryHearthstoneOptions()
+    if #options == 0 then
+        options = self:GetAvailableHearthstoneOptions()
+    end
+    if #options == 0 then
+        return nil
+    end
+
+    local choiceIndex = math.random(#options)
+    if #options > 1 and tonumber(self._lastRandomDiscoHearthstoneID) == options[choiceIndex].itemID then
+        choiceIndex = (choiceIndex % #options) + 1
+    end
+
+    local selected = options[choiceIndex]
+    self._lastRandomDiscoHearthstoneID = selected.itemID
+    return selected
 end
 
 -- Resolve secondary hearthstone with Arcantina-first preference.
@@ -882,13 +991,14 @@ function vesperTools:OnInitialize()
                 },
             },
             portals = {
-                -- User-selected hearthstone used by the primary top utility button.
-                primaryHearthstoneItemID = DEFAULT_PRIMARY_HEARTHSTONE_ID,
                 -- Toy IDs shown in the utility flyout button above portals.
                 utilityToyWhitelist = {},
                 -- Icon size used by top utility hearthstone/toy buttons.
                 utilityButtonSize = DEFAULT_TOP_UTILITY_BUTTON_SIZE,
             },
+        },
+        char = {
+            portals = {},
         },
         global = {
             keystones = {}, -- Persistent keystone storage
@@ -933,6 +1043,10 @@ function vesperTools:OnInitialize()
                 showItemLevel = false,
                 qualityGlowIntensity = DEFAULT_BANK_QUALITY_GLOW_INTENSITY,
                 combineStacks = false,
+            },
+            guildLookup = {
+                enabled = false,
+                allowIncomingRequests = false,
             },
             lastViewedCharacterGUID = nil,
             lastViewedBankCharacterGUID = nil,
@@ -1024,6 +1138,9 @@ function vesperTools:GetBagsProfile()
     profile.bankDisplay.showItemLevel = profile.bankDisplay.showItemLevel and true or false
     profile.bankDisplay.qualityGlowIntensity = math.max(0, math.min(1, tonumber(profile.bankDisplay.qualityGlowIntensity) or DEFAULT_BANK_QUALITY_GLOW_INTENSITY))
     profile.bankDisplay.combineStacks = profile.bankDisplay.combineStacks and true or false
+    profile.guildLookup = profile.guildLookup or {}
+    profile.guildLookup.enabled = profile.guildLookup.enabled and true or false
+    profile.guildLookup.allowIncomingRequests = profile.guildLookup.allowIncomingRequests and true or false
     if type(profile.collapsedCategories) ~= "table" then
         profile.collapsedCategories = {}
     end

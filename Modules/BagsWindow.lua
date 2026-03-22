@@ -26,8 +26,15 @@ local HEADER_ACTION_BUTTON_GAP = 6
 local TITLEBAR_SEARCH_WIDTH = 220
 local TITLEBAR_SEARCH_HEIGHT = 22
 local TITLEBAR_SEARCH_CLEAR_BUTTON_SIZE = 14
+local TITLEBAR_SEARCH_GROUP_OFFSET_X = -14
+local GUILD_LOOKUP_BUTTON_SIZE = 22
+local GUILD_LOOKUP_BUTTON_GAP = 6
 local CATEGORY_TOGGLE_BUTTON_SIZE = 14
 local CHARACTER_DROPDOWN_ARROW_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\DropdownArrow-50"
+local GUILD_LOOKUP_ICON_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\GuildLookupChest-64"
+local GUILD_LOOKUP_ICON_DISABLED_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\GuildLookupChest-64-Disabled"
+local GUILD_LOOKUP_RESULT_ROW_HEIGHT = 22
+local GUILD_LOOKUP_RESULT_MAX_VISIBLE_ROWS = 8
 local EQUIPPED_BAG_IDS = {}
 local REAGENT_BAG_ID = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or nil
 
@@ -103,6 +110,17 @@ function BagsWindow:OnInitialize()
     self.searchClearButton = nil
     self.searchPlaceholder = nil
     self.searchQuery = nil
+    self.guildLookupButton = nil
+    self.guildLookupButtonGlow = nil
+    self.guildLookupButtonIcon = nil
+    self.guildLookupResultsFrame = nil
+    self.guildLookupResultsTitle = nil
+    self.guildLookupResultsStatus = nil
+    self.guildLookupResultsDivider = nil
+    self.guildLookupResultsHeaders = nil
+    self.guildLookupResultsScrollFrame = nil
+    self.guildLookupResultsContent = nil
+    self.guildLookupResultRows = {}
     self.characterDropdown = nil
     self.characterDropdownText = nil
     self.characterDropdownMatchText = nil
@@ -138,10 +156,15 @@ function BagsWindow:OnEnable()
     self:RegisterMessage("VESPERTOOLS_BAGS_CHARACTER_UPDATED", "OnBagDataChanged")
     self:RegisterMessage("VESPERTOOLS_BAGS_INDEX_UPDATED", "OnBagDataChanged")
     self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "OnConfigChanged")
+    self:RegisterMessage("VESPERTOOLS_GUILD_LOOKUP_UPDATED", "OnGuildLookupUpdated")
 end
 
 function BagsWindow:GetStore()
     return vesperTools:GetModule("BagsStore", true)
+end
+
+function BagsWindow:GetGuildLookup()
+    return vesperTools:GetModule("GuildLookup", true)
 end
 
 function BagsWindow:OnBagDataChanged()
@@ -154,6 +177,10 @@ function BagsWindow:OnConfigChanged()
     if self.frame and self.frame:IsShown() then
         self:RefreshWindow()
     end
+end
+
+function BagsWindow:OnGuildLookupUpdated()
+    self:RefreshGuildLookupPresentation()
 end
 
 function BagsWindow:CleanupLegacyScrollArtifacts()
@@ -798,6 +825,371 @@ function BagsWindow:ConfigureCleanupButtonTooltip(button)
     GameTooltip:Show()
 end
 
+function BagsWindow:UpdateGuildLookupButtonVisual(isActive)
+    if not self.guildLookupButton then
+        return
+    end
+
+    local active = isActive and true or false
+    self.guildLookupButton:SetBackdropColor(0.08, 0.08, 0.1, active and 0.98 or 0.92)
+    self.guildLookupButton:SetBackdropBorderColor(active and 0.55 or 1, active and 0.84 or 1, active and 1 or 1, active and 0.42 or 0.12)
+    if self.guildLookupButtonIcon then
+        self.guildLookupButtonIcon:SetTexture(active and GUILD_LOOKUP_ICON_TEXTURE or GUILD_LOOKUP_ICON_DISABLED_TEXTURE)
+    end
+    if self.guildLookupButtonGlow then
+        if active then
+            self.guildLookupButtonGlow:Show()
+            self.guildLookupButtonGlow:SetAlpha(0.2)
+        else
+            self.guildLookupButtonGlow:SetAlpha(0)
+            self.guildLookupButtonGlow:Hide()
+        end
+    end
+end
+
+function BagsWindow:ConfigureGuildLookupButtonTooltip(button)
+    local guildLookup = self:GetGuildLookup()
+    local isActive = guildLookup and guildLookup:IsActive() or false
+    local remainingCooldown = guildLookup and guildLookup:GetRemainingCooldown() or 0
+
+    GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
+    GameTooltip:SetText(L["BAGS_GUILD_LOOKUP"], 1, 1, 1)
+    GameTooltip:AddLine(isActive and L["BAGS_GUILD_LOOKUP_ON"] or L["BAGS_GUILD_LOOKUP_OFF"], 0.85, 0.85, 0.85, true)
+    GameTooltip:AddLine(string.format(L["BAGS_GUILD_LOOKUP_MIN_CHARS_FMT"], guildLookup and guildLookup:GetMinimumQueryLength() or 4), 0.62, 0.84, 1, true)
+    if not IsInGuild() then
+        GameTooltip:AddLine(L["BAGS_GUILD_LOOKUP_RESULTS_UNAVAILABLE"], 1, 0.82, 0, true)
+    elseif remainingCooldown > 0 then
+        GameTooltip:AddLine(string.format(L["BAGS_GUILD_LOOKUP_COOLDOWN_FMT"], remainingCooldown), 1, 0.82, 0, true)
+    else
+        GameTooltip:AddLine(L["BAGS_GUILD_LOOKUP_ENTER_HINT"], 0.42, 0.94, 0.52, true)
+    end
+    GameTooltip:Show()
+end
+
+function BagsWindow:ToggleGuildLookup()
+    local guildLookup = self:GetGuildLookup()
+    if not guildLookup then
+        return
+    end
+
+    guildLookup:ToggleActive()
+end
+
+function BagsWindow:CommitSearchInput()
+    local text = self.searchBox and self.searchBox:GetText() or ""
+    self:SetSearchQuery(text)
+
+    local guildLookup = self:GetGuildLookup()
+    if guildLookup and guildLookup:IsActive() then
+        guildLookup:StartLookup(text)
+    end
+end
+
+function BagsWindow:GetGuildLookupResultsFrame()
+    if self.guildLookupResultsFrame then
+        if self.frame and self.frame.GetFrameLevel then
+            self.guildLookupResultsFrame:SetFrameLevel(math.max(90, (self.frame:GetFrameLevel() or 0) + 30))
+        end
+        return self.guildLookupResultsFrame
+    end
+
+    local resultsFrame = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
+    resultsFrame:SetClampedToScreen(true)
+    vesperTools:ApplyAddonWindowLayer(resultsFrame, self.frame and (self.frame:GetFrameLevel() or 0) + 30 or nil)
+    resultsFrame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    resultsFrame:SetBackdropColor(0.06, 0.06, 0.08, 0.98)
+    resultsFrame:SetBackdropBorderColor(0.55, 0.84, 1, 0.24)
+    resultsFrame:Hide()
+
+    local title = resultsFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 10, -10)
+    title:SetJustifyH("LEFT")
+    title:SetText(L["BAGS_GUILD_LOOKUP_RESULTS_TITLE"])
+    vesperTools:ApplyConfiguredFont(title, 12, "")
+    self.guildLookupResultsTitle = title
+
+    local status = resultsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    status:SetPoint("TOPRIGHT", resultsFrame, "TOPRIGHT", -10, -11)
+    status:SetWidth(280)
+    status:SetJustifyH("RIGHT")
+    status:SetWordWrap(false)
+    vesperTools:ApplyConfiguredFont(status, 11, "")
+    self.guildLookupResultsStatus = status
+
+    local divider = resultsFrame:CreateTexture(nil, "BACKGROUND")
+    divider:SetHeight(1)
+    divider:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 8, -30)
+    divider:SetPoint("TOPRIGHT", resultsFrame, "TOPRIGHT", -8, -30)
+    divider:SetColorTexture(1, 1, 1, 0.08)
+    self.guildLookupResultsDivider = divider
+
+    local itemHeader = resultsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    itemHeader:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 12, -41)
+    itemHeader:SetJustifyH("LEFT")
+    itemHeader:SetText(L["BAGS_GUILD_LOOKUP_ITEM"])
+    vesperTools:ApplyConfiguredFont(itemHeader, 11, "")
+
+    local countHeader = resultsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    countHeader:SetPoint("TOPRIGHT", resultsFrame, "TOPRIGHT", -38, -41)
+    countHeader:SetWidth(44)
+    countHeader:SetJustifyH("RIGHT")
+    countHeader:SetText(L["BAGS_GUILD_LOOKUP_COUNT"])
+    vesperTools:ApplyConfiguredFont(countHeader, 11, "")
+
+    local playerHeader = resultsFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    playerHeader:SetPoint("RIGHT", countHeader, "LEFT", -8, 0)
+    playerHeader:SetWidth(160)
+    playerHeader:SetJustifyH("LEFT")
+    playerHeader:SetText(L["BAGS_GUILD_LOOKUP_PLAYER"])
+    vesperTools:ApplyConfiguredFont(playerHeader, 11, "")
+
+    self.guildLookupResultsHeaders = {
+        item = itemHeader,
+        player = playerHeader,
+        count = countHeader,
+    }
+
+    local scrollFrame = CreateFrame("ScrollFrame", "vesperToolsGuildLookupResultsScrollFrame", resultsFrame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", resultsFrame, "TOPLEFT", 8, -52)
+    scrollFrame:SetPoint("BOTTOMRIGHT", resultsFrame, "BOTTOMRIGHT", -27, 8)
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(selfFrame, delta)
+        local current = selfFrame:GetVerticalScroll() or 0
+        local maximum = math.max(0, (selfFrame.contentHeight or 0) - (selfFrame:GetHeight() or 0))
+        local step = GUILD_LOOKUP_RESULT_ROW_HEIGHT * 2
+        local nextValue = math.max(0, math.min(maximum, current - (delta * step)))
+        selfFrame:SetVerticalScroll(nextValue)
+    end)
+
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetSize(1, 1)
+    scrollFrame:SetScrollChild(scrollChild)
+    scrollFrame.child = scrollChild
+    self.guildLookupResultsScrollFrame = scrollFrame
+    self.guildLookupResultsContent = scrollChild
+
+    self.guildLookupResultsFrame = resultsFrame
+    return resultsFrame
+end
+
+function BagsWindow:AcquireGuildLookupResultRow()
+    local parent = self.guildLookupResultsContent
+    if not parent then
+        return nil
+    end
+
+    local row = CreateFrame("Button", nil, parent)
+    row:SetHeight(GUILD_LOOKUP_RESULT_ROW_HEIGHT)
+    row:SetHighlightTexture("Interface\\Buttons\\WHITE8x8", "ADD")
+    row:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.18)
+
+    local icon = row:CreateTexture(nil, "ARTWORK")
+    icon:SetPoint("LEFT", row, "LEFT", 4, 0)
+    icon:SetSize(16, 16)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    row.icon = icon
+
+    local itemText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    itemText:SetPoint("LEFT", icon, "RIGHT", 8, 0)
+    itemText:SetJustifyH("LEFT")
+    itemText:SetWordWrap(false)
+    vesperTools:ApplyConfiguredFont(itemText, 11, "")
+    row.itemText = itemText
+
+    local countText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    countText:SetPoint("RIGHT", row, "RIGHT", -4, 0)
+    countText:SetWidth(44)
+    countText:SetJustifyH("RIGHT")
+    countText:SetWordWrap(false)
+    vesperTools:ApplyConfiguredFont(countText, 11, "")
+    row.countText = countText
+
+    local playerText = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    playerText:SetPoint("RIGHT", countText, "LEFT", -8, 0)
+    playerText:SetWidth(160)
+    playerText:SetJustifyH("LEFT")
+    playerText:SetWordWrap(false)
+    vesperTools:ApplyConfiguredFont(playerText, 11, "")
+    row.playerText = playerText
+
+    itemText:SetPoint("RIGHT", playerText, "LEFT", -8, 0)
+
+    self.guildLookupResultRows[#self.guildLookupResultRows + 1] = row
+    return row
+end
+
+function BagsWindow:ConfigureGuildLookupResultRowTooltip(row)
+    GameTooltip:SetOwner(row, "ANCHOR_RIGHT")
+    if type(row.hyperlink) == "string" and row.hyperlink ~= "" then
+        GameTooltip:SetHyperlink(row.hyperlink)
+    else
+        GameTooltip:SetText(row.itemName or buildFallbackItemName(row.itemID), 1, 1, 1)
+    end
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddDoubleLine(L["BAGS_GUILD_LOOKUP_PLAYER"], row.playerName or UNKNOWN, 0.85, 0.85, 0.85, 1, 1, 1)
+    GameTooltip:AddDoubleLine(L["BAGS_GUILD_LOOKUP_COUNT"], tostring(row.itemCount or 0), 0.85, 0.85, 0.85, 1, 1, 1)
+    GameTooltip:Show()
+end
+
+function BagsWindow:ConfigureGuildLookupResultRow(row, entry, availableWidth)
+    local playerColumnWidth = math.max(120, math.floor((availableWidth or 420) * 0.3))
+    row:SetSize(availableWidth, GUILD_LOOKUP_RESULT_ROW_HEIGHT)
+    row.itemID = entry.itemID
+    row.itemName = entry.itemName
+    row.hyperlink = entry.hyperlink
+    row.playerName = entry.sender
+    row.itemCount = tonumber(entry.count) or 0
+    row.icon:SetTexture(entry.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
+    row.itemText:SetText(entry.itemName or buildFallbackItemName(entry.itemID))
+    row.playerText:SetWidth(playerColumnWidth)
+    row.playerText:SetText(entry.sender or UNKNOWN)
+    row.countText:SetText(tostring(row.itemCount))
+
+    row:SetScript("OnEnter", function(selfRow)
+        self:ConfigureGuildLookupResultRowTooltip(selfRow)
+    end)
+    row:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    row:SetScript("OnClick", function(selfRow)
+        if type(selfRow.hyperlink) == "string" and selfRow.hyperlink ~= "" and HandleModifiedItemClick then
+            HandleModifiedItemClick(selfRow.hyperlink)
+        end
+    end)
+    row:Show()
+end
+
+function BagsWindow:RefreshGuildLookupResultsFrame()
+    local guildLookup = self:GetGuildLookup()
+    local resultsFrame = self.guildLookupResultsFrame
+    if not guildLookup or not self.frame or not self.frame:IsShown() then
+        if resultsFrame then
+            resultsFrame:Hide()
+        end
+        return
+    end
+
+    local state = guildLookup:GetDisplayState()
+    if not (guildLookup:IsActive() and state and state.visible) then
+        if resultsFrame then
+            resultsFrame:Hide()
+        end
+        return
+    end
+
+    resultsFrame = self:GetGuildLookupResultsFrame()
+    local results = state.results or {}
+    local resultCount = #results
+    local queryLabel = state.displayQueryText or state.queryText or ""
+    local statusText = ""
+
+    if state.status == "searching" then
+        statusText = string.format(L["BAGS_GUILD_LOOKUP_SEARCHING_FMT"], queryLabel)
+    elseif state.status == "too_short" then
+        statusText = string.format(L["BAGS_GUILD_LOOKUP_MIN_CHARS_FMT"], guildLookup:GetMinimumQueryLength())
+    elseif state.status == "cooldown" then
+        statusText = string.format(L["BAGS_GUILD_LOOKUP_COOLDOWN_FMT"], guildLookup:GetRemainingCooldown() > 0 and guildLookup:GetRemainingCooldown() or (tonumber(state.cooldownRemaining) or 0))
+    elseif state.status == "not_in_guild" then
+        statusText = L["BAGS_GUILD_LOOKUP_RESULTS_UNAVAILABLE"]
+    elseif state.status == "no_results" then
+        statusText = string.format(L["BAGS_GUILD_LOOKUP_RESULTS_NONE_FMT"], queryLabel)
+    else
+        statusText = string.format(L["BAGS_GUILD_LOOKUP_RESULTS_COUNT_FMT"], resultCount, queryLabel)
+    end
+
+    if state.truncated then
+        statusText = statusText .. " " .. L["BAGS_GUILD_LOOKUP_RESULTS_TRUNCATED"]
+    end
+
+    resultsFrame:ClearAllPoints()
+    resultsFrame:SetPoint("BOTTOMLEFT", self.frame, "TOPLEFT", 10, 6)
+    resultsFrame:SetPoint("BOTTOMRIGHT", self.frame, "TOPRIGHT", -10, 6)
+    resultsFrame:SetFrameLevel(math.max(90, (self.frame:GetFrameLevel() or 0) + 30))
+
+    local showRows = resultCount > 0
+    local visibleRows = math.max(1, math.min(resultCount, GUILD_LOOKUP_RESULT_MAX_VISIBLE_ROWS))
+    if showRows then
+        resultsFrame:SetHeight(64 + (visibleRows * GUILD_LOOKUP_RESULT_ROW_HEIGHT))
+    else
+        resultsFrame:SetHeight(56)
+    end
+
+    if self.guildLookupResultsTitle then
+        self.guildLookupResultsTitle:SetText(L["BAGS_GUILD_LOOKUP_RESULTS_TITLE"])
+    end
+    if self.guildLookupResultsStatus then
+        self.guildLookupResultsStatus:SetWidth(math.max(180, math.floor((resultsFrame:GetWidth() or 420) * 0.58)))
+        self.guildLookupResultsStatus:SetText(statusText)
+    end
+
+    if self.guildLookupResultsDivider then
+        self.guildLookupResultsDivider:SetShown(showRows)
+    end
+
+    if self.guildLookupResultsHeaders then
+        self.guildLookupResultsHeaders.item:SetShown(showRows)
+        self.guildLookupResultsHeaders.player:SetShown(showRows)
+        self.guildLookupResultsHeaders.count:SetShown(showRows)
+
+        local usableWidth = math.max(240, math.floor((resultsFrame:GetWidth() or 420) - 30))
+        self.guildLookupResultsHeaders.player:SetWidth(math.max(120, math.floor(usableWidth * 0.3)))
+    end
+
+    if self.guildLookupResultsScrollFrame and self.guildLookupResultsContent then
+        if showRows then
+            local contentWidth = math.max(240, math.floor((resultsFrame:GetWidth() or 420) - 42))
+            self.guildLookupResultsScrollFrame:Show()
+            self.guildLookupResultsContent:SetWidth(contentWidth)
+            self.guildLookupResultsContent:SetHeight(math.max(1, resultCount * GUILD_LOOKUP_RESULT_ROW_HEIGHT))
+            self.guildLookupResultsScrollFrame.contentHeight = resultCount * GUILD_LOOKUP_RESULT_ROW_HEIGHT
+            local scrollKey = string.format("%s:%s", tostring(state.queryText or ""), tostring(state.requestSentAt or 0))
+            if resultsFrame.lastScrollKey ~= scrollKey then
+                self.guildLookupResultsScrollFrame:SetVerticalScroll(0)
+                resultsFrame.lastScrollKey = scrollKey
+            end
+
+            for index = 1, resultCount do
+                local row = self.guildLookupResultRows[index] or self:AcquireGuildLookupResultRow()
+                row:ClearAllPoints()
+                row:SetPoint("TOPLEFT", self.guildLookupResultsContent, "TOPLEFT", 0, -((index - 1) * GUILD_LOOKUP_RESULT_ROW_HEIGHT))
+                self:ConfigureGuildLookupResultRow(row, results[index], contentWidth)
+            end
+
+            for index = resultCount + 1, #self.guildLookupResultRows do
+                self.guildLookupResultRows[index]:Hide()
+            end
+        else
+            self.guildLookupResultsScrollFrame:SetVerticalScroll(0)
+            self.guildLookupResultsScrollFrame.contentHeight = 0
+            self.guildLookupResultsScrollFrame:Hide()
+            resultsFrame.lastScrollKey = nil
+            for index = 1, #self.guildLookupResultRows do
+                self.guildLookupResultRows[index]:Hide()
+            end
+        end
+    end
+
+    resultsFrame:Show()
+    resultsFrame:Raise()
+end
+
+function BagsWindow:RefreshGuildLookupPresentation()
+    local guildLookup = self:GetGuildLookup()
+    local isActive = guildLookup and guildLookup:IsActive() or false
+
+    self:UpdateGuildLookupButtonVisual(isActive)
+
+    if self.frame and self.frame:IsShown() then
+        self:RefreshGuildLookupResultsFrame()
+    elseif self.guildLookupResultsFrame then
+        self.guildLookupResultsFrame:Hide()
+    end
+end
+
 function BagsWindow:CanClearNewItemsForSelectedCharacter()
     if not (C_NewItems and (C_NewItems.RemoveNewItem or C_NewItems.ClearAll)) then
         return false
@@ -906,6 +1298,10 @@ end
 function BagsWindow:ClearSearch()
     local hadQuery = self.searchQuery ~= nil
     self.searchQuery = nil
+    local guildLookup = self:GetGuildLookup()
+    if guildLookup then
+        guildLookup:ClearResults()
+    end
     if self.searchBox and self.searchBox:GetText() ~= "" then
         self.searchBox:SetText("")
     else
@@ -1121,7 +1517,7 @@ function BagsWindow:CreateWindow()
     self.modeText = modeText
 
     local searchBox = CreateFrame("EditBox", nil, titlebar, "BackdropTemplate")
-    searchBox:SetPoint("CENTER", titlebar, "CENTER", 0, 0)
+    searchBox:SetPoint("CENTER", titlebar, "CENTER", TITLEBAR_SEARCH_GROUP_OFFSET_X, 0)
     searchBox:SetSize(TITLEBAR_SEARCH_WIDTH, TITLEBAR_SEARCH_HEIGHT)
     searchBox:SetAutoFocus(false)
     searchBox:SetTextInsets(8, TITLEBAR_SEARCH_CLEAR_BUTTON_SIZE + 10, 0, 0)
@@ -1136,7 +1532,10 @@ function BagsWindow:CreateWindow()
     searchBox:SetScript("OnTextChanged", function(selfBox, userInput)
         self:UpdateSearchPlaceholder()
         if userInput then
-            self:SetSearchQuery(selfBox:GetText())
+            local guildLookup = self:GetGuildLookup()
+            if not (guildLookup and guildLookup:IsActive()) then
+                self:SetSearchQuery(selfBox:GetText())
+            end
         end
     end)
     searchBox:SetScript("OnEditFocusGained", function()
@@ -1146,6 +1545,10 @@ function BagsWindow:CreateWindow()
         self:UpdateSearchPlaceholder()
     end)
     searchBox:SetScript("OnEnterPressed", function(selfBox)
+        local guildLookup = self:GetGuildLookup()
+        if guildLookup and guildLookup:IsActive() then
+            self:CommitSearchInput()
+        end
         selfBox:ClearFocus()
     end)
     searchBox:SetScript("OnEscapePressed", function(selfBox)
@@ -1169,6 +1572,48 @@ function BagsWindow:CreateWindow()
     })
     searchClearButton:SetPoint("RIGHT", searchBox, "RIGHT", -3, 0)
     self.searchClearButton = searchClearButton
+
+    local guildLookupButton = CreateFrame("Button", nil, titlebar, "BackdropTemplate")
+    guildLookupButton:SetPoint("LEFT", searchBox, "RIGHT", GUILD_LOOKUP_BUTTON_GAP, 0)
+    guildLookupButton:SetSize(GUILD_LOOKUP_BUTTON_SIZE, GUILD_LOOKUP_BUTTON_SIZE)
+    guildLookupButton:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    guildLookupButton:SetBackdropColor(0.08, 0.08, 0.1, 0.92)
+    guildLookupButton:SetBackdropBorderColor(1, 1, 1, 0.12)
+    guildLookupButton:SetHighlightTexture("Interface\\Buttons\\WHITE8x8", "ADD")
+    guildLookupButton:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.2)
+    guildLookupButton:SetPushedTexture("Interface\\Buttons\\WHITE8x8")
+    guildLookupButton:GetPushedTexture():SetVertexColor(0.12, 0.2, 0.3, 0.36)
+    guildLookupButton:SetScript("OnClick", function()
+        self:ToggleGuildLookup()
+    end)
+    guildLookupButton:SetScript("OnEnter", function(selfButton)
+        self:ConfigureGuildLookupButtonTooltip(selfButton)
+    end)
+    guildLookupButton:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    self.guildLookupButton = guildLookupButton
+
+    local guildLookupButtonGlow = guildLookupButton:CreateTexture(nil, "BACKGROUND")
+    guildLookupButtonGlow:SetPoint("TOPLEFT", guildLookupButton, "TOPLEFT", 1, -1)
+    guildLookupButtonGlow:SetPoint("BOTTOMRIGHT", guildLookupButton, "BOTTOMRIGHT", -1, 1)
+    guildLookupButtonGlow:SetTexture("Interface\\Buttons\\WHITE8x8")
+    guildLookupButtonGlow:SetVertexColor(0.36, 0.66, 1, 1)
+    guildLookupButtonGlow:SetBlendMode("ADD")
+    guildLookupButtonGlow:SetAlpha(0)
+    guildLookupButtonGlow:Hide()
+    self.guildLookupButtonGlow = guildLookupButtonGlow
+
+    local guildLookupButtonIcon = guildLookupButton:CreateTexture(nil, "ARTWORK")
+    guildLookupButtonIcon:SetPoint("TOPLEFT", guildLookupButton, "TOPLEFT", 3, -3)
+    guildLookupButtonIcon:SetPoint("BOTTOMRIGHT", guildLookupButton, "BOTTOMRIGHT", -3, 3)
+    guildLookupButtonIcon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    guildLookupButtonIcon:SetTexture(GUILD_LOOKUP_ICON_DISABLED_TEXTURE)
+    self.guildLookupButtonIcon = guildLookupButtonIcon
 
     local searchPlaceholder = searchBox:CreateFontString(nil, "ARTWORK", "GameFontDisableSmall")
     searchPlaceholder:SetPoint("LEFT", searchBox, "LEFT", 8, 0)
@@ -1367,8 +1812,10 @@ function BagsWindow:CreateWindow()
         self:HideCharacterMenu()
         self:HideBagSlotsMenu()
         self:ClearSearch()
+        self:RefreshGuildLookupPresentation()
     end)
     self:UpdateSearchPlaceholder()
+    self:RefreshGuildLookupPresentation()
     self:CleanupLegacyScrollArtifacts()
 end
 
@@ -2010,6 +2457,7 @@ function BagsWindow:RefreshWindow()
     local viewSettings = self:GetViewSettings()
     self:UpdateBagSlotsButtonVisual(self.bagSlotsMenu and self.bagSlotsMenu:IsShown())
     self:UpdateCombineStacksButtonVisual(viewSettings.combineStacks)
+    self:RefreshGuildLookupPresentation()
 
     local store = self:GetStore()
     if not store then
@@ -2040,6 +2488,7 @@ function BagsWindow:RefreshWindow()
         self.frame:SetSize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
         self.emptyText:SetWidth(MIN_WINDOW_WIDTH - 60)
         self.content:SetSize(MIN_WINDOW_WIDTH - 32, 40)
+        self:RefreshGuildLookupPresentation()
         self:SaveWindowState()
         return
     end
@@ -2070,6 +2519,7 @@ function BagsWindow:RefreshWindow()
         self.frame:SetSize(MIN_WINDOW_WIDTH, MIN_WINDOW_HEIGHT)
         self.emptyText:SetWidth(MIN_WINDOW_WIDTH - 60)
         self.content:SetSize(MIN_WINDOW_WIDTH - 32, 40)
+        self:RefreshGuildLookupPresentation()
         self:SaveWindowState()
         return
     end
@@ -2182,4 +2632,5 @@ function BagsWindow:RefreshWindow()
     end
 
     self.content:SetSize(contentWidth, layout.contentHeight)
+    self:RefreshGuildLookupPresentation()
 end

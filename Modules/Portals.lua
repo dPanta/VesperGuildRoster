@@ -8,6 +8,9 @@ local TOP_UTILITY_PADDING = 10
 local TOP_UTILITY_FRAME_VERTICAL_PADDING = 20
 local TOY_FLYOUT_BUTTON_GAP = 8
 local TOY_FLYOUT_PADDING = 8
+local TOY_FLYOUT_COLUMN_GAP = 8
+local TOY_FLYOUT_ANCHOR_Y_OFFSET = 8
+local TOY_FLYOUT_SCREEN_MARGIN = 10
 local COOLDOWN_TEXT_UPDATE_INTERVAL = 0.1
 
 -- Curated mage travel catalogs. We still supplement this with spellbook scanning so
@@ -142,6 +145,7 @@ function Portals:OnInitialize()
     self.knownMageTeleportSpells = {}
     self.knownMagePortalSpells = {}
     self.toyFlyoutButtons = {}
+    self.toyFlyoutColumnBackgrounds = {}
     self.cooldownButtons = {}
     self.cooldownUpdateElapsed = 0
     self:RegisterEvent("PLAYER_LOGIN")
@@ -226,7 +230,13 @@ function Portals:ApplyBackdropOpacity()
         self.topUtilityFrame:SetBackdropColor(0.07, 0.07, 0.07, portalsOpacity)
     end
     if self.toyFlyoutFrame then
-        self.toyFlyoutFrame:SetBackdropColor(0.07, 0.07, 0.07, portalsOpacity)
+        self.toyFlyoutFrame:SetBackdropColor(0.07, 0.07, 0.07, 0)
+    end
+    for i = 1, #(self.toyFlyoutColumnBackgrounds or {}) do
+        local background = self.toyFlyoutColumnBackgrounds[i]
+        if background then
+            background:SetBackdropColor(0.07, 0.07, 0.07, portalsOpacity)
+        end
     end
     if self.mplusProgFrame then
         self.mplusProgFrame:SetBackdropColor(0.07, 0.07, 0.07, bestKeysOpacity)
@@ -241,6 +251,7 @@ function Portals:OnConfigChanged()
     self:RefreshHearthstoneButtons()
     self:RefreshToyFlyout()
     self:RefreshMageTravelButtons()
+    self:RefreshCooldownTextFonts()
     self:RefreshActionCooldowns()
 
     if self.VesperPortalsUI and self.VesperPortalsUI:IsShown() then
@@ -474,6 +485,72 @@ function Portals:UpdateCooldownTextFont(button)
     button.cooldownText:SetShadowOffset(1, -1)
 end
 
+-- Reapply the selected addon font to every tracked cooldown label, even if currently hidden.
+function Portals:RefreshCooldownTextFonts()
+    local buttons = self.cooldownButtons or {}
+    for i = 1, #buttons do
+        local button = buttons[i]
+        if button and button.cooldownText then
+            self:UpdateCooldownTextFont(button)
+        end
+    end
+end
+
+function Portals:GetItemCooldownInfo(itemID)
+    local numericID = tonumber(itemID)
+    if not numericID or numericID <= 0 then
+        return 0, 0, 0
+    end
+
+    if C_Item and C_Item.GetItemCooldown then
+        local start, duration, enable = C_Item.GetItemCooldown(numericID)
+        return tonumber(start) or 0, tonumber(duration) or 0, (enable and enable ~= 0) and 1 or 0
+    end
+
+    if GetItemCooldown then
+        local start, duration, enable = GetItemCooldown(numericID)
+        return tonumber(start) or 0, tonumber(duration) or 0, (enable and enable ~= 0) and 1 or 0
+    end
+
+    return 0, 0, 0
+end
+
+-- RANDOM DISCO has no fixed item icon, so resolve a real hearthstone item to query shared cooldown state.
+function Portals:GetRandomDiscoCooldownItemID(button)
+    local preferredID = button and tonumber(button._randomDiscoItemID) or nil
+    local options = vesperTools:GetPrimaryHearthstoneOptions()
+    if #options == 0 then
+        options = vesperTools:GetAvailableHearthstoneOptions()
+    end
+    if #options == 0 then
+        return preferredID
+    end
+
+    local fallbackID = preferredID
+    local activePreferredID = nil
+    local activeFallbackID = nil
+
+    for i = 1, #options do
+        local itemID = tonumber(options[i].itemID)
+        if itemID and itemID > 0 then
+            if not fallbackID then
+                fallbackID = itemID
+            end
+
+            local start, duration, enabled = self:GetItemCooldownInfo(itemID)
+            if enabled ~= 0 and duration > 1.5 and start > 0 then
+                if preferredID and itemID == preferredID then
+                    activePreferredID = itemID
+                elseif not activeFallbackID then
+                    activeFallbackID = itemID
+                end
+            end
+        end
+    end
+
+    return activePreferredID or activeFallbackID or fallbackID
+end
+
 -- Reset one button back to an idle no-cooldown state.
 function Portals:ClearButtonCooldown(button)
     if not button then
@@ -599,16 +676,8 @@ function Portals:GetButtonCooldownInfo(button)
             return tonumber(start) or 0, tonumber(duration) or 0, (enabled and enabled ~= 0) and 1 or 0, tonumber(modRate) or 1
         end
     elseif sourceType == "item" then
-        -- Mainline: C_Item returns multiple values (start, duration, enableBool)
-        if C_Item and C_Item.GetItemCooldown then
-            local start, duration, enable = C_Item.GetItemCooldown(sourceID)
-            return tonumber(start) or 0, tonumber(duration) or 0, (enable and enable ~= 0) and 1 or 0, 1
-        end
-        -- Legacy global
-        if GetItemCooldown then
-            local start, duration, enable = GetItemCooldown(sourceID)
-            return tonumber(start) or 0, tonumber(duration) or 0, (enable and enable ~= 0) and 1 or 0, 1
-        end
+        local start, duration, enabled = self:GetItemCooldownInfo(sourceID)
+        return start, duration, enabled, 1
     end
 
     return 0, 0, 0, 1
@@ -759,7 +828,7 @@ function Portals:CreateToyFlyoutFrame()
         edgeFile = "Interface\\Buttons\\WHITE8x8",
         edgeSize = 1,
     })
-    self.toyFlyoutFrame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("portals"))
+    self.toyFlyoutFrame:SetBackdropColor(0.07, 0.07, 0.07, 0)
     self.toyFlyoutFrame:SetBackdropBorderColor(0, 0, 0, 0)
     self.toyFlyoutFrame:Hide()
 
@@ -770,6 +839,150 @@ function Portals:CreateToyFlyoutFrame()
     self.toyFlyoutFrame:SetScript("OnLeave", function()
         self:ScheduleToyFlyoutHideCheck()
     end)
+end
+
+function Portals:CreateToyFlyoutColumnBackground(parent)
+    local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
+    frame:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    frame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("portals"))
+    frame:SetBackdropBorderColor(0, 0, 0, 0)
+    frame:Hide()
+    return frame
+end
+
+-- Draw per-column backdrops so overflow columns only get background behind rows they actually use.
+function Portals:RefreshToyFlyoutColumnBackgrounds(layout, toyCount, buttonSize)
+    local backgrounds = self.toyFlyoutColumnBackgrounds or {}
+    self.toyFlyoutColumnBackgrounds = backgrounds
+
+    for i = 1, #backgrounds do
+        backgrounds[i]:Hide()
+    end
+
+    if not self.toyFlyoutFrame or not layout or not toyCount or toyCount <= 0 then
+        return
+    end
+
+    local resolvedButtonSize = tonumber(buttonSize) or self:GetTopUtilityButtonSize()
+    for columnIndex = 0, math.max(0, layout.columns - 1) do
+        local firstToyIndex = (columnIndex * layout.rowsPerColumn) + 1
+        local remaining = toyCount - firstToyIndex + 1
+        local rowsInColumn = math.min(layout.rowsPerColumn, remaining)
+        if rowsInColumn > 0 then
+            local background = backgrounds[columnIndex + 1]
+            if not background then
+                background = self:CreateToyFlyoutColumnBackground(self.toyFlyoutFrame)
+                backgrounds[columnIndex + 1] = background
+            end
+
+            local columnHeight = (TOY_FLYOUT_PADDING * 2)
+                + (rowsInColumn * resolvedButtonSize)
+                + ((rowsInColumn - 1) * TOY_FLYOUT_BUTTON_GAP)
+            background:SetSize(resolvedButtonSize + (TOY_FLYOUT_PADDING * 2), columnHeight)
+            background:ClearAllPoints()
+            background:SetPoint(
+                "BOTTOMLEFT",
+                self.toyFlyoutFrame,
+                "BOTTOMLEFT",
+                columnIndex * (resolvedButtonSize + TOY_FLYOUT_COLUMN_GAP),
+                0
+            )
+            background:Show()
+        end
+    end
+end
+
+-- Return screen-safe toy flyout layout so tall lists wrap into columns before going off-screen.
+function Portals:GetToyFlyoutLayout(toyCount, buttonSize)
+    local resolvedButtonSize = tonumber(buttonSize) or self:GetTopUtilityButtonSize()
+    local totalToys = math.max(0, math.floor(tonumber(toyCount) or 0))
+    if totalToys <= 0 then
+        return {
+            rowsPerColumn = 1,
+            columns = 1,
+            width = resolvedButtonSize + (TOY_FLYOUT_PADDING * 2),
+            height = resolvedButtonSize + (TOY_FLYOUT_PADDING * 2),
+        }
+    end
+
+    local uiTop = UIParent and (UIParent:GetTop() or UIParent:GetHeight()) or 0
+    local buttonTop = self.toyFlyoutButton and self.toyFlyoutButton:GetTop()
+    local availableHeight = nil
+    if uiTop and buttonTop then
+        availableHeight = uiTop - buttonTop - TOY_FLYOUT_ANCHOR_Y_OFFSET - TOY_FLYOUT_SCREEN_MARGIN
+    end
+
+    local rowStride = resolvedButtonSize + TOY_FLYOUT_BUTTON_GAP
+    local minHeight = (TOY_FLYOUT_PADDING * 2) + resolvedButtonSize
+    local rowsPerColumn
+    if availableHeight and availableHeight > 0 then
+        rowsPerColumn = math.floor((availableHeight - (TOY_FLYOUT_PADDING * 2) + TOY_FLYOUT_BUTTON_GAP) / rowStride)
+    end
+    rowsPerColumn = math.max(1, math.floor(tonumber(rowsPerColumn) or totalToys))
+
+    local columns = math.max(1, math.ceil(totalToys / rowsPerColumn))
+    local tallestColumnRows = math.min(totalToys, rowsPerColumn)
+    local width = (TOY_FLYOUT_PADDING * 2)
+        + (columns * resolvedButtonSize)
+        + ((columns - 1) * TOY_FLYOUT_COLUMN_GAP)
+    local height = (TOY_FLYOUT_PADDING * 2)
+        + (tallestColumnRows * resolvedButtonSize)
+        + ((tallestColumnRows - 1) * TOY_FLYOUT_BUTTON_GAP)
+
+    if height < minHeight then
+        height = minHeight
+    end
+
+    return {
+        rowsPerColumn = rowsPerColumn,
+        columns = columns,
+        width = width,
+        height = height,
+    }
+end
+
+-- Anchor the flyout above the toy button, then clamp it back onto the visible screen if needed.
+function Portals:PositionToyFlyoutFrame(width, height)
+    if not self.toyFlyoutFrame or not self.toyFlyoutButton then
+        return
+    end
+
+    local resolvedWidth = math.max(0, tonumber(width) or 0)
+    local resolvedHeight = math.max(0, tonumber(height) or 0)
+
+    local uiLeft = UIParent and (UIParent:GetLeft() or 0) or 0
+    local uiBottom = UIParent and (UIParent:GetBottom() or 0) or 0
+    local uiRight = UIParent and (UIParent:GetRight() or (uiLeft + (UIParent:GetWidth() or 0))) or resolvedWidth
+    local uiTop = UIParent and (UIParent:GetTop() or (uiBottom + (UIParent:GetHeight() or 0))) or resolvedHeight
+
+    local desiredLeft = (self.toyFlyoutButton:GetLeft() or uiLeft) + 0
+    local desiredBottom = (self.toyFlyoutButton:GetTop() or uiBottom) + TOY_FLYOUT_ANCHOR_Y_OFFSET
+
+    local minLeft = uiLeft + TOY_FLYOUT_SCREEN_MARGIN
+    local minBottom = uiBottom + TOY_FLYOUT_SCREEN_MARGIN
+    local maxRight = uiRight - TOY_FLYOUT_SCREEN_MARGIN
+    local maxTop = uiTop - TOY_FLYOUT_SCREEN_MARGIN
+
+    if desiredLeft + resolvedWidth > maxRight then
+        desiredLeft = maxRight - resolvedWidth
+    end
+    if desiredLeft < minLeft then
+        desiredLeft = minLeft
+    end
+
+    if desiredBottom + resolvedHeight > maxTop then
+        desiredBottom = maxTop - resolvedHeight
+    end
+    if desiredBottom < minBottom then
+        desiredBottom = minBottom
+    end
+
+    self.toyFlyoutFrame:ClearAllPoints()
+    self.toyFlyoutFrame:SetPoint("BOTTOMLEFT", UIParent, "BOTTOMLEFT", desiredLeft, desiredBottom)
 end
 
 -- Hide the toy flyout safely.
@@ -789,6 +1002,7 @@ function Portals:ShowToyFlyout()
         return
     end
     self._toyFlyoutHideToken = (tonumber(self._toyFlyoutHideToken) or 0) + 1
+    self:PositionToyFlyoutFrame(self.toyFlyoutFrame:GetWidth(), self.toyFlyoutFrame:GetHeight())
     self.toyFlyoutFrame:Show()
 end
 
@@ -879,9 +1093,6 @@ function Portals:RefreshToyFlyout()
         return
     end
 
-    self.toyFlyoutFrame:ClearAllPoints()
-    self.toyFlyoutFrame:SetPoint("BOTTOM", self.toyFlyoutButton, "TOP", 0, 8)
-
     if InCombatLockdown() then
         self.pendingUtilityRefresh = true
         return
@@ -895,12 +1106,17 @@ function Portals:RefreshToyFlyout()
     end
 
     if not hasToys then
-        self.toyFlyoutFrame:SetSize(buttonSize + (TOY_FLYOUT_PADDING * 2), buttonSize + (TOY_FLYOUT_PADDING * 2))
+        local emptySize = buttonSize + (TOY_FLYOUT_PADDING * 2)
+        self.toyFlyoutFrame:SetSize(emptySize, emptySize)
+        self:PositionToyFlyoutFrame(emptySize, emptySize)
+        self:RefreshToyFlyoutColumnBackgrounds(nil, 0, buttonSize)
         return
     end
 
-    local flyoutHeight = (TOY_FLYOUT_PADDING * 2) + (#toys * buttonSize) + ((#toys - 1) * TOY_FLYOUT_BUTTON_GAP)
-    self.toyFlyoutFrame:SetSize(buttonSize + (TOY_FLYOUT_PADDING * 2), flyoutHeight)
+    local layout = self:GetToyFlyoutLayout(#toys, buttonSize)
+    self.toyFlyoutFrame:SetSize(layout.width, layout.height)
+    self:PositionToyFlyoutFrame(layout.width, layout.height)
+    self:RefreshToyFlyoutColumnBackgrounds(layout, #toys, buttonSize)
 
     for i = 1, #toys do
         local option = toys[i]
@@ -910,13 +1126,17 @@ function Portals:RefreshToyFlyout()
             self.toyFlyoutButtons[i] = button
         end
 
+        local zeroIndex = i - 1
+        local column = math.floor(zeroIndex / layout.rowsPerColumn)
+        local row = zeroIndex % layout.rowsPerColumn
+
         button:ClearAllPoints()
         button:SetPoint(
-            "BOTTOM",
+            "BOTTOMLEFT",
             self.toyFlyoutFrame,
-            "BOTTOM",
-            0,
-            TOY_FLYOUT_PADDING + ((i - 1) * (buttonSize + TOY_FLYOUT_BUTTON_GAP))
+            "BOTTOMLEFT",
+            TOY_FLYOUT_PADDING + (column * (buttonSize + TOY_FLYOUT_COLUMN_GAP)),
+            TOY_FLYOUT_PADDING + (row * (buttonSize + TOY_FLYOUT_BUTTON_GAP))
         )
 
         button.icon:SetTexture(option.icon or FALLBACK_ICON_TEXTURE)
@@ -1014,6 +1234,18 @@ function Portals:CreateTopUtilityFrame()
 
     -- Two hearthstone buttons are always available.
     self.primaryHearthstoneButton = self:CreateTopUtilityButton(self.topUtilityFrame, "SecureActionButtonTemplate")
+    self.primaryHearthstoneButton:SetScript("PreClick", function(button)
+        self:PreparePrimaryHearthstoneClick(button)
+    end)
+    self.primaryHearthstoneButton:SetScript("PostClick", function()
+        if C_Timer and C_Timer.After then
+            C_Timer.After(0, function()
+                self:RefreshActionCooldowns()
+            end)
+        else
+            self:RefreshActionCooldowns()
+        end
+    end)
     self.secondaryHearthstoneButton = self:CreateTopUtilityButton(self.topUtilityFrame, "SecureActionButtonTemplate")
 
     -- Toy flyout button is available for all classes.
@@ -1116,6 +1348,31 @@ function Portals:RefreshMageTravelButtons()
     )
 end
 
+-- Prepare a fresh hearthstone choice immediately before a RANDOM DISCO click fires.
+function Portals:PreparePrimaryHearthstoneClick(button)
+    if not button or not button._isRandomDisco then
+        return
+    end
+
+    if InCombatLockdown() then
+        return
+    end
+
+    local option = vesperTools:GetRandomPrimaryHearthstoneOption()
+    if not option then
+        button:SetAttribute("macrotext1", nil)
+        button:SetAttribute("type1", nil)
+        button._randomDiscoItemID = nil
+        self:SetButtonCooldownSource(button, nil, nil)
+        return
+    end
+
+    button:SetAttribute("type1", "macro")
+    button:SetAttribute("macrotext1", "/use item:" .. tostring(option.itemID))
+    button._randomDiscoItemID = option.itemID
+    self:SetButtonCooldownSource(button, "item", option.itemID)
+end
+
 -- Apply one hearthstone option to one secure button.
 -- Called only out of combat because secure attributes are updated here.
 function Portals:ApplyHearthstoneOption(button, option)
@@ -1124,6 +1381,39 @@ function Portals:ApplyHearthstoneOption(button, option)
     end
 
     if option then
+        if option.isRandomDisco then
+            button.icon:SetTexture(option.icon or FALLBACK_ICON_TEXTURE)
+            button.icon:SetDrawLayer("ARTWORK", 1)
+            button.icon:SetVertexColor(1, 1, 1, 1)
+            button.icon:SetBlendMode("BLEND")
+            button.icon:SetDesaturated(false)
+            button.icon:SetAlpha(1)
+            button.icon:Show()
+            button:EnableMouse(true)
+
+            button:SetAttribute("type1", "macro")
+            if button._randomDiscoItemID then
+                button:SetAttribute("macrotext1", "/use item:" .. tostring(button._randomDiscoItemID))
+            else
+                button:SetAttribute("macrotext1", nil)
+            end
+
+            local cooldownItemID = self:GetRandomDiscoCooldownItemID(button)
+            if cooldownItemID then
+                self:SetButtonCooldownSource(button, "item", cooldownItemID)
+            else
+                self:SetButtonCooldownSource(button, nil, nil)
+            end
+
+            button._isRandomDisco = true
+            button._isAvailable = true
+            button._displayName = option.name or L["HEARTHSTONE"]
+            button._tooltipHint = L["UTILITY_TOOLTIP_RANDOM_HEARTHSTONE"]
+            button._unavailableText = L["NO_HEARTHSTONES_AVAILABLE"]
+            button._itemID = option.itemID
+            return
+        end
+
         local icon = normalizeTextureToken(option.icon)
 
         if not icon and C_Item and C_Item.GetItemIconByID then
@@ -1171,6 +1461,8 @@ function Portals:ApplyHearthstoneOption(button, option)
         button:SetAttribute("type1", "macro")
         button:SetAttribute("macrotext1", "/use item:" .. tostring(option.itemID))
 
+        button._isRandomDisco = false
+        button._randomDiscoItemID = nil
         button._isAvailable = true
         button._displayName = option.name or string.format(L["ITEM_FALLBACK_FMT"], tostring(option.itemID))
         button._tooltipHint = L["UTILITY_TOOLTIP_USE"]
@@ -1190,6 +1482,8 @@ function Portals:ApplyHearthstoneOption(button, option)
         button:SetAttribute("macrotext1", nil)
         button:SetAttribute("type1", nil)
 
+        button._isRandomDisco = false
+        button._randomDiscoItemID = nil
         button._isAvailable = false
         button._displayName = L["HEARTHSTONE"]
         button._tooltipHint = L["UTILITY_TOOLTIP_USE"]
@@ -1219,7 +1513,14 @@ function Portals:RefreshHearthstoneButtons()
     local primaryID = vesperTools:ResolvePrimaryHearthstoneID()
     local secondaryID = vesperTools:GetSecondaryHearthstoneID(primaryID)
 
-    self:ApplyHearthstoneOption(self.primaryHearthstoneButton, primaryID and optionsByID[primaryID] or nil)
+    local primaryOption = nil
+    if primaryID and vesperTools:IsRandomDiscoHearthstoneSelection(primaryID) then
+        primaryOption = vesperTools:GetRandomDiscoHearthstoneOption()
+    elseif primaryID then
+        primaryOption = optionsByID[primaryID]
+    end
+
+    self:ApplyHearthstoneOption(self.primaryHearthstoneButton, primaryOption)
     self:ApplyHearthstoneOption(self.secondaryHearthstoneButton, secondaryID and optionsByID[secondaryID] or nil)
     self:RefreshActionCooldowns()
 end

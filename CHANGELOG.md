@@ -1,12 +1,28 @@
+## 2.4.0 - 2026-03-22
+
+### Changed
+- Added a new chest-icon `Guild Lookup` mode to the bags window search bar, with saturated and desaturated shipped media assets plus an active glow state.
+- Added Retail guild-only bag query sync so players can request matching carried-bag items from online guild members running `vesperTools`, while ignoring non-guild senders.
+- Changed guild lookup mode to wait for `Enter` before searching, instead of updating dynamically while typing.
+- Added a shared 30 second guild lookup cooldown and capped response payloads to keep addon-message traffic safe for broad text queries.
+- Added a results frame above the bags window that lists matching items per player, split into separate `item / player / count` rows when a query matches multiple items.
+- Added minimum-length validation so guild lookups require at least 4 non-space characters before a request can be sent.
+- Added a new toggle at the top of the Bags configuration pane to opt in to guild lookup responses, with incoming requests disabled by default until each player explicitly enables them.
+
+### Notes
+- This release focuses on live guild inventory coordination for Retail/Midnight carried-bag searches without opening the feature up to unbounded spam.
+
 ## 2.3.0 - 2026-03-22
 
 ### Changed
 - Expanded carried-bag search so typing in the bags window now checks other characters' saved bag snapshots, matching the existing bank-style account-wide search behaviour.
 - Added green `Found(x)` indicators in the bag and bank character switcher menus to show how many snapshot items matched on each character.
 - Added the same `Found(x)` indicator to the currently selected character on the closed character dropdown so search feedback stays visible without opening the menu.
+- Made the primary hearthstone selection character-specific instead of profile-shared.
+- Added a `RANDOM DISCO` hearthstone mode for the primary utility button.
 
 ### Notes
-- This release focuses on account-wide inventory search visibility and faster cross-character item discovery.
+- This release adds hearthstone utility polish alongside the new account-wide inventory search visibility improvements.
 
 ## 2.2.0 - 2026-03-22
 

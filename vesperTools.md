@@ -21,6 +21,7 @@ I am making this as a tool for my guildies mostly, but it should work for everyo
 - Hearthstone, mage teleport, and toy flyout utilities
 - Full bags, bank, and warband bank replacement
 - Account-wide inventory browsing across characters
+- Search for items throughout the guild players inventories (see below)
 
 ---
 
@@ -93,7 +94,8 @@ Example:
 Quick access to hearthstones directly above the portals window.
 
 - **Arcantina teleport** is fixed
-- **Regular Hearthstone** is configurable
+- **Regular Hearthstone** is configurable per character
+- **RANDOM DISCO** can roll a random owned hearthstone each click
 - The addon checks which hearthstone variants you own and lets you choose which one to display
 
 ### Mage portals and teleports flyout
@@ -123,6 +125,16 @@ Browse inventory across your characters from one place.
 - View bags, bank, and warband bank data account-wide
 - Other characters' inventory is available as **read-only**
 - Makes it easier to locate items without logging through every alt
+
+### Guild wide item search
+
+Search for items in your guild.
+
+- Checkbox in bags window that enables guild search instead of the regular bag search
+- Toggle in configuration that allows others to query your inventory for an item (**Defaults to DISABLED**)
+- Minimum of 4 characters, search starts when you pres enter (not while you type)
+- 30s cooldown (to avoid spamming)
+- Shows additional frame above bags with items matched, player and count
 
 ---
 
