@@ -165,6 +165,7 @@ local function ensureProfile()
 end
 
 local function ensureBagsProfile()
+    -- Bag and bank replacement settings live in the dedicated bags profile DB.
     return vesperTools:GetBagsProfile()
 end
 

@@ -1,6 +1,8 @@
 local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools")
 local Portals = vesperTools:NewModule("Portals", "AceConsole-3.0", "AceEvent-3.0")
 local L = vesperTools.L
+-- Portals owns the seasonal portal frame and the top utility button cluster.
+-- It also tracks cooldown text, mage travel menus, and hearthstone/toy flyouts.
 local FALLBACK_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_QuestionMark"
 local TOY_FLYOUT_BUTTON_ICON = "Interface\\Icons\\INV_Misc_Toy_10"
 local TOP_UTILITY_BUTTON_GAP = 10
@@ -138,6 +140,7 @@ local function formatCooldownRemaining(seconds)
     return string.format("%.1f", remaining)
 end
 
+-- Lifecycle and event wiring.
 function Portals:OnInitialize()
     -- Tracks deferred secure-button updates blocked by combat lockdown.
     self.pendingUtilityRefresh = false
@@ -216,6 +219,7 @@ function Portals:PLAYER_REGEN_ENABLED()
 end
 
 -- Apply configured background opacity to all portal-related panels.
+-- Shared styling and config refresh.
 function Portals:ApplyBackdropOpacity()
     local portalsOpacity = vesperTools:GetConfiguredOpacity("portals")
     local bestKeysOpacity = vesperTools:GetConfiguredOpacity("bestKeys")
@@ -272,6 +276,7 @@ end
 -- Source strategy:
 -- 1) curated spellID catalog (stable and locale-independent)
 -- 2) spellbook scan by localized token (captures newly added variants)
+-- Mage travel helpers.
 function Portals:GetKnownMageTravelSpells(kind)
     local spellIDs = (kind == "portal") and MAGE_PORTAL_SPELL_IDS or MAGE_TELEPORT_SPELL_IDS
     local token = (kind == "portal") and PORTAL_TOKEN or TELEPORT_TOKEN
@@ -392,6 +397,7 @@ function Portals:OpenMageTravelMenu(button, kind)
 end
 
 -- Return top-utility buttons in their visual order for horizontal layout.
+-- Top utility layout and cooldown tracking.
 function Portals:GetTopUtilityButtons()
     local ordered = {}
     if self.primaryHearthstoneButton then
@@ -814,6 +820,7 @@ function Portals:RefreshActionCooldowns()
 end
 
 -- Build the hidden flyout frame that expands upward from the toys utility button.
+-- Toy flyout creation and layout.
 function Portals:CreateToyFlyoutFrame()
     if self.toyFlyoutFrame or not self.topUtilityFrame then
         return
@@ -1157,6 +1164,7 @@ function Portals:RefreshToyFlyout()
 end
 
 -- Build one icon-only hearthstone action button in the same visual style as Great Vault.
+-- Utility buttons and hearthstone action wiring.
 function Portals:CreateTopUtilityButton(parent, templateName)
     -- Use SecureActionButtonTemplate directly to avoid ActionButton-style scripts
     -- from template stacks that can hide custom icon textures.
@@ -1552,6 +1560,7 @@ function Portals:WarnMissingSeasonDungeonMetadata(curSeason, dataHandle)
     end
 end
 
+-- Main portal and vault frames.
 function Portals:CreatePortalFrame()
     local _, englishClass = UnitClass("player")
     local classColor = C_ClassColor.GetClassColor(englishClass)

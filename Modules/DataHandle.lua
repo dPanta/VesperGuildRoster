@@ -5,7 +5,7 @@ local DataHandle = vesperTools:NewModule("DataHandle")
 -- 1) Static dungeon metadata lookup (mapID -> portal spell/name).
 -- 2) Shared color helpers for key level and rating text.
 -- 3) Persistent data accessors for ilvl sync + best-key sync stores.
--- Local database for dungeon information
+-- Runtime mapID index built once from the static dungeon catalog below.
 local dungListDB = nil
 
 -- Canonical dungeon catalog used by portal and roster modules.
@@ -106,6 +106,7 @@ function DataHandle:GetDungeonList()
     return dungList
 end
 
+-- Return the primary dungeon record for a mapID.
 function DataHandle:GetDungeonByMapID(mapID)
     if dungListDB and dungListDB[mapID] then
         -- Return first configured record as default for consumers expecting one entry.
@@ -119,6 +120,7 @@ function DataHandle:GetSpellIDByMapID(mapID)
     return dungInfo and dungInfo.spellID or nil
 end
 
+-- Report unknown mapIDs so seasonal metadata gaps are easy to spot.
 function DataHandle:GetMissingDungeonsForMapIDs(mapIDs)
     local missing = {}
     if type(mapIDs) ~= "table" then
@@ -170,6 +172,7 @@ function DataHandle:GetIlvlDB()
     return vesperTools.db.global.ilvlSync
 end
 
+-- Store one guild member's synced item level payload.
 function DataHandle:StoreIlvl(playerName, ilvl, classID)
     if not vesperTools.db.global.ilvlSync then
         vesperTools.db.global.ilvlSync = {}
@@ -190,6 +193,7 @@ function DataHandle:GetIlvlForPlayer(playerName)
     return db[playerName]
 end
 
+-- Prune old ilvl entries so long-lived SavedVariables do not keep dead data forever.
 function DataHandle:CleanupStaleIlvl(maxAge)
     local db = vesperTools.db.global.ilvlSync
     if not db then return end
@@ -208,6 +212,7 @@ function DataHandle:GetBestKeysDB()
     return vesperTools.db.global.bestKeys
 end
 
+-- Store one guild member's best-key snapshot with shared metadata fields.
 function DataHandle:StoreBestKeys(playerName, bestKeysData, classID)
     if not vesperTools.db.global.bestKeys then
         vesperTools.db.global.bestKeys = {}
@@ -226,6 +231,7 @@ function DataHandle:GetBestKeysForPlayer(playerName)
     return db[playerName]
 end
 
+-- Prune old best-key snapshots once they are outside the freshness window.
 function DataHandle:CleanupStaleBestKeys(maxAge)
     local db = vesperTools.db.global.bestKeys
     if not db then return end

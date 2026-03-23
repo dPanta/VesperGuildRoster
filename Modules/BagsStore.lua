@@ -2,6 +2,8 @@ local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools
 local BagsStore = vesperTools:NewModule("BagsStore", "AceEvent-3.0")
 local L = vesperTools.L
 
+-- BagsStore owns the live carried-bag snapshot for the current character and the
+-- account-wide aggregate index used by the replacement inventory views.
 local ITEM_CLASS = Enum and Enum.ItemClass or {}
 local BAG_CATEGORY_DEFS = {
     { key = "quest", labelKey = "BAGS_CATEGORY_QUEST", order = 1 },
@@ -28,6 +30,7 @@ end
 local TRACKED_BAG_IDS = {}
 local TRACKED_BAG_SET = {}
 
+-- Build one canonical ordered list of carried bagIDs used by scanning and rendering.
 local function addTrackedBagID(bagID)
     if type(bagID) ~= "number" or TRACKED_BAG_SET[bagID] then
         return
@@ -53,6 +56,7 @@ local function makeEmptyAggregate()
     }
 end
 
+-- Resolve the localized display name shown for one carried bag.
 local function getBagName(bagID)
     if bagID == (Enum and Enum.BagIndex and Enum.BagIndex.Backpack) then
         return BACKPACK_TOOLTIP or L["BAGS_BACKPACK"]
@@ -75,6 +79,7 @@ local function getBagName(bagID)
     return string.format("Bag %s", tostring(bagID))
 end
 
+-- Resolve the icon used for bag-slot summary buttons and headers.
 local function getBagIcon(bagID)
     if bagID == (Enum and Enum.BagIndex and Enum.BagIndex.Backpack) then
         return "Interface\\Buttons\\Button-Backpack-Up"
@@ -183,6 +188,7 @@ local function collectTooltipTextParts(tooltipData)
 end
 
 function BagsStore:OnInitialize()
+    -- These flags buffer bag events until a single consolidated scan can run.
     self.dirtyBagSet = {}
     self.needsFullCarryRescan = false
     self.pendingBagUpdate = false
@@ -245,10 +251,12 @@ function BagsStore:GetCategoryOrder(categoryKey)
     return CATEGORY_PRIORITY_BY_ID[categoryKey] or 999
 end
 
+-- Return the stable GUID-like key used for current-character bag storage.
 function BagsStore:GetCurrentCharacterKey()
     return vesperTools:GetCurrentCharacterGUID()
 end
 
+-- Ensure the current-character record exists before scan results are written into it.
 function BagsStore:CreateOrUpdateCurrentCharacter()
     local global = self:GetGlobalDB()
     if not global then
@@ -283,6 +291,7 @@ function BagsStore:CreateOrUpdateCurrentCharacter()
     return characterKey, character
 end
 
+-- Adjust nested aggregate counters while automatically cleaning up empty tables.
 function BagsStore:AdjustNestedCount(container, parentKey, childKey, delta)
     if delta == 0 then
         return true
@@ -314,6 +323,7 @@ function BagsStore:AdjustNestedCount(container, parentKey, childKey, delta)
     return true
 end
 
+-- Adjust one flat aggregate counter while avoiding negative totals.
 function BagsStore:AdjustCount(container, key, delta)
     if delta == 0 then
         return true
@@ -333,6 +343,7 @@ function BagsStore:AdjustCount(container, key, delta)
     return true
 end
 
+-- Apply one character aggregate delta into the account-wide item/category index.
 function BagsStore:ApplyAggregateToAccount(characterKey, aggregate, direction)
     local global = self:GetGlobalDB()
     if not global or not aggregate then
@@ -642,6 +653,7 @@ function BagsStore:BagSnapshotsEqual(a, b)
     return true
 end
 
+-- Build lightweight aggregate totals from a full bag snapshot table.
 function BagsStore:BuildAggregatesFromBags(bags)
     local aggregate = makeEmptyAggregate()
     if type(bags) ~= "table" then
@@ -673,6 +685,7 @@ function BagsStore:BuildAggregatesFromBags(bags)
     return aggregate
 end
 
+-- Capture every tracked carried bag and derive the aggregate counts from that snapshot.
 function BagsStore:BuildFullCarriedSnapshot()
     local carried = {
         bags = {},
@@ -693,6 +706,7 @@ function BagsStore:BuildFullCarriedSnapshot()
     return carried
 end
 
+-- Rebuild the global cross-character inventory index from all saved characters.
 function BagsStore:BuildAccountIndexFromCharacters()
     local global = self:GetGlobalDB()
     local rebuilt = {
@@ -748,6 +762,7 @@ function BagsStore:ApplyCharacterAggregateReplacement(characterKey, oldAggregate
     return true
 end
 
+-- Login performs a deferred full scan so bag APIs are ready before reading them.
 function BagsStore:PLAYER_ENTERING_WORLD()
     self.pendingInitialScan = true
     C_Timer.After(0, function()
@@ -780,6 +795,7 @@ function BagsStore:BAG_UPDATE_DELAYED()
     self:CommitPendingBagWork()
 end
 
+-- Mark a full rescan when incremental updates are not safe enough anymore.
 function BagsStore:MarkFullCarryRescan(reason)
     self.needsFullCarryRescan = true
     self.pendingRescanReason = reason or self.pendingRescanReason or "manual"
@@ -793,12 +809,14 @@ function BagsStore:ClearPendingState()
     wipe(self.dirtyBagSet)
 end
 
+-- Broadcast every bag-data view that depends on the current character snapshot.
 function BagsStore:BroadcastBagChange(characterKey)
     vesperTools:SendMessage("VESPERTOOLS_BAGS_SNAPSHOT_UPDATED", characterKey)
     vesperTools:SendMessage("VESPERTOOLS_BAGS_CHARACTER_UPDATED", characterKey)
     vesperTools:SendMessage("VESPERTOOLS_BAGS_INDEX_UPDATED", characterKey)
 end
 
+-- Replace the full carried snapshot in one pass and rebuild account-wide indexes.
 function BagsStore:DoFullCarryRescan(characterKey, character)
     local newCarried = self:BuildFullCarriedSnapshot()
     character.carried = newCarried
@@ -809,6 +827,7 @@ function BagsStore:DoFullCarryRescan(characterKey, character)
     return true
 end
 
+-- Collapse queued bag events into either one full rescan or one incremental commit.
 function BagsStore:CommitPendingBagWork()
     local characterKey, character = self:CreateOrUpdateCurrentCharacter()
     if not characterKey or not character then

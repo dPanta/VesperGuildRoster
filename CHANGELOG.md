@@ -1,3 +1,11 @@
+## 2.4.4 - 2026-03-23
+
+### Changed
+- Comments galore! Im always behind in commenting stuff.
+
+### Notes
+- This hotfix is a maintenance/documentation pass only and is not intended to change runtime behavior.
+
 ## 2.4.3 - 2026-03-23
 
 ### Fixed

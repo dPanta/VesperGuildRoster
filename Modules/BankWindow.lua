@@ -3,6 +3,8 @@ local BankWindow = vesperTools:NewModule("BankWindow", "AceEvent-3.0")
 local L = vesperTools.L
 local ITEM_CLASS = Enum and Enum.ItemClass or {}
 
+-- BankWindow renders the character-bank and warband-bank replacement UI.
+-- It owns view switching, search, deposits, and live bank item interactions.
 local MIN_WINDOW_WIDTH = 480
 local MIN_WINDOW_HEIGHT = 220
 local DEFAULT_BUTTON_SIZE = 38
@@ -135,6 +137,7 @@ local function suppressNativeOverlayVisuals(overlay)
     end
 end
 
+-- Module lifecycle and refresh entry points.
 function BankWindow:OnInitialize()
     self.frame = nil
     self.titleText = nil
@@ -205,6 +208,7 @@ function BankWindow:PLAYER_REGEN_ENABLED()
     end
 end
 
+-- Window open/close flow and default view resolution.
 function BankWindow:Toggle()
     if self.frame and self.frame:IsShown() then
         self.frame:Hide()
@@ -762,6 +766,7 @@ function BankWindow:OpenCharacterMenu(button)
     self:UpdateCharacterDropdownVisual()
 end
 
+-- Persisted layout state and per-view category collapse state.
 function BankWindow:SaveWindowState()
     if not self.frame then
         return
@@ -933,6 +938,7 @@ function BankWindow:ConfigureDepositButtonTooltip(button)
     GameTooltip:Show()
 end
 
+-- Search and list filtering helpers.
 function BankWindow:HandleDepositWarboundItems()
     if not self:CanDepositWarboundItems() then
         return
@@ -1145,6 +1151,7 @@ function BankWindow:BuildDisplayItems(items, viewSettings)
     return displayItems
 end
 
+-- Main frame construction and reusable widget pools.
 function BankWindow:CreateWindow()
     local bagsProfile = vesperTools:GetBagsProfile()
     local width = bagsProfile and bagsProfile.bankWindow.width or 900
@@ -1704,6 +1711,7 @@ function BankWindow:HideAllReusableFrames()
     end
 end
 
+-- Live item interaction helpers and native secure overlay routing.
 function BankWindow:CanDisplayItemLevel(record)
     if not record or not record.itemID then
         return false
@@ -1935,6 +1943,7 @@ function BankWindow:ConfigureSummaryButton(button, summaryEntry, viewSettings)
     button:Show()
 end
 
+-- View-context resolution and final window refresh pass.
 function BankWindow:ResolveViewContext(viewKey, selectedCharacter)
     local store = self:GetStore()
     if not store then

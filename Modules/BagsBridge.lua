@@ -1,6 +1,8 @@
 local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools")
 local BagsBridge = vesperTools:NewModule("BagsBridge", "AceEvent-3.0")
 
+-- BagsBridge sits between Blizzard bag/bank APIs and the replacement windows.
+-- It keeps bindings, vendor sessions, and bank frame suppression in sync.
 local BAG_BINDINGS = {
     "TOGGLEBACKPACK",
     "TOGGLEREAGENTBAG",
@@ -20,8 +22,10 @@ local BAG_HOOK_SPECS = {
     { name = "OpenBag", action = "show", expectsBagID = true },
 }
 
+-- Small grace window used to attribute a just-opened bag window to merchant auto-open.
 local MERCHANT_BAG_OPEN_GRACE_SECONDS = 0.5
 
+-- Secure binding target used by key overrides for backpack actions.
 function vesperTools_ToggleBags()
     local addon = vesperTools or (LibStub and LibStub("AceAddon-3.0", true) and LibStub("AceAddon-3.0"):GetAddon("vesperTools", true))
     if not addon then
@@ -37,6 +41,7 @@ end
 _G.BINDING_NAME_VESPERTOOLS_TOGGLEBAGS = "Toggle vesperTools Bags"
 
 function BagsBridge:OnInitialize()
+    -- These flags are runtime-only UI/session state, not SavedVariables.
     self.deferredActions = {}
     self.bindingFrame = CreateFrame("Frame", "vesperToolsBagsBindingFrame", UIParent)
     self.bindingFrame:Hide()
@@ -74,6 +79,7 @@ function BagsBridge:OnEnable()
     self:RefreshReplacementState()
 end
 
+-- Shared profile lookup for bag and bank replacement flags.
 function BagsBridge:GetProfile()
     return vesperTools:GetBagsProfile()
 end
@@ -97,6 +103,7 @@ function BagsBridge:IsBankReplacementEnabled()
     return self:IsCharacterBankReplacementEnabled() or self:IsAccountBankReplacementEnabled()
 end
 
+-- Queue protected frame work until combat restrictions are gone.
 function BagsBridge:RunOutOfCombat(callback)
     if type(callback) ~= "function" then
         return
@@ -110,6 +117,7 @@ function BagsBridge:RunOutOfCombat(callback)
     self.deferredActions[#self.deferredActions + 1] = callback
 end
 
+-- Hook Blizzard bag open/toggle entry points once so replacement logic sees every path.
 function BagsBridge:InstallHooks()
     for i = 1, #BAG_HOOK_SPECS do
         local spec = BAG_HOOK_SPECS[i]
@@ -125,6 +133,7 @@ function BagsBridge:InstallHooks()
     end
 end
 
+-- Hook visible bag buttons so direct clicks also route into the replacement window.
 function BagsBridge:InstallButtonHooks()
     local buttons = {
         MainMenuBarBackpackButton,
@@ -148,6 +157,7 @@ function BagsBridge:InstallButtonHooks()
     end
 end
 
+-- Track merchant frame visibility because vendors can auto-open or auto-close bags.
 function BagsBridge:InstallMerchantFrameHooks()
     if self.merchantFrameHooked or not MerchantFrame then
         return
@@ -179,6 +189,7 @@ function BagsBridge:IsTrackedBackpackBagID(bagID)
     return store:IsTrackedBagID(bagID)
 end
 
+-- Close the native backpack UI before showing the replacement frame.
 function BagsBridge:HideBlizzardBags()
     if type(CloseAllBags) == "function" then
         CloseAllBags()
@@ -200,6 +211,7 @@ function BagsBridge:HideBlizzardBags()
     end
 end
 
+-- Remember whether the currently visible bags were opened by the merchant flow itself.
 function BagsBridge:TrackMerchantOwnedBagOpen(source, wasShown, BagsWindow)
     local isShown = BagsWindow and BagsWindow.frame and BagsWindow.frame:IsShown() and true or false
     if wasShown or not isShown then
@@ -217,6 +229,7 @@ function BagsBridge:TrackMerchantOwnedBagOpen(source, wasShown, BagsWindow)
     end
 end
 
+-- Force the replacement bags window open without toggling an already open frame.
 function BagsBridge:ShowReplacementWindow(source)
     if not self:IsBackpackReplacementEnabled() then
         return
@@ -233,6 +246,7 @@ function BagsBridge:ShowReplacementWindow(source)
     self:TrackMerchantOwnedBagOpen(source, wasShown, BagsWindow)
 end
 
+-- Explicit user-facing toggle path for the replacement bags window.
 function BagsBridge:ToggleReplacementWindow(source)
     if not self:IsBackpackReplacementEnabled() then
         return
@@ -249,6 +263,7 @@ function BagsBridge:ToggleReplacementWindow(source)
     self:TrackMerchantOwnedBagOpen(source, wasShown, BagsWindow)
 end
 
+-- Collapse multiple same-frame bag hook calls into one final action.
 function BagsBridge:QueueReplacementAction(action)
     if not self:IsBackpackReplacementEnabled() then
         return
@@ -284,6 +299,7 @@ function BagsBridge:QueueReplacementAction(action)
     end)
 end
 
+-- Translate native Blizzard bag calls into replacement window actions.
 function BagsBridge:HandleBlizzardBagHook(action, bagID)
     if not self:IsBackpackReplacementEnabled() then
         return
@@ -303,6 +319,7 @@ function BagsBridge:HandleBlizzardBagHook(action, bagID)
     self:QueueReplacementAction(action)
 end
 
+-- Replace all default backpack bindings with the addon-owned secure binding.
 function BagsBridge:RefreshBindingOverrides()
     if not self.bindingFrame then
         return
@@ -331,6 +348,7 @@ function BagsBridge:RefreshBindingOverrides()
     end
 end
 
+-- Save original BankFrame scripts/parent before temporarily suppressing Blizzard UI.
 function BagsBridge:CacheOriginalBankFrameState()
     if self.bankFrameOriginalState or not BankFrame then
         return
@@ -344,6 +362,7 @@ function BagsBridge:CacheOriginalBankFrameState()
     }
 end
 
+-- Detach the default bank frame so the replacement window can own bank sessions.
 function BagsBridge:SuppressBankFrame()
     if not BankFrame or self.bankFrameSuppressed then
         return
@@ -357,6 +376,7 @@ function BagsBridge:SuppressBankFrame()
     self.bankFrameSuppressed = true
 end
 
+-- Restore the original Blizzard BankFrame when replacement is disabled.
 function BagsBridge:RestoreBankFrame()
     if not BankFrame or not self.bankFrameSuppressed then
         return
@@ -370,6 +390,7 @@ function BagsBridge:RestoreBankFrame()
     self.bankFrameSuppressed = false
 end
 
+-- Keep the hidden Blizzard bank frame in sync with the replacement-bank toggle.
 function BagsBridge:ApplyBankFrameReplacementState()
     self:RunOutOfCombat(function()
         if self:IsBankReplacementEnabled() then
@@ -384,6 +405,7 @@ function BagsBridge:ShowBankReplacementWindow()
     self:ShowBankReplacementWindowForView(nil)
 end
 
+-- Show the replacement bank window after the live bank state has settled for the frame.
 function BagsBridge:ShowBankReplacementWindowForView(preferredViewKey)
     if not self:IsBankReplacementEnabled() then
         return
@@ -473,6 +495,7 @@ function BagsBridge:IsBankInteractionType(interactionType)
         or interactionType == Enum.PlayerInteractionType.AccountBanker
 end
 
+-- Resolve whether a merchant frame is currently active even if an event was missed.
 function BagsBridge:IsMerchantSessionActive()
     if self.merchantSessionActive then
         return true
@@ -522,6 +545,7 @@ function BagsBridge:IsAnyWritableBankLive()
     return characterIsLive or warbandIsLive
 end
 
+-- Decide which live bank view should open first for the current interaction type.
 function BagsBridge:ResolvePreferredBankViewKey()
     local store = self:GetLiveBankStore()
     if not store then
@@ -555,6 +579,7 @@ function BagsBridge:ResolvePreferredBankViewKey()
     return nil
 end
 
+-- Open carried bags automatically during a live writable bank session.
 function BagsBridge:ShowBagsForLiveBankSession()
     if not self:IsAnyWritableBankLive() then
         return
@@ -573,6 +598,7 @@ function BagsBridge:ShowBagsForLiveBankSession()
     self.bankSessionOpenedBags = not wasShown
 end
 
+-- Close only the bags that were auto-opened by the current merchant session.
 function BagsBridge:HideBagsOpenedForMerchantSession()
     if not self.merchantSessionOpenedBags then
         return
@@ -588,6 +614,7 @@ function BagsBridge:HideBagsOpenedForMerchantSession()
     BagsWindow.frame:Hide()
 end
 
+-- Close only the bags that were auto-opened by the current bank session.
 function BagsBridge:HideBagsOpenedForBankSession()
     if not self.bankSessionOpenedBags then
         return
@@ -603,12 +630,14 @@ function BagsBridge:HideBagsOpenedForBankSession()
     BagsWindow.frame:Hide()
 end
 
+-- Tear down replacement bank state once the live bank interaction ends.
 function BagsBridge:HandleBankSessionClosed()
     self.activeBankInteractionType = nil
     self:HideBankReplacementWindow()
     self:HideBagsOpenedForBankSession()
 end
 
+-- Mark the merchant session active and capture whether it opened bags itself.
 function BagsBridge:HandleMerchantSessionOpened()
     local BagsWindow = vesperTools:GetModule("BagsWindow", true)
     local bagsAreShown = BagsWindow and BagsWindow.frame and BagsWindow.frame:IsShown() and true or false
@@ -620,12 +649,14 @@ function BagsBridge:HandleMerchantSessionOpened()
     end
 end
 
+-- Clear merchant runtime state and close only merchant-owned bag windows.
 function BagsBridge:HandleMerchantSessionClosed()
     self.merchantSessionActive = false
     self.pendingMerchantBagOpenAt = nil
     self:HideBagsOpenedForMerchantSession()
 end
 
+-- Delay bank UI opening slightly so bag/bank live state is ready before rendering.
 function BagsBridge:HandleBankSessionOpened()
     self.bankSessionOpenedBags = false
 

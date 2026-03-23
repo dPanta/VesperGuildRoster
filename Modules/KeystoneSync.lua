@@ -108,6 +108,7 @@ function KeystoneSync:RequestGuildKeystones()
     return true
 end
 
+-- Persist one player's active guild key snapshot into the shared DB.
 function KeystoneSync:StoreKeystone(playerName, mapID, level, rating)
     if not vesperTools.db.global.keystones then
         vesperTools.db.global.keystones = {}
@@ -161,6 +162,7 @@ function KeystoneSync:GetKeystoneForPlayer(playerName)
     return display
 end
 
+-- Convert seasonal mapIDs into compact roster labels.
 function KeystoneSync:GetDungeonAbbrev(mapID)
     -- Prefer explicit curated abbreviations for consistency.
     if DUNGEON_ABBREV[mapID] then
@@ -181,6 +183,7 @@ function KeystoneSync:GetDungeonAbbrev(mapID)
     return L["KEYSTONE_UNKNOWN_ABBREV"] -- Unknown dungeon
 end
 
+-- Drop stale keystone entries so offline characters do not linger forever.
 function KeystoneSync:CleanupStaleEntries()
     if not vesperTools.db.global.keystones then
         return

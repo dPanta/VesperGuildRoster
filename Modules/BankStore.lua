@@ -2,6 +2,8 @@ local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools
 local BankStore = vesperTools:NewModule("BankStore", "AceEvent-3.0")
 local L = vesperTools.L
 
+-- BankStore mirrors BagsStore for live bank data, but splits snapshots into
+-- character-bank and warband-bank views with their own dirty tracking.
 local ITEM_CLASS = Enum and Enum.ItemClass or {}
 local BAG_CATEGORY_DEFS = {
     { key = "quest", labelKey = "BAGS_CATEGORY_QUEST", order = 1 },
@@ -32,6 +34,7 @@ local TRACKED_BANK_BAG_SET = {}
 local CHARACTER_BANK_BAG_SET = {}
 local ACCOUNT_BANK_BAG_SET = {}
 
+-- Register each bank bagID once while preserving the display order per bank type.
 local function addTrackedBag(list, set, bagID)
     if type(bagID) ~= "number" then
         return
@@ -70,6 +73,7 @@ local function makeEmptyAggregate()
     }
 end
 
+-- Bank views bundle bag snapshots with aggregate counts and a last-seen timestamp.
 local function makeEmptyBankView()
     local view = makeEmptyAggregate()
     view.bags = {}
@@ -305,10 +309,12 @@ function BankStore:CanUseBankType(bankType)
     return true
 end
 
+-- Character bank is considered live only while the current interaction allows writing.
 function BankStore:CanScanCharacterBank()
     return self:CanUseBankType(Enum and Enum.BankType and Enum.BankType.Character or nil)
 end
 
+-- Warband bank scanning is gated by both support in the client and live access rights.
 function BankStore:CanScanWarband()
     if #ACCOUNT_BANK_BAG_IDS == 0 then
         return false
@@ -324,6 +330,7 @@ function BankStore:IsWarbandBankLive()
     return self:CanScanWarband()
 end
 
+-- Ensure the current-character bank record exists before persisting scans into it.
 function BankStore:CreateOrUpdateCurrentCharacter()
     local root = self:GetBankRoot()
     if not root then
@@ -660,6 +667,7 @@ function BankStore:BuildAggregatesFromBags(bags, bagIDs)
     return aggregate
 end
 
+-- Build one complete bank view snapshot from the supplied ordered bag list.
 function BankStore:BuildViewSnapshot(bagIDs)
     local view = makeEmptyBankView()
     for i = 1, #bagIDs do
@@ -675,10 +683,12 @@ function BankStore:BuildViewSnapshot(bagIDs)
     return view
 end
 
+-- Prime the current-character bank record early so later scans have a destination.
 function BankStore:PLAYER_ENTERING_WORLD()
     self:CreateOrUpdateCurrentCharacter()
 end
 
+-- Opening the bank marks the relevant views dirty and defers one consolidated scan.
 function BankStore:BANKFRAME_OPENED()
     self.bankOpen = true
     self:CreateOrUpdateCurrentCharacter()
@@ -695,6 +705,7 @@ function BankStore:BANKFRAME_OPENED()
     end)
 end
 
+-- Closing the bank drops any pending runtime scan state.
 function BankStore:BANKFRAME_CLOSED()
     self.bankOpen = false
     self:ClearPendingState()
@@ -769,10 +780,12 @@ function BankStore:BANK_TAB_SETTINGS_UPDATED(_, bankType)
     end
 end
 
+-- Flag a full character-bank rebuild when incremental updates are no longer safe.
 function BankStore:MarkFullCharacterRescan()
     self.needsFullCharacterRescan = true
 end
 
+-- Flag a full warband-bank rebuild when incremental updates are no longer safe.
 function BankStore:MarkFullWarbandRescan()
     self.needsFullWarbandRescan = true
 end
@@ -792,12 +805,14 @@ function BankStore:RefreshPendingFlag()
         or next(self.dirtyWarbandBankSet) ~= nil
 end
 
+-- Broadcast all bank-dependent views after a successful rescan or incremental update.
 function BankStore:BroadcastBankChange()
     vesperTools:SendMessage("VESPERTOOLS_BANK_SNAPSHOT_UPDATED")
     vesperTools:SendMessage("VESPERTOOLS_BANK_CHARACTER_UPDATED")
     vesperTools:SendMessage("VESPERTOOLS_WARBAND_BANK_UPDATED")
 end
 
+-- Full rescan path for the character bank snapshot.
 function BankStore:DoFullCharacterBankRescan(character)
     if not character then
         return false
@@ -808,6 +823,7 @@ function BankStore:DoFullCharacterBankRescan(character)
     return true
 end
 
+-- Full rescan path for the account-wide warband bank snapshot.
 function BankStore:DoFullWarbandRescan()
     local root = self:GetBankRoot()
     if not root then
@@ -819,6 +835,7 @@ function BankStore:DoFullWarbandRescan()
     return true
 end
 
+-- Attempt an incremental update of only the bank bags marked dirty.
 function BankStore:CommitDirtyView(view, dirtySet, bagIDs)
     if type(view) ~= "table" or type(view.bags) ~= "table" then
         return nil
@@ -853,6 +870,7 @@ function BankStore:CommitDirtyView(view, dirtySet, bagIDs)
     return changed
 end
 
+-- Collapse queued bank events into the smallest safe combination of rescans and commits.
 function BankStore:CommitPendingBankWork()
     local _, character = self:CreateOrUpdateCurrentCharacter()
     if not character then

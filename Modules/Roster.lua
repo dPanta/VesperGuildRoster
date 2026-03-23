@@ -2,9 +2,11 @@ local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools
 local Roster = vesperTools:NewModule("Roster", "AceConsole-3.0", "AceEvent-3.0")
 local AceGUI = LibStub("AceGUI-3.0")
 local L = vesperTools.L
+-- Roster renders the guild list view and wires its action buttons, sorting, and menus.
 local HEADER_ACTION_BUTTON_HEIGHT = 22
 local HEADER_ACTION_BUTTON_GAP = 6
 
+-- Build one consistent titlebar action button for roster header controls.
 local function createHeaderActionButton(parent, anchor, width, label, onClick)
     local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
     button:SetPoint("RIGHT", anchor, "LEFT", -HEADER_ACTION_BUTTON_GAP, 0)
@@ -43,6 +45,7 @@ function Roster:OnEnable()
     self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "OnConfigChanged")
 end
 
+-- Redraw the list whenever synced guild data changes.
 function Roster:OnSyncUpdate()
     if self.frame and self.frame:IsShown() then
         self:UpdateRosterList()
@@ -181,6 +184,7 @@ end
 
 -- --- GUI Creation ---
 
+-- Create the roster frame lazily, then refresh its contents on every open.
 function Roster:ShowRoster()
     if self.frame then
         self.frame:Show()
@@ -429,6 +433,7 @@ local COLUMNS = {
     { key = "keyLevel", label = L["ROSTER_COLUMN_KEY"], width = 0.2, sort = "number" },
 }
 
+-- Rebuild the visible guild list, including sorting and per-row actions.
 function Roster:UpdateRosterList()
     if not self.frame then return end
 

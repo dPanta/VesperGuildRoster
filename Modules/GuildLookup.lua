@@ -2,6 +2,8 @@ local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools
 local GuildLookup = vesperTools:NewModule("GuildLookup", "AceEvent-3.0", "AceTimer-3.0", "AceComm-3.0")
 local L = vesperTools.L
 
+-- Guild lookup adds a guild-only remote search layer on top of BagsStore snapshots.
+-- It tracks the active query, throttles requests, and aggregates whisper responses.
 local REQUEST_PREFIX = "VTBagsQ"
 local RESPONSE_PREFIX = "VTBagsR"
 local PROTOCOL_VERSION = "1"
@@ -11,8 +13,10 @@ local MIN_QUERY_LENGTH = 4
 local MAX_RESPONSE_ITEMS = 25
 local MAX_RESULT_ROWS = 250
 
+-- Cached realm suffix keeps sender normalization consistent across mixed clients.
 local cachedRealmName = nil
 
+-- Force a roster refresh so guild-member validation stays current.
 local function requestGuildRosterUpdate()
     if C_GuildInfo and C_GuildInfo.GuildRoster then
         C_GuildInfo.GuildRoster()
@@ -21,6 +25,7 @@ local function requestGuildRosterUpdate()
     end
 end
 
+-- Normalize player names to a stable Name-Realm form for cache keys and comm routing.
 local function normalizeSenderName(name)
     if type(name) ~= "string" then
         return nil
@@ -39,6 +44,7 @@ local function normalizeSenderName(name)
     return normalized
 end
 
+-- Normalize bag text into a lowercase, markup-free search haystack.
 local function normalizeSearchText(text)
     if type(text) ~= "string" then
         return nil
@@ -151,6 +157,7 @@ function GuildLookup:OnInitialize()
     }
 end
 
+-- Register comm channels and refresh the guild-member allowlist on enable.
 function GuildLookup:OnEnable()
     self:RegisterComm(REQUEST_PREFIX, "OnLookupRequestReceived")
     self:RegisterComm(RESPONSE_PREFIX, "OnLookupResponseReceived")
@@ -187,6 +194,7 @@ function GuildLookup:CanAnswerIncomingRequests()
     return profile and profile.guildLookup and profile.guildLookup.allowIncomingRequests and true or false
 end
 
+-- Persist the active toggle in the bags profile and reset state when disabled.
 function GuildLookup:SetActive(isActive)
     local profile = self:GetProfile()
     if not profile then
@@ -234,6 +242,7 @@ function GuildLookup:NotifyUpdated()
     vesperTools:SendMessage("VESPERTOOLS_GUILD_LOOKUP_UPDATED")
 end
 
+-- Cancel the delayed finalize step used to collect whisper responses for one query.
 function GuildLookup:CancelFinalizeTimer()
     if self.finalizeTimer then
         self:CancelTimer(self.finalizeTimer, true)
@@ -373,6 +382,7 @@ function GuildLookup:BuildCurrentCharacterMatches(normalizedQuery, maxItems)
     return matches, truncated
 end
 
+-- Convert the active response table into stable UI row ordering.
 function GuildLookup:SortResults()
     table.sort(self.state.results, function(a, b)
         local aName = string.lower(a.itemName or buildFallbackItemName(a.itemID))
@@ -413,6 +423,7 @@ function GuildLookup:FinalizeActiveLookup()
     self:NotifyUpdated()
 end
 
+-- Start a new guild-wide query and reset all active response state.
 function GuildLookup:StartLookup(queryText)
     local normalizedQuery = normalizeSearchText(queryText)
     local displayQueryText = type(queryText) == "string" and strtrim(queryText) or ""
@@ -513,6 +524,7 @@ function GuildLookup:StartLookup(queryText)
     return true
 end
 
+-- Answer a valid guild request with current-character carried-bag matches only.
 function GuildLookup:OnLookupRequestReceived(prefix, message, distribution, sender)
     if prefix ~= REQUEST_PREFIX or distribution ~= "GUILD" then
         return
@@ -578,6 +590,7 @@ function GuildLookup:OnLookupRequestReceived(prefix, message, distribution, send
     end
 end
 
+-- Merge whisper responses into one visible result set for the current query only.
 function GuildLookup:OnLookupResponseReceived(prefix, message, distribution, sender)
     if prefix ~= RESPONSE_PREFIX or distribution ~= "WHISPER" or not self.activeQueryID then
         return

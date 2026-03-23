@@ -1,11 +1,17 @@
 local addonName, addonTable = ...
 local localeDefaults = addonTable.LocaleDefaults or {}
 
--- Helper to safely get localee
+-- Core addon entry point.
+-- Responsibilities:
+-- 1) Initialize shared SavedVariables and profile defaults.
+-- 2) Expose common helpers used across modules.
+-- 3) Own the floating icon and top-level slash commands.
+
+-- Provide a permissive locale table until AceLocale is ready.
 local L = addonTable.L or {}
 setmetatable(L, { __index = function(t, k) return k end })
 
--- Check dependencies
+-- Abort early with a readable fallback if bundled dependencies are missing.
 if not LibStub or not LibStub("AceAddon-3.0", true) then
     print("|cffFF0000" .. addonName .. ":|r " .. (localeDefaults.ACE3_LIBRARIES_MISSING or "Ace3 libraries not found. Please install Ace3 in the Libs/ folder."))
     
@@ -18,7 +24,7 @@ if not LibStub or not LibStub("AceAddon-3.0", true) then
     return
 end
 
--- Global Addon Objectt
+-- Create the singleton addon object shared by every module file.
 vesperTools = LibStub("AceAddon-3.0"):NewAddon(addonName, "AceConsole-3.0", "AceEvent-3.0")
 
 local AceLocale = LibStub("AceLocale-3.0", true)
@@ -28,11 +34,13 @@ end
 addonTable.L = L
 vesperTools.L = L
 
+-- Current and legacy DB names are kept side-by-side for transparent migration.
 local CURRENT_MAIN_DB_NAME = "vesperToolsDB"
 local CURRENT_BAGS_DB_NAME = "vesperToolsBagsDB"
 local LEGACY_MAIN_DB_NAME = "VesperGuildDB"
 local LEGACY_BAGS_DB_NAME = "VesperGuildBagsDB"
 
+-- Request a guild roster refresh through the available client API variant.
 local function RequestGuildRosterUpdate()
     if C_GuildInfo and C_GuildInfo.GuildRoster then
         C_GuildInfo.GuildRoster()
@@ -956,6 +964,7 @@ function vesperTools:OpenConfig()
     self:Print(L["CONFIG_MODULE_NOT_FOUND"])
 end
 
+-- Copy legacy DB globals forward before AceDB opens the modern names.
 local function MigrateLegacySavedVariables()
     if _G[CURRENT_MAIN_DB_NAME] == nil and _G[LEGACY_MAIN_DB_NAME] ~= nil then
         _G[CURRENT_MAIN_DB_NAME] = _G[LEGACY_MAIN_DB_NAME]
@@ -966,6 +975,7 @@ local function MigrateLegacySavedVariables()
     end
 end
 
+-- Build the main addon DBs and normalize their default shape on load.
 function vesperTools:OnInitialize()
     MigrateLegacySavedVariables()
 
@@ -1090,6 +1100,7 @@ function vesperTools:GetBagsDB()
     return self.bagsDB
 end
 
+-- Normalize the bags profile subtree before any UI module reads from it.
 function vesperTools:GetBagsProfile()
     if not self.bagsDB then
         return nil
@@ -1177,6 +1188,7 @@ function vesperTools:GetCurrentCharacterGUID()
     return string.format("name:%s-%s", name, realm)
 end
 
+-- Shared inventory lookup helpers forwarded to BagsStore.
 function vesperTools:GetCurrentCharacterFullName()
     local name = UnitName("player") or UNKNOWN
     local realm = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName() or "UnknownRealm"
@@ -1257,6 +1269,7 @@ function vesperTools:GetOnlineGuildMembers()
     return members
 end
 
+-- Refresh the numeric online badge shown on the floating icon.
 function vesperTools:UpdateFloatingIconOnlineCount()
     if not self.iconButton or not self.iconButton.onlineCountText then
         return
@@ -1274,7 +1287,7 @@ function vesperTools:OnGuildRosterUpdate()
     self:UpdateFloatingIconOnlineCount()
 end
 
--- Baaaaaaa, create a sheep
+-- Build the draggable floating launcher button and its tooltip behavior.
 function vesperTools:CreateFloatingIcon()
     local btn = CreateFrame("Button", "vesperToolsIcon", UIParent)
     btn:SetSize(40, 40)
@@ -1365,6 +1378,7 @@ function vesperTools:CreateFloatingIcon()
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
+-- Register top-level slash commands, events, and the floating launcher.
 function vesperTools:OnEnable()
     -- Called when the addon is enabled
     self:RegisterChatCommand("vesper", "HandleChatCommand")
@@ -1393,6 +1407,7 @@ function vesperTools:OnDisable()
     -- Called when the addon is disabled
 end
 
+-- Route slash commands to the relevant top-level addon windows or debug actions.
 function vesperTools:HandleChatCommand(input)
     -- Normalize chat command once so aliases/casing are handled uniformly.
     local normalizedInput = input and strtrim(input) or ""

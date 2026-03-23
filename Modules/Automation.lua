@@ -16,6 +16,7 @@ local SYNC_COOLDOWN = 30 -- seconds between broadcasts to avoid spam
 -- 2) coalesce many valid requests into one delayed response broadcast.
 local BESTKEYS_REQUEST_COOLDOWN = 15
 local BESTKEYS_REQUEST_RESPONSE_DELAY = 2
+-- Runtime-only sync throttles and temporary request coalescing state.
 local lastIlvlBroadcast = 0
 local lastBestKeysBroadcast = 0
 local cachedRealmName = nil
@@ -52,6 +53,7 @@ function Automation:OnEnable()
     pendingBestKeysRequestResponse = false
 end
 
+-- Trigger a full guild sync pass when the main addon UI opens.
 function Automation:OnAddonOpened()
     -- Full refresh pass: publish local data and request peers to publish theirs.
     self:BroadcastIlvl()
@@ -158,6 +160,7 @@ function Automation:BroadcastBestKeys()
 end
 
 -- Handle incoming best keys messages from guild members
+-- Parse serialized best-key payloads and persist the sender's snapshot.
 function Automation:OnBestKeysReceived(prefix, message, distribution, sender)
     if prefix ~= BESTKEYS_PREFIX or distribution ~= "GUILD" then return end
 
@@ -268,6 +271,7 @@ function Automation:OnMPlusCompleted()
     self:BroadcastBestKeys()
 end
 
+-- Show a temporary fullscreen reminder that the run may have upgraded the active key.
 function Automation:ShowKeyReminder()
     if not self.keyReminderFrame then
         -- Lazy-create fullscreen overlay once; reuse for later reminders.
@@ -294,7 +298,7 @@ function Automation:ShowKeyReminder()
     end)
 end
 
--- Manual sync (call from a button or slash command)
+-- Manual sync path used by buttons or slash commands.
 function Automation:ManualSync()
     -- Reset cooldown gates so manual request always publishes immediately.
     lastIlvlBroadcast = 0

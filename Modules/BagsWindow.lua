@@ -3,6 +3,8 @@ local BagsWindow = vesperTools:NewModule("BagsWindow", "AceEvent-3.0")
 local L = vesperTools.L
 local ITEM_CLASS = Enum and Enum.ItemClass or {}
 
+-- BagsWindow renders the carried-bag replacement UI.
+-- It owns character switching, local/guild search, live item overlays, and bag-slot controls.
 local MIN_WINDOW_WIDTH = 480
 local MIN_WINDOW_HEIGHT = 220
 local DEFAULT_BUTTON_SIZE = 38
@@ -156,6 +158,7 @@ local function suppressNativeOverlayVisuals(overlay)
     end
 end
 
+-- Module lifecycle and refresh entry points.
 function BagsWindow:OnInitialize()
     self.frame = nil
     self.titleText = nil
@@ -259,6 +262,7 @@ function BagsWindow:PLAYER_ENTERING_WORLD(_, isInitialLogin, isReloadingUI)
     end)
 end
 
+-- Window open/selection flow.
 function BagsWindow:CleanupLegacyScrollArtifacts()
     if self.scrollFrame then
         self.scrollFrame:Hide()
@@ -721,6 +725,7 @@ function BagsWindow:OpenBagSlotsMenu(button)
     self:UpdateBagSlotsButtonVisual(true)
 end
 
+-- Persisted view state and per-character category collapse state.
 function BagsWindow:SaveWindowState()
     if not self.frame then
         return
@@ -901,6 +906,7 @@ function BagsWindow:ConfigureCleanupButtonTooltip(button)
     GameTooltip:Show()
 end
 
+-- Guild lookup controls and results rendering.
 function BagsWindow:UpdateGuildLookupButtonVisual(isActive)
     if not self.guildLookupButton then
         return
@@ -1266,6 +1272,7 @@ function BagsWindow:RefreshGuildLookupPresentation()
     end
 end
 
+-- New-item marker ownership and cleanup.
 function BagsWindow:CanClearCurrentCharacterNewItems()
     if not (C_NewItems and (C_NewItems.RemoveNewItem or C_NewItems.ClearAll)) then
         return false
@@ -1340,6 +1347,7 @@ function BagsWindow:ClearNewItemMarkers()
     self:ClearCurrentCharacterNewItemMarkers(true)
 end
 
+-- Search tokenization and local filtering.
 function BagsWindow:GetCombineRecordKey(record)
     if type(record) ~= "table" then
         return nil
@@ -1547,6 +1555,7 @@ function BagsWindow:BuildDisplayItems(items, viewSettings)
     return displayItems
 end
 
+-- Main frame construction and reusable widget pools.
 function BagsWindow:CreateWindow()
     local bagsProfile = vesperTools:GetBagsProfile()
     local width = bagsProfile and bagsProfile.window.width or 900
@@ -2189,6 +2198,7 @@ function BagsWindow:HideAllReusableFrames()
     end
 end
 
+-- Equipped-bag row and item interaction helpers.
 function BagsWindow:GetEquippedBagSlotEntries(selectedCharacter, snapshot)
     local entries = {}
     local carried = type(snapshot) == "table" and snapshot.carried or nil
@@ -2444,6 +2454,7 @@ function BagsWindow:HandleItemClick(button, mouseButton)
     end
 end
 
+-- Item presentation and final window refresh pass.
 function BagsWindow:CanDisplayItemLevel(record)
     if not record or not record.itemID then
         return false
