@@ -81,6 +81,60 @@ local function normalizeSearchText(text)
     return string.lower(normalized)
 end
 
+local function suppressNativeOverlayVisuals(overlay)
+    if not overlay then
+        return
+    end
+
+    overlay:SetAlpha(0)
+
+    local normalTexture = overlay.GetNormalTexture and overlay:GetNormalTexture() or nil
+    if normalTexture then
+        normalTexture:SetAlpha(0)
+        normalTexture:Hide()
+    end
+
+    local pushedTexture = overlay.GetPushedTexture and overlay:GetPushedTexture() or nil
+    if pushedTexture then
+        pushedTexture:SetAlpha(0)
+        pushedTexture:Hide()
+    end
+
+    local highlightTexture = overlay.GetHighlightTexture and overlay:GetHighlightTexture() or nil
+    if highlightTexture then
+        highlightTexture:SetAlpha(0)
+        highlightTexture:Hide()
+    end
+
+    local checkedTexture = overlay.GetCheckedTexture and overlay:GetCheckedTexture() or nil
+    if checkedTexture then
+        checkedTexture:SetAlpha(0)
+        checkedTexture:Hide()
+    end
+
+    local regions = { overlay:GetRegions() }
+    for i = 1, #regions do
+        local region = regions[i]
+        if region and region.SetAlpha then
+            region:SetAlpha(0)
+        end
+        if region and region.Hide then
+            region:Hide()
+        end
+    end
+
+    local children = { overlay:GetChildren() }
+    for i = 1, #children do
+        local child = children[i]
+        if child and child.SetAlpha then
+            child:SetAlpha(0)
+        end
+        if child and child.Hide then
+            child:Hide()
+        end
+    end
+end
+
 function BankWindow:OnInitialize()
     self.frame = nil
     self.titleText = nil
@@ -1734,7 +1788,7 @@ function BankWindow:AcquireNativeContainerOverlay(button)
     local overlay = CreateFrame("ItemButton", nil, button, "ContainerFrameItemButtonTemplate")
     overlay:SetAllPoints(button)
     overlay:SetFrameLevel(button:GetFrameLevel() + 10)
-    overlay:SetAlpha(0.01)
+    suppressNativeOverlayVisuals(overlay)
     overlay:Hide()
     button.nativeContainerOverlay = overlay
     return overlay
@@ -1767,7 +1821,7 @@ function BankWindow:UpdateNativeContainerOverlay(button)
 
         overlay:SetAllPoints(button)
         overlay:SetFrameLevel(button:GetFrameLevel() + 10)
-        overlay:SetAlpha(0.01)
+        suppressNativeOverlayVisuals(overlay)
         overlay:Show()
         return
     end

@@ -102,6 +102,60 @@ local function getNewItemGlowAtlas(quality)
     return "bags-glow-white"
 end
 
+local function suppressNativeOverlayVisuals(overlay)
+    if not overlay then
+        return
+    end
+
+    overlay:SetAlpha(0)
+
+    local normalTexture = overlay.GetNormalTexture and overlay:GetNormalTexture() or nil
+    if normalTexture then
+        normalTexture:SetAlpha(0)
+        normalTexture:Hide()
+    end
+
+    local pushedTexture = overlay.GetPushedTexture and overlay:GetPushedTexture() or nil
+    if pushedTexture then
+        pushedTexture:SetAlpha(0)
+        pushedTexture:Hide()
+    end
+
+    local highlightTexture = overlay.GetHighlightTexture and overlay:GetHighlightTexture() or nil
+    if highlightTexture then
+        highlightTexture:SetAlpha(0)
+        highlightTexture:Hide()
+    end
+
+    local checkedTexture = overlay.GetCheckedTexture and overlay:GetCheckedTexture() or nil
+    if checkedTexture then
+        checkedTexture:SetAlpha(0)
+        checkedTexture:Hide()
+    end
+
+    local regions = { overlay:GetRegions() }
+    for i = 1, #regions do
+        local region = regions[i]
+        if region and region.SetAlpha then
+            region:SetAlpha(0)
+        end
+        if region and region.Hide then
+            region:Hide()
+        end
+    end
+
+    local children = { overlay:GetChildren() }
+    for i = 1, #children do
+        local child = children[i]
+        if child and child.SetAlpha then
+            child:SetAlpha(0)
+        end
+        if child and child.Hide then
+            child:Hide()
+        end
+    end
+end
+
 function BagsWindow:OnInitialize()
     self.frame = nil
     self.titleText = nil
@@ -158,6 +212,7 @@ function BagsWindow:OnEnable()
     self:RegisterMessage("VESPERTOOLS_BAGS_INDEX_UPDATED", "OnBagDataChanged")
     self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "OnConfigChanged")
     self:RegisterMessage("VESPERTOOLS_GUILD_LOOKUP_UPDATED", "OnGuildLookupUpdated")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD")
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
 end
 
@@ -190,6 +245,18 @@ function BagsWindow:PLAYER_REGEN_ENABLED()
         self.pendingSecureItemRefresh = false
         self:RefreshWindow()
     end
+end
+
+function BagsWindow:PLAYER_ENTERING_WORLD(_, isInitialLogin, isReloadingUI)
+    if not isInitialLogin or isReloadingUI then
+        return
+    end
+
+    C_Timer.After(0, function()
+        if self:IsEnabled() then
+            self:ClearCurrentCharacterNewItemMarkers(false)
+        end
+    end)
 end
 
 function BagsWindow:CleanupLegacyScrollArtifacts()
@@ -1199,25 +1266,34 @@ function BagsWindow:RefreshGuildLookupPresentation()
     end
 end
 
-function BagsWindow:CanClearNewItemsForSelectedCharacter()
+function BagsWindow:CanClearCurrentCharacterNewItems()
     if not (C_NewItems and (C_NewItems.RemoveNewItem or C_NewItems.ClearAll)) then
         return false
     end
 
     local store = self:GetStore()
-    if not store or not store.GetCurrentCharacterKey then
+    if not store or not store.GetCurrentCharacterKey or not store.GetTrackedBagIDs then
         return false
     end
 
     local currentCharacterKey = store:GetCurrentCharacterKey()
     return type(currentCharacterKey) == "string"
         and currentCharacterKey ~= ""
-        and currentCharacterKey == self.selectedCharacterKey
 end
 
-function BagsWindow:ClearNewItemMarkers()
-    if not self:CanClearNewItemsForSelectedCharacter() then
-        return
+function BagsWindow:CanClearNewItemsForSelectedCharacter()
+    if not self:CanClearCurrentCharacterNewItems() then
+        return false
+    end
+
+    local store = self:GetStore()
+    local currentCharacterKey = store and store.GetCurrentCharacterKey and store:GetCurrentCharacterKey() or nil
+    return currentCharacterKey == self.selectedCharacterKey
+end
+
+function BagsWindow:ClearCurrentCharacterNewItemMarkers(shouldRefreshWindow)
+    if not self:CanClearCurrentCharacterNewItems() then
+        return false
     end
 
     local store = self:GetStore()
@@ -1249,9 +1325,19 @@ function BagsWindow:ClearNewItemMarkers()
     end
 
     wipe(self.newItemGlowKeysSeen)
-    if self.frame and self.frame:IsShown() then
+    if shouldRefreshWindow and self.frame and self.frame:IsShown() then
         self:RefreshWindow()
     end
+
+    return true
+end
+
+function BagsWindow:ClearNewItemMarkers()
+    if not self:CanClearNewItemsForSelectedCharacter() then
+        return
+    end
+
+    self:ClearCurrentCharacterNewItemMarkers(true)
 end
 
 function BagsWindow:GetCombineRecordKey(record)
@@ -2280,7 +2366,7 @@ function BagsWindow:AcquireNativeContainerOverlay(button)
     local overlay = CreateFrame("ItemButton", nil, button, "ContainerFrameItemButtonTemplate")
     overlay:SetAllPoints(button)
     overlay:SetFrameLevel(button:GetFrameLevel() + 10)
-    overlay:SetAlpha(0.01)
+    suppressNativeOverlayVisuals(overlay)
     overlay:Hide()
     button.nativeContainerOverlay = overlay
     return overlay
@@ -2313,7 +2399,9 @@ function BagsWindow:UpdateNativeContainerOverlay(button)
 
         overlay:SetAllPoints(button)
         overlay:SetFrameLevel(button:GetFrameLevel() + 10)
-        overlay:SetAlpha(0.01)
+        -- Keep Blizzard's secure container button for native interactions, but let
+        -- vesperTools own all item visuals to avoid duplicate new-item glows.
+        suppressNativeOverlayVisuals(overlay)
         overlay:Show()
         return
     end

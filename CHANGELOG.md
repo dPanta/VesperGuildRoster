@@ -1,3 +1,13 @@
+## 2.4.3 - 2026-03-23
+
+### Fixed
+- Prevented merchant-driven Blizzard bag toggle hooks from closing the replacement bags window when it was already open before talking to a vendor.
+- Cleared stale carried-bag new-item markers once on real character login so replacement bags do not treat your full inventory as freshly looted every session.
+- Stopped the native secure container overlays used for live bag and bank interactions from rendering their own item visuals, avoiding duplicate or sticky blue new-item glows on top of vesperTools' custom item buttons.
+
+### Notes
+- This hotfix focuses on stabilizing replacement bag behavior around vendor interactions and new-item presentation without changing the live item interaction model introduced in `2.4.2`.
+
 ## 2.4.2 - 2026-03-23
 
 ### Changed

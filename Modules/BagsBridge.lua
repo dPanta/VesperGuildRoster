@@ -293,6 +293,13 @@ function BagsBridge:HandleBlizzardBagHook(action, bagID)
         return
     end
 
+    if action == "toggle" then
+        -- Native Blizzard toggle calls are also used by merchant/bank flows to ensure
+        -- bags are visible. Treat hook-driven toggles as idempotent show requests so
+        -- vendor opens do not collapse an already visible replacement window.
+        action = "show"
+    end
+
     self:QueueReplacementAction(action)
 end
 
