@@ -1720,6 +1720,7 @@ function Portals:CreateVaultFrame()
     local btn = CreateFrame("Button", nil, self.vaultFrame)
     btn:SetSize(52, 52)
     btn:SetPoint("CENTER")
+    btn:RegisterForClicks("LeftButtonUp", "RightButtonUp")
 
     local icon = btn:CreateTexture(nil, "ARTWORK")
     icon:SetAllPoints()
@@ -1730,7 +1731,31 @@ function Portals:CreateVaultFrame()
     highlight:SetColorTexture(1, 1, 0, 0.4)
     btn:SetHighlightTexture(highlight)
 
-    btn:SetScript("OnClick", function()
+    btn:SetScript("OnClick", function(_, mouseButton)
+        if mouseButton == "RightButton" then
+            if UIParentLoadAddOn and not WeeklyRewards_ShowUI then
+                UIParentLoadAddOn("Blizzard_WeeklyRewards")
+            end
+            if WeeklyRewards_ShowUI then
+                WeeklyRewards_ShowUI()
+            end
+
+            local VaultStore = vesperTools:GetModule("VaultStore", true)
+            if VaultStore and type(VaultStore.QueueCapture) == "function" then
+                VaultStore:QueueCapture(0.15)
+            end
+            return
+        end
+
+        local VaultWindow = vesperTools:GetModule("VaultWindow", true)
+        if VaultWindow and type(VaultWindow.Toggle) == "function" then
+            VaultWindow:Toggle()
+            return
+        end
+
+        if UIParentLoadAddOn and not WeeklyRewards_ShowUI then
+            UIParentLoadAddOn("Blizzard_WeeklyRewards")
+        end
         if WeeklyRewards_ShowUI then
             WeeklyRewards_ShowUI()
         end
@@ -1739,6 +1764,8 @@ function Portals:CreateVaultFrame()
     btn:SetScript("OnEnter", function(vaultButton)
         GameTooltip:SetOwner(vaultButton, "ANCHOR_RIGHT")
         GameTooltip:SetText(L["GREAT_VAULT"], 1, 1, 1)
+        GameTooltip:AddLine(L["VAULT_PORTAL_TOOLTIP_VIEW"], 0.85, 0.85, 0.85)
+        GameTooltip:AddLine(L["VAULT_PORTAL_TOOLTIP_LIVE"], 0.85, 0.85, 0.85)
         GameTooltip:Show()
     end)
     btn:SetScript("OnLeave", function()

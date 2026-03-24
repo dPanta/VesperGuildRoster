@@ -1,3 +1,20 @@
+## 2.5.0 - 2026-03-24
+
+### Changed
+- Added a custom Great Vault snapshot window with a character switcher so current-week rewards can be viewed across logged characters, while still keeping Blizzard's live Great Vault available for the current character.
+- Reworked the Great Vault display to use themed preview and locked chest visuals, a layout sized to show all 9 slots without scrolling, and row summaries that show the slot source directly such as `Mythic +4`, `Delve T8`, or raid difficulty.
+- Changed Great Vault preview rows to use source-aware Midnight Season 1 mappings for tracks and item levels instead of inferring them from example item links, and added raid difficulty capture to vault snapshots so raid slots can render the correct source.
+- Consolidated all non-current-expansion carried-bag items into a single `Past Expansions` category instead of splitting them by individual expansion.
+- Added a locale supplement that backfills missing `enUS` keys at runtime and covers the newly added user-facing strings across the shipped locales.
+
+### Fixed
+- Stopped Great Vault preview slots from showing random real items or example-item hyperlinks as if they were actual rewards.
+- Fixed Great Vault preview tracks so low-level dungeon or delve rows no longer claim endgame tracks like `Myth`, and restricted raid requirement text to raid slots so it no longer bleeds into other lanes.
+- Fixed Great Vault rendering issues around delayed item info and corrected raid requirement text so raw `%d` placeholders no longer leak into the UI.
+
+### Notes
+- This minor release focuses on multi-character Great Vault support, bag categorization cleanup, and locale coverage maintenance.
+
 ## 2.4.5 - 2026-03-24
 
 ### Changed

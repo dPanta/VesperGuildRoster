@@ -2,7 +2,7 @@
 ## Title: vesperTools
 ## Notes: Various Things for Various other things.
 ## Author: dPanta
-## Version: 2.4.5
+## Version: 2.5.0
 ## IconTexture: Interface\AddOns\vesperTools\Media\vesperTools.png
 ## SavedVariables: vesperToolsDB, vesperToolsBagsDB, VesperGuildDB, VesperGuildBagsDB
 ## X-Wago-ID: XKqAw8Ky
@@ -34,6 +34,7 @@ Locales\ptBR.lua
 Locales\ruRU.lua
 Locales\zhCN.lua
 Locales\zhTW.lua
+Locales\Supplemental.lua
 
 # Core
 vesperTools.lua
@@ -52,3 +53,5 @@ Modules\BagsWindow.lua
 Modules\BagsBridge.lua
 Modules\BankStore.lua
 Modules\BankWindow.lua
+Modules\VaultStore.lua
+Modules\VaultWindow.lua

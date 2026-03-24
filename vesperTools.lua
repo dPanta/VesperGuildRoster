@@ -1061,7 +1061,16 @@ function vesperTools:OnInitialize()
             },
             lastViewedCharacterGUID = nil,
             lastViewedBankCharacterGUID = nil,
+            lastViewedVaultCharacterGUID = nil,
             lastViewedBankView = "character",
+            vaultWindow = {
+                point = "CENTER",
+                relativePoint = "CENTER",
+                xOfs = 0,
+                yOfs = 0,
+                width = 760,
+                height = 600,
+            },
             replaceBackpack = false,
             replaceCharacterBank = false,
             replaceAccountBank = false,
@@ -1085,6 +1094,9 @@ function vesperTools:OnInitialize()
                     categoryItems = {},
                     lastSeen = 0,
                 },
+            },
+            vault = {
+                charactersByGUID = {},
             },
         },
     }, true)
@@ -1133,6 +1145,18 @@ function vesperTools:GetBagsProfile()
     profile.bankWindow.width = math.max(480, math.floor((tonumber(profile.bankWindow.width) or DEFAULT_BANK_WINDOW_WIDTH) + 0.5))
     profile.bankWindow.height = math.max(220, math.floor((tonumber(profile.bankWindow.height) or DEFAULT_BANK_WINDOW_HEIGHT) + 0.5))
 
+    profile.vaultWindow = profile.vaultWindow or {}
+    if type(profile.vaultWindow.point) ~= "string" or profile.vaultWindow.point == "" then
+        profile.vaultWindow.point = "CENTER"
+    end
+    if type(profile.vaultWindow.relativePoint) ~= "string" or profile.vaultWindow.relativePoint == "" then
+        profile.vaultWindow.relativePoint = "CENTER"
+    end
+    profile.vaultWindow.xOfs = tonumber(profile.vaultWindow.xOfs) or 0
+    profile.vaultWindow.yOfs = tonumber(profile.vaultWindow.yOfs) or 0
+    profile.vaultWindow.width = math.max(560, math.floor((tonumber(profile.vaultWindow.width) or 760) + 0.5))
+    profile.vaultWindow.height = math.max(600, math.floor((tonumber(profile.vaultWindow.height) or 600) + 0.5))
+
     profile.display = profile.display or {}
     profile.display.columns = math.max(1, math.min(20, math.floor((tonumber(profile.display.columns) or DEFAULT_BAGS_COLUMNS) + 0.5)))
     profile.display.itemIconSize = math.max(24, math.min(56, math.floor((tonumber(profile.display.itemIconSize) or DEFAULT_BAGS_ITEM_ICON_SIZE) + 0.5)))
@@ -1165,6 +1189,9 @@ function vesperTools:GetBagsProfile()
     end
     if type(profile.lastViewedBankCharacterGUID) ~= "string" or profile.lastViewedBankCharacterGUID == "" then
         profile.lastViewedBankCharacterGUID = nil
+    end
+    if type(profile.lastViewedVaultCharacterGUID) ~= "string" or profile.lastViewedVaultCharacterGUID == "" then
+        profile.lastViewedVaultCharacterGUID = nil
     end
     if profile.lastViewedBankView ~= "character" and profile.lastViewedBankView ~= "warband" then
         profile.lastViewedBankView = "character"

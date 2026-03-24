@@ -15,12 +15,14 @@ local BAG_CATEGORY_DEFS = {
     { key = "tradegoods", labelKey = "BAGS_CATEGORY_TRADE_GOODS", order = 7 },
     { key = "container", labelKey = "BAGS_CATEGORY_CONTAINER", order = 8 },
     { key = "misc", labelKey = "BAGS_CATEGORY_MISC", order = 9 },
+    { key = "past_expansions", labelKey = "BAGS_CATEGORY_PAST_EXPANSIONS", order = 100 },
 }
 
 local CATEGORY_ORDER = {}
 local CATEGORY_LABEL_KEY_BY_ID = {}
 local CATEGORY_PRIORITY_BY_ID = {}
 local EXPANSION_CATEGORY_KEY_PREFIX = "expansion:"
+local PAST_EXPANSIONS_CATEGORY_KEY = "past_expansions"
 for i = 1, #BAG_CATEGORY_DEFS do
     local def = BAG_CATEGORY_DEFS[i]
     CATEGORY_ORDER[i] = def.key
@@ -154,7 +156,7 @@ local function getExpansionCategoryKey(expansionID)
         return nil
     end
 
-    return EXPANSION_CATEGORY_KEY_PREFIX .. tostring(normalizedID)
+    return PAST_EXPANSIONS_CATEGORY_KEY
 end
 
 local function getExpansionIDFromCategoryKey(categoryKey)
@@ -182,6 +184,22 @@ local function getExpansionDisplayName(expansionID)
     end
 
     return string.format("Expansion %s", tostring(normalizedID))
+end
+
+local function canonicalizeCategoryKey(categoryKey)
+    if type(categoryKey) ~= "string" or categoryKey == "" then
+        return "misc"
+    end
+
+    if categoryKey == PAST_EXPANSIONS_CATEGORY_KEY then
+        return categoryKey
+    end
+
+    if getExpansionIDFromCategoryKey(categoryKey) ~= nil then
+        return PAST_EXPANSIONS_CATEGORY_KEY
+    end
+
+    return categoryKey
 end
 
 local function getCurrentExpansionID()
@@ -323,6 +341,7 @@ function BagsStore:IsTrackedBagID(bagID)
 end
 
 function BagsStore:GetCategoryDisplayName(categoryKey)
+    categoryKey = canonicalizeCategoryKey(categoryKey)
     local labelKey = CATEGORY_LABEL_KEY_BY_ID[categoryKey]
     if labelKey then
         return L[labelKey]
@@ -337,6 +356,7 @@ function BagsStore:GetCategoryDisplayName(categoryKey)
 end
 
 function BagsStore:GetCategoryOrder(categoryKey)
+    categoryKey = canonicalizeCategoryKey(categoryKey)
     local expansionID = getExpansionIDFromCategoryKey(categoryKey)
     if expansionID ~= nil then
         return 100
@@ -457,14 +477,16 @@ function BagsStore:ApplyAggregateToAccount(characterKey, aggregate, direction)
     end
 
     for categoryKey, count in pairs(aggregate.categoryTotals or {}) do
-        if not self:AdjustCount(accountIndex.categoryTotals, categoryKey, sign * count) then
+        local canonicalCategoryKey = canonicalizeCategoryKey(categoryKey)
+        if not self:AdjustCount(accountIndex.categoryTotals, canonicalCategoryKey, sign * count) then
             return false
         end
     end
 
     for categoryKey, categoryItems in pairs(aggregate.categoryItems or {}) do
+        local canonicalCategoryKey = canonicalizeCategoryKey(categoryKey)
         for itemID, count in pairs(categoryItems) do
-            if not self:AdjustNestedCount(accountIndex.categoryItems, categoryKey, itemID, sign * count) then
+            if not self:AdjustNestedCount(accountIndex.categoryItems, canonicalCategoryKey, itemID, sign * count) then
                 return false
             end
         end
@@ -788,7 +810,7 @@ function BagsStore:BuildAggregatesFromBags(bags)
                 local record = bag.slots[slotID]
                 if type(record) == "table" and record.itemID then
                     local count = math.max(1, tonumber(record.stackCount) or 1)
-                    local categoryKey = record.categoryKey or "misc"
+                    local categoryKey = canonicalizeCategoryKey(record.categoryKey)
 
                     self:AdjustCount(aggregate.itemTotals, record.itemID, count)
                     self:AdjustCount(aggregate.categoryTotals, categoryKey, count)
@@ -850,12 +872,14 @@ function BagsStore:BuildAccountIndexFromCharacters()
             end
 
             for categoryKey, count in pairs(carried.categoryTotals or {}) do
-                self:AdjustCount(rebuilt.categoryTotals, categoryKey, count)
+                local canonicalCategoryKey = canonicalizeCategoryKey(categoryKey)
+                self:AdjustCount(rebuilt.categoryTotals, canonicalCategoryKey, count)
             end
 
             for categoryKey, categoryItems in pairs(carried.categoryItems or {}) do
+                local canonicalCategoryKey = canonicalizeCategoryKey(categoryKey)
                 for itemID, count in pairs(categoryItems) do
-                    self:AdjustNestedCount(rebuilt.categoryItems, categoryKey, itemID, count)
+                    self:AdjustNestedCount(rebuilt.categoryItems, canonicalCategoryKey, itemID, count)
                 end
             end
         end
@@ -1040,13 +1064,14 @@ function BagsStore:GetCharacterCategoryItems(characterKey, categoryKey)
     end
 
     local items = {}
+    local targetCategoryKey = canonicalizeCategoryKey(categoryKey)
     for i = 1, #TRACKED_BAG_IDS do
         local bagID = TRACKED_BAG_IDS[i]
         local bag = snapshot.carried.bags[bagID]
         if type(bag) == "table" and type(bag.slots) == "table" then
             for slotID = 1, tonumber(bag.size) or 0 do
                 local record = bag.slots[slotID]
-                if type(record) == "table" and record.categoryKey == categoryKey then
+                if type(record) == "table" and canonicalizeCategoryKey(record.categoryKey) == targetCategoryKey then
                     items[#items + 1] = record
                 end
             end
@@ -1074,7 +1099,22 @@ function BagsStore:GetAccountCategoryItems(categoryKey)
     if not global then
         return nil
     end
-    return global.accountIndex.categoryItems[categoryKey]
+
+    local targetCategoryKey = canonicalizeCategoryKey(categoryKey)
+    if targetCategoryKey ~= PAST_EXPANSIONS_CATEGORY_KEY then
+        return global.accountIndex.categoryItems[targetCategoryKey]
+    end
+
+    local mergedItems = {}
+    for storedCategoryKey, itemCounts in pairs(global.accountIndex.categoryItems or {}) do
+        if canonicalizeCategoryKey(storedCategoryKey) == targetCategoryKey then
+            for itemID, count in pairs(itemCounts) do
+                self:AdjustCount(mergedItems, itemID, count)
+            end
+        end
+    end
+
+    return mergedItems
 end
 
 function BagsStore:GetCharacterCategoryList(characterKey)
@@ -1083,9 +1123,17 @@ function BagsStore:GetCharacterCategoryList(characterKey)
         return {}
     end
 
-    local categories = {}
+    local mergedCounts = {}
     for categoryKey, rawCount in pairs(snapshot.carried.categoryTotals) do
         local count = tonumber(rawCount) or 0
+        if count > 0 then
+            local canonicalCategoryKey = canonicalizeCategoryKey(categoryKey)
+            self:AdjustCount(mergedCounts, canonicalCategoryKey, count)
+        end
+    end
+
+    local categories = {}
+    for categoryKey, count in pairs(mergedCounts) do
         if count > 0 then
             categories[#categories + 1] = {
                 key = categoryKey,
@@ -1100,10 +1148,6 @@ function BagsStore:GetCharacterCategoryList(characterKey)
     table.sort(categories, function(a, b)
         if a.order ~= b.order then
             return a.order < b.order
-        end
-
-        if a.expansionID ~= nil and b.expansionID ~= nil and a.expansionID ~= b.expansionID then
-            return a.expansionID > b.expansionID
         end
 
         if a.label ~= b.label then
