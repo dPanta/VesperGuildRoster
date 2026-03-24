@@ -37,6 +37,8 @@ local GUILD_LOOKUP_ICON_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\GuildL
 local GUILD_LOOKUP_ICON_DISABLED_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\GuildLookupChest-64-Disabled"
 local GUILD_LOOKUP_RESULT_ROW_HEIGHT = 22
 local GUILD_LOOKUP_RESULT_MAX_VISIBLE_ROWS = 8
+local SECTION_TITLE_GAP = 4
+local SECTION_TITLE_RIGHT_PADDING = 8
 local EQUIPPED_BAG_IDS = {}
 local REAGENT_BAG_ID = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or nil
 
@@ -161,6 +163,7 @@ end
 -- Module lifecycle and refresh entry points.
 function BagsWindow:OnInitialize()
     self.frame = nil
+    self.itemInteraction = nil
     self.titleText = nil
     self.modeText = nil
     self.searchBox = nil
@@ -221,6 +224,42 @@ end
 
 function BagsWindow:GetStore()
     return vesperTools:GetModule("BagsStore", true)
+end
+
+function BagsWindow:GetItemInteraction()
+    if self.itemInteraction then
+        return self.itemInteraction
+    end
+
+    if type(vesperTools.CreateContainerItemController) ~= "function" then
+        return nil
+    end
+
+    self.itemInteraction = vesperTools:CreateContainerItemController(self, {
+        assignContextToButton = function(_, button, context)
+            button.isCurrentCharacter = context and context.isCurrentCharacter and true or false
+        end,
+        afterConfigureButton = function(window, button, record, context)
+            local isCurrentCharacter = context and context.isCurrentCharacter and true or false
+
+            if window:ShouldShowNewItemGlow(record, isCurrentCharacter) then
+                button.newGlow:SetAtlas(getNewItemGlowAtlas(record.quality), false)
+                button.newGlow:Show()
+                if not button.newGlowAnim:IsPlaying() then
+                    button.newGlowAnim:Play()
+                end
+            else
+                button.newGlow:Hide()
+                if button.newGlowAnim:IsPlaying() then
+                    button.newGlowAnim:Stop()
+                end
+            end
+
+            window:ApplySearchDimState(button, record, window:GetSearchTokens())
+        end,
+    })
+
+    return self.itemInteraction
 end
 
 function BagsWindow:GetGuildLookup()
@@ -1947,6 +1986,50 @@ function BagsWindow:BuildLayoutGroups(store, characterKey, categories, viewSetti
     return groups, maxItemCount
 end
 
+function BagsWindow:GetSectionTitleMeasureText()
+    if self.sectionTitleMeasureText then
+        return self.sectionTitleMeasureText
+    end
+
+    local parent = self.frame or UIParent
+    local measureText = parent:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
+    measureText:SetWordWrap(false)
+    measureText:Hide()
+    self.sectionTitleMeasureText = measureText
+    return measureText
+end
+
+function BagsWindow:GetMinimumSectionContentWidth(groups)
+    if type(groups) ~= "table" or #groups == 0 then
+        return 0
+    end
+
+    local measureText = self:GetSectionTitleMeasureText()
+    vesperTools:ApplyConfiguredFont(measureText, 14, "")
+
+    local widestTitleWidth = 0
+    for i = 1, #groups do
+        local category = groups[i].category
+        if category then
+            local titleText
+            if groups[i].hidden then
+                titleText = string.format("%s (%d) (%s)", category.label, category.count, L["BAGS_HIDDEN"])
+            else
+                titleText = string.format("%s (%d)", category.label, category.count)
+            end
+
+            measureText:SetText(titleText)
+            widestTitleWidth = math.max(widestTitleWidth, math.ceil(measureText:GetStringWidth() or 0))
+        end
+    end
+
+    return (CONTENT_SIDE_PADDING * 2)
+        + CATEGORY_TOGGLE_BUTTON_SIZE
+        + SECTION_TITLE_GAP
+        + widestTitleWidth
+        + SECTION_TITLE_RIGHT_PADDING
+end
+
 function BagsWindow:MeasureContentHeight(groups, columns, viewSettings, hasSummary)
     local itemIconSize = viewSettings and viewSettings.itemIconSize or DEFAULT_BUTTON_SIZE
     local buttonGap = viewSettings and viewSettings.buttonGap or BUTTON_GAP
@@ -1987,7 +2070,8 @@ function BagsWindow:ResolveAutoLayout(groups, maxItemCount, viewSettings)
 
     local gridWidth = (CONTENT_SIDE_PADDING * 2) + (columns * itemIconSize) + (math.max(0, columns - 1) * buttonGap)
     local summaryWidth = (CONTENT_SIDE_PADDING * 2) + (itemIconSize * 2) + buttonGap
-    local contentWidth = math.max(gridWidth, summaryWidth)
+    local sectionWidth = self:GetMinimumSectionContentWidth(groups)
+    local contentWidth = math.max(gridWidth, summaryWidth, sectionWidth)
     local contentHeight = self:MeasureContentHeight(groups, columns, viewSettings, true)
     local desiredWidth = math.max(MIN_WINDOW_WIDTH, contentWidth + 20)
     local desiredHeight = WINDOW_CHROME_HEIGHT + contentHeight
@@ -2043,85 +2127,22 @@ function BagsWindow:AcquireSectionFrame()
 end
 
 function BagsWindow:AcquireItemButton()
-    local button = CreateFrame("Button", nil, self.content, "BackdropTemplate")
-    button:SetSize(DEFAULT_BUTTON_SIZE, DEFAULT_BUTTON_SIZE)
-    button:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
+    local button = vesperTools:CreateContainerItemButton(self, self.content, {
+        defaultSize = DEFAULT_BUTTON_SIZE,
+        includeNewItemGlow = true,
+        onEnter = function(window, selfButton)
+            window:HandleItemEnter(selfButton)
+        end,
+        onClick = function(window, selfButton, mouseButton)
+            window:HandleItemClick(selfButton, mouseButton)
+        end,
+        onDragStart = function(window, selfButton)
+            window:HandleItemDrag(selfButton)
+        end,
+        onReceiveDrag = function(window, selfButton)
+            window:HandleItemDrag(selfButton)
+        end,
     })
-    button:SetBackdropColor(0.08, 0.08, 0.08, 1)
-    button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    button:RegisterForDrag("LeftButton")
-
-    local glow = button:CreateTexture(nil, "BACKGROUND")
-    glow:SetPoint("TOPLEFT", button, "TOPLEFT", -3, 3)
-    glow:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 3, -3)
-    glow:SetColorTexture(1, 1, 1, 0)
-    glow:Hide()
-    button.glow = glow
-
-    local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT", 2, -2)
-    icon:SetPoint("BOTTOMRIGHT", -2, 2)
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    button.icon = icon
-
-    local newGlow = button:CreateTexture(nil, "OVERLAY")
-    newGlow:SetPoint("TOPLEFT", icon, "TOPLEFT", 0, 0)
-    newGlow:SetPoint("BOTTOMRIGHT", icon, "BOTTOMRIGHT", 0, 0)
-    newGlow:SetBlendMode("ADD")
-    newGlow:SetAlpha(0.95)
-    newGlow:Hide()
-    button.newGlow = newGlow
-
-    local newGlowAnim = newGlow:CreateAnimationGroup()
-    newGlowAnim:SetLooping("REPEAT")
-
-    local pulseIn = newGlowAnim:CreateAnimation("Alpha")
-    pulseIn:SetOrder(1)
-    pulseIn:SetFromAlpha(0.55)
-    pulseIn:SetToAlpha(1.0)
-    pulseIn:SetDuration(0.35)
-    pulseIn:SetSmoothing("IN_OUT")
-
-    local pulseOut = newGlowAnim:CreateAnimation("Alpha")
-    pulseOut:SetOrder(2)
-    pulseOut:SetFromAlpha(1.0)
-    pulseOut:SetToAlpha(0.55)
-    pulseOut:SetDuration(0.35)
-    pulseOut:SetSmoothing("IN_OUT")
-
-    button.newGlowAnim = newGlowAnim
-
-    local count = button:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-    count:SetPoint("BOTTOMRIGHT", -2, 2)
-    vesperTools:ApplyConfiguredFont(count, 11, "OUTLINE")
-    button.count = count
-
-    local itemLevel = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    itemLevel:SetPoint("TOPLEFT", 3, -2)
-    itemLevel:SetJustifyH("LEFT")
-    vesperTools:ApplyConfiguredFont(itemLevel, 9, "OUTLINE")
-    itemLevel:Hide()
-    button.itemLevel = itemLevel
-
-    button:SetScript("OnEnter", function(selfButton)
-        self:HandleItemEnter(selfButton)
-    end)
-    button:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    button:SetScript("OnClick", function(selfButton, mouseButton)
-        self:HandleItemClick(selfButton, mouseButton)
-    end)
-    button:SetScript("OnDragStart", function(selfButton)
-        self:HandleItemDrag(selfButton)
-    end)
-    button:SetScript("OnReceiveDrag", function(selfButton)
-        self:HandleItemDrag(selfButton)
-    end)
 
     self.itemButtons[#self.itemButtons + 1] = button
     return button
@@ -2333,25 +2354,10 @@ function BagsWindow:ConfigureEquippedBagButton(button, entry, viewSettings)
 end
 
 function BagsWindow:ConfigureTooltip(button)
-    GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-    if button.isCurrentCharacter and not button.isCombined and button.bagID and button.slotID then
-        GameTooltip:SetBagItem(button.bagID, button.slotID)
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(string.format("%s: %s", L["BAGS_LIVE"], button.ownerName or UNKNOWN), 0.85, 0.85, 0.85)
-    else
-        if type(button.hyperlink) == "string" and button.hyperlink ~= "" then
-            GameTooltip:SetHyperlink(button.hyperlink)
-        else
-            GameTooltip:SetText(button.itemName or buildFallbackItemName(button.itemID), 1, 1, 1)
-        end
-        GameTooltip:AddLine(" ")
-        GameTooltip:AddLine(string.format("%s: %s", button.isCurrentCharacter and L["BAGS_LIVE"] or L["BAGS_READ_ONLY"], button.ownerName or UNKNOWN), 0.85, 0.85, 0.85)
+    local itemInteraction = self:GetItemInteraction()
+    if itemInteraction then
+        itemInteraction:ConfigureTooltip(button)
     end
-    if button.isCombined then
-        GameTooltip:AddLine(string.format(L["BAGS_COMBINED_FROM_FMT"], tonumber(button.combinedStacks) or 1), 0.85, 0.85, 0.85)
-        GameTooltip:AddLine(string.format(L["BAGS_TOTAL_ITEMS_FMT"], tonumber(button.totalCount) or tonumber(button.stackCount) or 0), 0.85, 0.85, 0.85)
-    end
-    GameTooltip:Show()
 end
 
 function BagsWindow:HandleItemEnter(button)
@@ -2359,69 +2365,21 @@ function BagsWindow:HandleItemEnter(button)
 end
 
 function BagsWindow:HandleItemDrag(button)
-    if not button.isCombined and button.isCurrentCharacter and not InCombatLockdown() and C_Container and C_Container.PickupContainerItem then
-        C_Container.PickupContainerItem(button.bagID, button.slotID)
+    local itemInteraction = self:GetItemInteraction()
+    if itemInteraction then
+        itemInteraction:HandleItemDrag(button)
     end
 end
 
 function BagsWindow:AcquireNativeContainerOverlay(button)
-    if not button or button.nativeContainerOverlay or not ContainerFrameItemButtonMixin then
-        return button and button.nativeContainerOverlay or nil
-    end
-
-    button.IsCombinedBagContainer = button.IsCombinedBagContainer or function()
-        return false
-    end
-
-    local overlay = CreateFrame("ItemButton", nil, button, "ContainerFrameItemButtonTemplate")
-    overlay:SetAllPoints(button)
-    overlay:SetFrameLevel(button:GetFrameLevel() + 10)
-    suppressNativeOverlayVisuals(overlay)
-    overlay:Hide()
-    button.nativeContainerOverlay = overlay
-    return overlay
+    local itemInteraction = self:GetItemInteraction()
+    return itemInteraction and itemInteraction:AcquireNativeContainerOverlay(button) or nil
 end
 
 function BagsWindow:UpdateNativeContainerOverlay(button)
-    local shouldUseNativeOverlay = not button.isCombined
-        and button.isCurrentCharacter
-        and button.bagID
-        and button.slotID
-        and ContainerFrameItemButtonMixin
-    local overlay = button.nativeContainerOverlay or (shouldUseNativeOverlay and self:AcquireNativeContainerOverlay(button)) or nil
-    if not overlay then
-        return
-    end
-
-    if shouldUseNativeOverlay then
-        local currentBagID = overlay.GetBagID and overlay:GetBagID() or nil
-        local needsRefresh = not overlay:IsShown()
-            or overlay:GetID() ~= button.slotID
-            or currentBagID ~= button.bagID
-
-        if needsRefresh then
-            if InCombatLockdown() then
-                self.pendingSecureItemRefresh = true
-                return
-            end
-            overlay:Initialize(button.bagID, button.slotID)
-        end
-
-        overlay:SetAllPoints(button)
-        overlay:SetFrameLevel(button:GetFrameLevel() + 10)
-        -- Keep Blizzard's secure container button for native interactions, but let
-        -- vesperTools own all item visuals to avoid duplicate new-item glows.
-        suppressNativeOverlayVisuals(overlay)
-        overlay:Show()
-        return
-    end
-
-    if overlay:IsShown() then
-        if InCombatLockdown() then
-            self.pendingSecureItemRefresh = true
-            return
-        end
-        overlay:Hide()
+    local itemInteraction = self:GetItemInteraction()
+    if itemInteraction then
+        itemInteraction:UpdateNativeContainerOverlay(button)
     end
 end
 
@@ -2433,64 +2391,21 @@ function BagsWindow:ConfigureSummaryTooltip(button)
 end
 
 function BagsWindow:HandleItemClick(button, mouseButton)
-    if mouseButton == "LeftButton"
-        and type(button.hyperlink) == "string"
-        and button.hyperlink ~= ""
-        and HandleModifiedItemClick
-        and HandleModifiedItemClick(button.hyperlink) then
-        return
-    end
-
-    if button.isCombined or not button.isCurrentCharacter or InCombatLockdown() then
-        return
-    end
-
-    if mouseButton == "RightButton" then
-        return
-    end
-
-    if C_Container and C_Container.PickupContainerItem then
-        C_Container.PickupContainerItem(button.bagID, button.slotID)
+    local itemInteraction = self:GetItemInteraction()
+    if itemInteraction then
+        itemInteraction:HandleItemClick(button, mouseButton)
     end
 end
 
 -- Item presentation and final window refresh pass.
 function BagsWindow:CanDisplayItemLevel(record)
-    if not record or not record.itemID then
-        return false
-    end
-
-    local classID
-    if C_Item and C_Item.GetItemInfoInstant then
-        local _, _, _, _, _, resolvedClassID = C_Item.GetItemInfoInstant(record.itemID)
-        classID = resolvedClassID
-    elseif GetItemInfoInstant then
-        local _, _, _, _, _, resolvedClassID = GetItemInfoInstant(record.itemID)
-        classID = resolvedClassID
-    end
-
-    return classID == ITEM_CLASS.Weapon or classID == ITEM_CLASS.Armor
+    local itemInteraction = self:GetItemInteraction()
+    return itemInteraction and itemInteraction:CanDisplayItemLevel(record) or false
 end
 
 function BagsWindow:GetItemLevelForRecord(record)
-    if not self:CanDisplayItemLevel(record) then
-        return nil
-    end
-
-    local itemLevel
-    if GetDetailedItemLevelInfo then
-        itemLevel = GetDetailedItemLevelInfo(record.hyperlink or record.itemID)
-    end
-    if (not itemLevel or itemLevel <= 0) and C_Item and C_Item.GetDetailedItemLevelInfo then
-        itemLevel = C_Item.GetDetailedItemLevelInfo(record.hyperlink or record.itemID)
-    end
-
-    itemLevel = tonumber(itemLevel)
-    if not itemLevel or itemLevel <= 0 then
-        return nil
-    end
-
-    return math.floor(itemLevel + 0.5)
+    local itemInteraction = self:GetItemInteraction()
+    return itemInteraction and itemInteraction:GetItemLevelForRecord(record) or nil
 end
 
 function BagsWindow:IsNewItem(record, isCurrentCharacter)
@@ -2535,75 +2450,11 @@ function BagsWindow:ShouldShowNewItemGlow(record, isCurrentCharacter)
     return true
 end
 
-function BagsWindow:ConfigureItemButton(button, record, isCurrentCharacter, ownerName, viewSettings)
-    button.itemID = record.itemID
-    button.itemName = record.itemName
-    button.itemDescription = record.itemDescription
-    button.searchText = record.searchText
-    button.hyperlink = record.hyperlink
-    button.isCombined = record.isCombined and true or false
-    button.bagID = button.isCombined and nil or record.bagID
-    button.slotID = button.isCombined and nil or record.slotID
-    button.isCurrentCharacter = isCurrentCharacter
-    button.ownerName = ownerName
-    button.combinedStacks = tonumber(record.combinedStacks) or 1
-    button.totalCount = tonumber(record.stackCount) or 1
-
-    local itemIconSize = viewSettings and viewSettings.itemIconSize or DEFAULT_BUTTON_SIZE
-    local countFontSize = math.max(8, math.min(20, tonumber(viewSettings and viewSettings.stackCountFontSize) or 11))
-    local itemLevelFontSize = math.max(8, math.min(18, tonumber(viewSettings and viewSettings.itemLevelFontSize) or 9))
-
-    button:SetSize(itemIconSize, itemIconSize)
-    vesperTools:ApplyConfiguredFont(button.count, countFontSize, "OUTLINE")
-    vesperTools:ApplyConfiguredFont(button.itemLevel, itemLevelFontSize, "OUTLINE")
-
-    button.icon:SetTexture(record.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
-    button.count:SetText(((button.isCombined and button.totalCount > 1) or (tonumber(record.stackCount) or 1) > 1) and tostring(button.totalCount) or "")
-
-    local r, g, b = safeColorForQuality(record.quality)
-    if (viewSettings and viewSettings.qualityGlowIntensity or 0) > 0 and record.quality ~= nil then
-        local glowIntensity = viewSettings.qualityGlowIntensity
-        button:SetBackdropBorderColor(r, g, b, 0.35 + (glowIntensity * 0.65))
-        button.glow:SetColorTexture(r, g, b, 0.08 + (glowIntensity * 0.22))
-        button.glow:Show()
-    else
-        button:SetBackdropBorderColor(0.18, 0.18, 0.18, 1)
-        button.glow:Hide()
+function BagsWindow:ConfigureItemButton(button, record, context, viewSettings)
+    local itemInteraction = self:GetItemInteraction()
+    if itemInteraction then
+        itemInteraction:ConfigureItemButton(button, record, context, viewSettings)
     end
-    button:SetBackdropColor(0.08, 0.08, 0.08, 1)
-    button:SetEnabled(true)
-    self:UpdateNativeContainerOverlay(button)
-
-    if viewSettings and viewSettings.showItemLevel then
-        local itemLevel = self:GetItemLevelForRecord(record)
-        if itemLevel then
-            button.itemLevel:SetText(tostring(itemLevel))
-            button.itemLevel:SetTextColor(r, g, b, 1)
-            button.itemLevel:Show()
-        else
-            button.itemLevel:SetText("")
-            button.itemLevel:Hide()
-        end
-    else
-        button.itemLevel:SetText("")
-        button.itemLevel:Hide()
-    end
-
-    if self:ShouldShowNewItemGlow(record, isCurrentCharacter) then
-        button.newGlow:SetAtlas(getNewItemGlowAtlas(record.quality), false)
-        button.newGlow:Show()
-        if not button.newGlowAnim:IsPlaying() then
-            button.newGlowAnim:Play()
-        end
-    else
-        button.newGlow:Hide()
-        if button.newGlowAnim:IsPlaying() then
-            button.newGlowAnim:Stop()
-        end
-    end
-
-    self:ApplySearchDimState(button, record, self:GetSearchTokens())
-    button:Show()
 end
 
 function BagsWindow:ConfigureSummaryButton(button, summaryEntry, viewSettings)
@@ -2716,6 +2567,11 @@ function BagsWindow:RefreshWindow()
     local contentWidth = layout.contentWidth
     local columns = layout.columns
     local slotPitch = viewSettings.itemIconSize + viewSettings.buttonGap
+    local itemContext = {
+        ownerName = selectedCharacter.fullName,
+        isInteractive = selectedCharacter.isCurrent and true or false,
+        isCurrentCharacter = selectedCharacter.isCurrent and true or false,
+    }
     self.frame:SetSize(layout.frameWidth, layout.frameHeight)
     self.emptyText:SetWidth(layout.frameWidth - 60)
     self:SaveWindowState()
@@ -2777,7 +2633,7 @@ function BagsWindow:RefreshWindow()
                     local y = yOffset - (row * slotPitch)
                     button:ClearAllPoints()
                     button:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, y)
-                    self:ConfigureItemButton(button, items[itemPosition], selectedCharacter.isCurrent, selectedCharacter.fullName, viewSettings)
+                    self:ConfigureItemButton(button, items[itemPosition], itemContext, viewSettings)
 
                     column = column + 1
                     if column >= columns then

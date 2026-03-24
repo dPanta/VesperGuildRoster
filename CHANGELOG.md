@@ -1,3 +1,14 @@
+## 2.4.5 - 2026-03-24
+
+### Changed
+- Added expansion-based carried-bag categories so non-current-expansion items can be grouped under their expansion names and only appear when matching items exist.
+- Reworked bag and bank item buttons to share a common container-item interaction/controller layer instead of maintaining two drifting implementations.
+- Changed the replacement bank window to default to the current character view unless a specific live bank interaction requests a different opening view.
+- Added a measured minimum width for bag category headers so section titles stay readable even when the bag window shrinks to a very small item grid.
+
+### Notes
+- This hotfix focuses on inventory-window consistency and layout polish, while continuing the ongoing stabilization work around replacement bank interactions.
+
 ## 2.4.4 - 2026-03-23
 
 ### Changed

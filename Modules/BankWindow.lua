@@ -140,6 +140,7 @@ end
 -- Module lifecycle and refresh entry points.
 function BankWindow:OnInitialize()
     self.frame = nil
+    self.itemInteraction = nil
     self.titleText = nil
     self.modeText = nil
     self.searchBox = nil
@@ -187,6 +188,27 @@ end
 
 function BankWindow:GetStore()
     return vesperTools:GetModule("BankStore", true)
+end
+
+function BankWindow:GetItemInteraction()
+    if self.itemInteraction then
+        return self.itemInteraction
+    end
+
+    if type(vesperTools.CreateContainerItemController) ~= "function" then
+        return nil
+    end
+
+    self.itemInteraction = vesperTools:CreateContainerItemController(self, {
+        assignContextToButton = function(_, button, context)
+            button.isLive = context and context.isLive and true or false
+        end,
+        afterConfigureButton = function(window, button, record)
+            window:ApplySearchDimState(button, record, window:GetSearchTokens())
+        end,
+    })
+
+    return self.itemInteraction
 end
 
 function BankWindow:OnBankDataChanged()
@@ -251,7 +273,6 @@ end
 
 function BankWindow:SelectDefaultViewForOpen(preferredViewKey)
     local store = self:GetStore()
-    local bagsProfile = vesperTools:GetBagsProfile()
     local resolvedViewKey = preferredViewKey
 
     if store and type(store.CreateOrUpdateCurrentCharacter) == "function" then
@@ -259,10 +280,7 @@ function BankWindow:SelectDefaultViewForOpen(preferredViewKey)
     end
 
     if resolvedViewKey ~= "character" and resolvedViewKey ~= "warband" then
-        resolvedViewKey = bagsProfile and bagsProfile.lastViewedBankView or "warband"
-    end
-    if resolvedViewKey ~= "character" and resolvedViewKey ~= "warband" then
-        resolvedViewKey = "warband"
+        resolvedViewKey = "character"
     end
 
     local displayCharacters = store and type(store.GetDisplayCharacters) == "function" and store:GetDisplayCharacters() or {}
@@ -1614,58 +1632,21 @@ function BankWindow:AcquireSectionFrame()
 end
 
 function BankWindow:AcquireItemButton()
-    local button = CreateFrame("Button", nil, self.content, "BackdropTemplate")
-    button:SetSize(DEFAULT_BUTTON_SIZE, DEFAULT_BUTTON_SIZE)
-    button:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
+    local button = vesperTools:CreateContainerItemButton(self, self.content, {
+        defaultSize = DEFAULT_BUTTON_SIZE,
+        onEnter = function(window, selfButton)
+            window:ConfigureTooltip(selfButton)
+        end,
+        onClick = function(window, selfButton, mouseButton)
+            window:HandleItemClick(selfButton, mouseButton)
+        end,
+        onDragStart = function(window, selfButton)
+            window:HandleItemDrag(selfButton)
+        end,
+        onReceiveDrag = function(window, selfButton)
+            window:HandleItemDrag(selfButton)
+        end,
     })
-    button:SetBackdropColor(0.08, 0.08, 0.08, 1)
-    button:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
-    button:RegisterForClicks("LeftButtonUp", "RightButtonUp")
-    button:RegisterForDrag("LeftButton")
-
-    local glow = button:CreateTexture(nil, "BACKGROUND")
-    glow:SetPoint("TOPLEFT", button, "TOPLEFT", -3, 3)
-    glow:SetPoint("BOTTOMRIGHT", button, "BOTTOMRIGHT", 3, -3)
-    glow:SetColorTexture(1, 1, 1, 0)
-    glow:Hide()
-    button.glow = glow
-
-    local icon = button:CreateTexture(nil, "ARTWORK")
-    icon:SetPoint("TOPLEFT", 2, -2)
-    icon:SetPoint("BOTTOMRIGHT", -2, 2)
-    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
-    button.icon = icon
-
-    local count = button:CreateFontString(nil, "OVERLAY", "NumberFontNormal")
-    count:SetPoint("BOTTOMRIGHT", -2, 2)
-    vesperTools:ApplyConfiguredFont(count, 11, "OUTLINE")
-    button.count = count
-
-    local itemLevel = button:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
-    itemLevel:SetPoint("TOPLEFT", 3, -2)
-    itemLevel:SetJustifyH("LEFT")
-    vesperTools:ApplyConfiguredFont(itemLevel, 9, "OUTLINE")
-    itemLevel:Hide()
-    button.itemLevel = itemLevel
-
-    button:SetScript("OnEnter", function(selfButton)
-        self:ConfigureTooltip(selfButton)
-    end)
-    button:SetScript("OnLeave", function()
-        GameTooltip:Hide()
-    end)
-    button:SetScript("OnClick", function(selfButton, mouseButton)
-        self:HandleItemClick(selfButton, mouseButton)
-    end)
-    button:SetScript("OnDragStart", function(selfButton)
-        self:HandleItemDrag(selfButton)
-    end)
-    button:SetScript("OnReceiveDrag", function(selfButton)
-        self:HandleItemDrag(selfButton)
-    end)
 
     self.itemButtons[#self.itemButtons + 1] = button
     return button
@@ -1713,62 +1694,20 @@ end
 
 -- Live item interaction helpers and native secure overlay routing.
 function BankWindow:CanDisplayItemLevel(record)
-    if not record or not record.itemID then
-        return false
-    end
-
-    local classID
-    if C_Item and C_Item.GetItemInfoInstant then
-        local _, _, _, _, _, resolvedClassID = C_Item.GetItemInfoInstant(record.itemID)
-        classID = resolvedClassID
-    elseif GetItemInfoInstant then
-        local _, _, _, _, _, resolvedClassID = GetItemInfoInstant(record.itemID)
-        classID = resolvedClassID
-    end
-
-    return classID == ITEM_CLASS.Weapon or classID == ITEM_CLASS.Armor
+    local itemInteraction = self:GetItemInteraction()
+    return itemInteraction and itemInteraction:CanDisplayItemLevel(record) or false
 end
 
 function BankWindow:GetItemLevelForRecord(record)
-    if not self:CanDisplayItemLevel(record) then
-        return nil
-    end
-
-    local itemLevel
-    if GetDetailedItemLevelInfo then
-        itemLevel = GetDetailedItemLevelInfo(record.hyperlink or record.itemID)
-    end
-    if (not itemLevel or itemLevel <= 0) and C_Item and C_Item.GetDetailedItemLevelInfo then
-        itemLevel = C_Item.GetDetailedItemLevelInfo(record.hyperlink or record.itemID)
-    end
-
-    itemLevel = tonumber(itemLevel)
-    if not itemLevel or itemLevel <= 0 then
-        return nil
-    end
-
-    return math.floor(itemLevel + 0.5)
+    local itemInteraction = self:GetItemInteraction()
+    return itemInteraction and itemInteraction:GetItemLevelForRecord(record) or nil
 end
 
 function BankWindow:ConfigureTooltip(button)
-    GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-    if button.isLive and not button.isCombined and button.bagID and button.slotID then
-        GameTooltip:SetBagItem(button.bagID, button.slotID)
-    else
-        if type(button.hyperlink) == "string" and button.hyperlink ~= "" then
-            GameTooltip:SetHyperlink(button.hyperlink)
-        else
-            GameTooltip:SetText(button.itemName or buildFallbackItemName(button.itemID), 1, 1, 1)
-        end
+    local itemInteraction = self:GetItemInteraction()
+    if itemInteraction then
+        itemInteraction:ConfigureTooltip(button)
     end
-
-    GameTooltip:AddLine(" ")
-    GameTooltip:AddLine(string.format("%s: %s", button.isLive and L["BAGS_LIVE"] or L["BAGS_READ_ONLY"], button.ownerName or UNKNOWN), 0.85, 0.85, 0.85)
-    if button.isCombined then
-        GameTooltip:AddLine(string.format(L["BAGS_COMBINED_FROM_FMT"], tonumber(button.combinedStacks) or 1), 0.85, 0.85, 0.85)
-        GameTooltip:AddLine(string.format(L["BAGS_TOTAL_ITEMS_FMT"], tonumber(button.totalCount) or tonumber(button.stackCount) or 0), 0.85, 0.85, 0.85)
-    end
-    GameTooltip:Show()
 end
 
 function BankWindow:ConfigureSummaryTooltip(button)
@@ -1778,149 +1717,42 @@ function BankWindow:ConfigureSummaryTooltip(button)
     GameTooltip:Show()
 end
 
+function BankWindow:PickupLiveItem(button)
+    local itemInteraction = self:GetItemInteraction()
+    return itemInteraction and itemInteraction:PickupItem(button) or false
+end
+
 function BankWindow:HandleItemDrag(button)
-    if not button.isCombined and button.isLive and not InCombatLockdown() and C_Container and C_Container.PickupContainerItem then
-        C_Container.PickupContainerItem(button.bagID, button.slotID)
+    local itemInteraction = self:GetItemInteraction()
+    if itemInteraction then
+        itemInteraction:HandleItemDrag(button)
     end
 end
 
 function BankWindow:AcquireNativeContainerOverlay(button)
-    if not button or button.nativeContainerOverlay or not ContainerFrameItemButtonMixin then
-        return button and button.nativeContainerOverlay or nil
-    end
-
-    button.IsCombinedBagContainer = button.IsCombinedBagContainer or function()
-        return false
-    end
-
-    local overlay = CreateFrame("ItemButton", nil, button, "ContainerFrameItemButtonTemplate")
-    overlay:SetAllPoints(button)
-    overlay:SetFrameLevel(button:GetFrameLevel() + 10)
-    suppressNativeOverlayVisuals(overlay)
-    overlay:Hide()
-    button.nativeContainerOverlay = overlay
-    return overlay
+    local itemInteraction = self:GetItemInteraction()
+    return itemInteraction and itemInteraction:AcquireNativeContainerOverlay(button) or nil
 end
 
 function BankWindow:UpdateNativeContainerOverlay(button)
-    local shouldUseNativeOverlay = not button.isCombined
-        and button.isLive
-        and button.bagID
-        and button.slotID
-        and ContainerFrameItemButtonMixin
-    local overlay = button.nativeContainerOverlay or (shouldUseNativeOverlay and self:AcquireNativeContainerOverlay(button)) or nil
-    if not overlay then
-        return
-    end
-
-    if shouldUseNativeOverlay then
-        local currentBagID = overlay.GetBagID and overlay:GetBagID() or nil
-        local needsRefresh = not overlay:IsShown()
-            or overlay:GetID() ~= button.slotID
-            or currentBagID ~= button.bagID
-
-        if needsRefresh then
-            if InCombatLockdown() then
-                self.pendingSecureItemRefresh = true
-                return
-            end
-            overlay:Initialize(button.bagID, button.slotID)
-        end
-
-        overlay:SetAllPoints(button)
-        overlay:SetFrameLevel(button:GetFrameLevel() + 10)
-        suppressNativeOverlayVisuals(overlay)
-        overlay:Show()
-        return
-    end
-
-    if overlay:IsShown() then
-        if InCombatLockdown() then
-            self.pendingSecureItemRefresh = true
-            return
-        end
-        overlay:Hide()
+    local itemInteraction = self:GetItemInteraction()
+    if itemInteraction then
+        itemInteraction:UpdateNativeContainerOverlay(button)
     end
 end
 
 function BankWindow:HandleItemClick(button, mouseButton)
-    if mouseButton == "LeftButton"
-        and type(button.hyperlink) == "string"
-        and button.hyperlink ~= ""
-        and HandleModifiedItemClick
-        and HandleModifiedItemClick(button.hyperlink) then
-        return
-    end
-
-    if button.isCombined or not button.isLive or InCombatLockdown() then
-        return
-    end
-
-    if mouseButton == "RightButton" then
-        return
-    end
-
-    if C_Container and C_Container.PickupContainerItem then
-        C_Container.PickupContainerItem(button.bagID, button.slotID)
+    local itemInteraction = self:GetItemInteraction()
+    if itemInteraction then
+        itemInteraction:HandleItemClick(button, mouseButton)
     end
 end
 
 function BankWindow:ConfigureItemButton(button, record, context, viewSettings)
-    button.itemID = record.itemID
-    button.itemName = record.itemName
-    button.itemDescription = record.itemDescription
-    button.searchText = record.searchText
-    button.hyperlink = record.hyperlink
-    button.isCombined = record.isCombined and true or false
-    button.bagID = button.isCombined and nil or record.bagID
-    button.slotID = button.isCombined and nil or record.slotID
-    button.ownerName = context.ownerName
-    button.isLive = context.isLive and true or false
-    button.combinedStacks = tonumber(record.combinedStacks) or 1
-    button.totalCount = tonumber(record.stackCount) or 1
-
-    local itemIconSize = viewSettings and viewSettings.itemIconSize or DEFAULT_BUTTON_SIZE
-    local countFontSize = math.max(8, math.min(20, tonumber(viewSettings and viewSettings.stackCountFontSize) or 11))
-    local itemLevelFontSize = math.max(8, math.min(18, tonumber(viewSettings and viewSettings.itemLevelFontSize) or 9))
-
-    button:SetSize(itemIconSize, itemIconSize)
-    vesperTools:ApplyConfiguredFont(button.count, countFontSize, "OUTLINE")
-    vesperTools:ApplyConfiguredFont(button.itemLevel, itemLevelFontSize, "OUTLINE")
-
-    button.icon:SetTexture(record.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
-    button.count:SetText(((button.isCombined and button.totalCount > 1) or (tonumber(record.stackCount) or 1) > 1) and tostring(button.totalCount) or "")
-
-    local r, g, b = safeColorForQuality(record.quality)
-    if (viewSettings and viewSettings.qualityGlowIntensity or 0) > 0 and record.quality ~= nil then
-        local glowIntensity = viewSettings.qualityGlowIntensity
-        button:SetBackdropBorderColor(r, g, b, 0.35 + (glowIntensity * 0.65))
-        button.glow:SetColorTexture(r, g, b, 0.08 + (glowIntensity * 0.22))
-        button.glow:Show()
-    else
-        button:SetBackdropBorderColor(0.18, 0.18, 0.18, 1)
-        button.glow:Hide()
+    local itemInteraction = self:GetItemInteraction()
+    if itemInteraction then
+        itemInteraction:ConfigureItemButton(button, record, context, viewSettings)
     end
-    button:SetBackdropColor(0.08, 0.08, 0.08, 1)
-    button:SetEnabled(true)
-    self:UpdateNativeContainerOverlay(button)
-
-    if viewSettings and viewSettings.showItemLevel then
-        local itemLevel = self:GetItemLevelForRecord(record)
-        if itemLevel then
-            button.itemLevel:SetText(tostring(itemLevel))
-            button.itemLevel:SetTextColor(r, g, b, 1)
-            button.itemLevel:Show()
-        else
-            button.itemLevel:SetText("")
-            button.itemLevel:Hide()
-        end
-    else
-        button.itemLevel:SetText("")
-        button.itemLevel:Hide()
-    end
-
-    self:ApplySearchDimState(button, record, self:GetSearchTokens())
-    button:Show()
 end
 
 function BankWindow:ConfigureSummaryButton(button, summaryEntry, viewSettings)
@@ -1965,6 +1797,7 @@ function BankWindow:ResolveViewContext(viewKey, selectedCharacter)
             snapshot = snapshot,
             categories = snapshot and store:GetWarbandCategoryList() or {},
             emptySummary = snapshot and store:GetWarbandEmptySlotSummary() or {},
+            isInteractive = isLive,
             isLive = isLive,
         }
     end
@@ -1987,6 +1820,7 @@ function BankWindow:ResolveViewContext(viewKey, selectedCharacter)
         characterKey = characterKey,
         categories = snapshot and characterKey and store:GetCharacterBankCategoryList(characterKey) or {},
         emptySummary = snapshot and characterKey and store:GetCharacterBankEmptySlotSummary(characterKey) or {},
+        isInteractive = isLive,
         isLive = isLive,
     }
 end

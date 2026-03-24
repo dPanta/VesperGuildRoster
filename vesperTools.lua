@@ -1061,7 +1061,7 @@ function vesperTools:OnInitialize()
             },
             lastViewedCharacterGUID = nil,
             lastViewedBankCharacterGUID = nil,
-            lastViewedBankView = "warband",
+            lastViewedBankView = "character",
             replaceBackpack = false,
             replaceCharacterBank = false,
             replaceAccountBank = false,
@@ -1167,7 +1167,7 @@ function vesperTools:GetBagsProfile()
         profile.lastViewedBankCharacterGUID = nil
     end
     if profile.lastViewedBankView ~= "character" and profile.lastViewedBankView ~= "warband" then
-        profile.lastViewedBankView = "warband"
+        profile.lastViewedBankView = "character"
     end
 
     profile.replaceBackpack = profile.replaceBackpack and true or false

@@ -20,6 +20,7 @@ local BAG_CATEGORY_DEFS = {
 local CATEGORY_ORDER = {}
 local CATEGORY_LABEL_KEY_BY_ID = {}
 local CATEGORY_PRIORITY_BY_ID = {}
+local EXPANSION_CATEGORY_KEY_PREFIX = "expansion:"
 for i = 1, #BAG_CATEGORY_DEFS do
     local def = BAG_CATEGORY_DEFS[i]
     CATEGORY_ORDER[i] = def.key
@@ -133,6 +134,88 @@ local function buildFallbackItemName(itemID)
     return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
 end
 
+local function normalizeExpansionID(expansionID)
+    local numericID = tonumber(expansionID)
+    if not numericID then
+        return nil
+    end
+
+    numericID = math.floor(numericID + 0.5)
+    if numericID < 0 then
+        return nil
+    end
+
+    return numericID
+end
+
+local function getExpansionCategoryKey(expansionID)
+    local normalizedID = normalizeExpansionID(expansionID)
+    if not normalizedID then
+        return nil
+    end
+
+    return EXPANSION_CATEGORY_KEY_PREFIX .. tostring(normalizedID)
+end
+
+local function getExpansionIDFromCategoryKey(categoryKey)
+    if type(categoryKey) ~= "string" then
+        return nil
+    end
+
+    local suffix = string.match(categoryKey, "^" .. EXPANSION_CATEGORY_KEY_PREFIX .. "(%d+)$")
+    if not suffix then
+        return nil
+    end
+
+    return normalizeExpansionID(suffix)
+end
+
+local function getExpansionDisplayName(expansionID)
+    local normalizedID = normalizeExpansionID(expansionID)
+    if normalizedID == nil then
+        return nil
+    end
+
+    local globalName = _G["EXPANSION_NAME" .. normalizedID]
+    if type(globalName) == "string" and globalName ~= "" then
+        return globalName
+    end
+
+    return string.format("Expansion %s", tostring(normalizedID))
+end
+
+local function getCurrentExpansionID()
+    local currentExpansionID = normalizeExpansionID(_G and _G.LE_EXPANSION_LEVEL_CURRENT)
+    if currentExpansionID ~= nil then
+        return currentExpansionID
+    end
+
+    if type(GetExpansionLevel) == "function" then
+        currentExpansionID = normalizeExpansionID(GetExpansionLevel())
+        if currentExpansionID ~= nil then
+            return currentExpansionID
+        end
+    end
+
+    return nil
+end
+
+local function getItemInfoRecord(itemRef)
+    if not itemRef or itemRef == "" then
+        return nil
+    end
+
+    if C_Item and C_Item.GetItemInfo then
+        return C_Item.GetItemInfo(itemRef)
+    end
+
+    if GetItemInfo then
+        return GetItemInfo(itemRef)
+    end
+
+    return nil
+end
+
 local function getEmptySlotCountForBag(bag)
     if type(bag) ~= "table" then
         return 0
@@ -244,10 +327,21 @@ function BagsStore:GetCategoryDisplayName(categoryKey)
     if labelKey then
         return L[labelKey]
     end
+
+    local expansionID = getExpansionIDFromCategoryKey(categoryKey)
+    if expansionID ~= nil then
+        return getExpansionDisplayName(expansionID)
+    end
+
     return L["BAGS_CATEGORY_MISC"]
 end
 
 function BagsStore:GetCategoryOrder(categoryKey)
+    local expansionID = getExpansionIDFromCategoryKey(categoryKey)
+    if expansionID ~= nil then
+        return 100
+    end
+
     return CATEGORY_PRIORITY_BY_ID[categoryKey] or 999
 end
 
@@ -434,6 +528,25 @@ function BagsStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
     meta.equipLoc = equipLoc or meta.equipLoc
     meta.iconFileID = info and info.iconFileID or iconFileID or meta.iconFileID
 
+    local itemInfoRef = hyperlink or itemID
+    local _, _, quality, _, _, _, _, _, _, _, _, resolvedClassID, resolvedSubClassID, _, expansionID, _, isCraftingReagent = getItemInfoRecord(itemInfoRef)
+    if resolvedClassID ~= nil then
+        meta.classID = resolvedClassID
+    end
+    if resolvedSubClassID ~= nil then
+        meta.subClassID = resolvedSubClassID
+    end
+    if quality ~= nil then
+        meta.quality = quality
+    end
+    expansionID = normalizeExpansionID(expansionID)
+    if expansionID ~= nil then
+        meta.expansionID = expansionID
+    end
+    if isCraftingReagent ~= nil then
+        meta.isCraftingReagent = isCraftingReagent and true or false
+    end
+
     if info and info.quality ~= nil then
         meta.quality = info.quality
     end
@@ -478,6 +591,12 @@ function BagsStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
 end
 
 function BagsStore:ResolveCategoryKey(meta, info, questInfo)
+    local expansionID = meta and normalizeExpansionID(meta.expansionID) or nil
+    local currentExpansionID = getCurrentExpansionID()
+    if expansionID ~= nil and currentExpansionID ~= nil and expansionID ~= currentExpansionID then
+        return getExpansionCategoryKey(expansionID)
+    end
+
     if questInfo and questInfo.isQuestItem then
         return "quest"
     end
@@ -558,9 +677,10 @@ function BagsStore:BuildSlotRecord(bagID, slotID)
         iconFileID = info.iconFileID or (meta and meta.iconFileID) or "Interface\\Icons\\INV_Misc_QuestionMark",
         stackCount = tonumber(info.stackCount) or 1,
         quality = quality,
+        expansionID = meta and meta.expansionID or nil,
         isLocked = info.isLocked and true or false,
         isQuestItem = questInfo.isQuestItem and true or false,
-        isCraftingReagent = info.isCraftingReagent and true or false,
+        isCraftingReagent = (info.isCraftingReagent or (meta and meta.isCraftingReagent)) and true or false,
         categoryKey = categoryKey,
         sortKey = string.lower(itemName or buildFallbackItemName(itemID)),
         searchText = meta and meta.searchText or normalizeSearchText(table.concat({
@@ -638,6 +758,7 @@ function BagsStore:BagSnapshotsEqual(a, b)
                 or oldRecord.hyperlink ~= newRecord.hyperlink
                 or oldRecord.iconFileID ~= newRecord.iconFileID
                 or oldRecord.quality ~= newRecord.quality
+                or oldRecord.expansionID ~= newRecord.expansionID
                 or oldRecord.isLocked ~= newRecord.isLocked
                 or oldRecord.isQuestItem ~= newRecord.isQuestItem
                 or oldRecord.isCraftingReagent ~= newRecord.isCraftingReagent
@@ -963,18 +1084,34 @@ function BagsStore:GetCharacterCategoryList(characterKey)
     end
 
     local categories = {}
-    for i = 1, #CATEGORY_ORDER do
-        local categoryKey = CATEGORY_ORDER[i]
-        local count = tonumber(snapshot.carried.categoryTotals[categoryKey]) or 0
+    for categoryKey, rawCount in pairs(snapshot.carried.categoryTotals) do
+        local count = tonumber(rawCount) or 0
         if count > 0 then
             categories[#categories + 1] = {
                 key = categoryKey,
                 count = count,
                 label = self:GetCategoryDisplayName(categoryKey),
                 order = self:GetCategoryOrder(categoryKey),
+                expansionID = getExpansionIDFromCategoryKey(categoryKey),
             }
         end
     end
+
+    table.sort(categories, function(a, b)
+        if a.order ~= b.order then
+            return a.order < b.order
+        end
+
+        if a.expansionID ~= nil and b.expansionID ~= nil and a.expansionID ~= b.expansionID then
+            return a.expansionID > b.expansionID
+        end
+
+        if a.label ~= b.label then
+            return a.label < b.label
+        end
+
+        return a.key < b.key
+    end)
 
     return categories
 end
