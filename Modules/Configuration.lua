@@ -9,6 +9,8 @@ local L = vesperTools.L
 local WINDOW_WIDTH = 460
 local WINDOW_HEIGHT = 660
 local DEFAULT_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_QuestionMark"
+local FONT_MENU_ROW_HEIGHT = 26
+local FONT_MENU_MAX_VISIBLE_ROWS = 12
 local TOY_MENU_ROW_HEIGHT = 22
 local TOY_MENU_MAX_VISIBLE_ROWS = 10
 local CURRENCY_MENU_ROW_HEIGHT = 22
@@ -47,6 +49,51 @@ local function setFontStringTextSafe(fontString, text, size, flags, fallbackObje
 
     local hasFont = fontString.GetFont and fontString:GetFont()
     local applied = vesperTools:ApplyConfiguredFont(fontString, resolvedSize, resolvedFlags)
+    if not applied and not hasFont then
+        local fallback = fallbackObject or GameFontHighlightSmall or GameFontNormal or SystemFont_Shadow_Med1
+        if fallback then
+            pcall(fontString.SetFontObject, fontString, fallback)
+        end
+
+        if not (fontString.GetFont and fontString:GetFont()) then
+            pcall(fontString.SetFont, fontString, STANDARD_TEXT_FONT or "Fonts\\FRIZQT__.TTF", resolvedSize, resolvedFlags)
+        end
+    end
+
+    pcall(fontString.SetText, fontString, text or "")
+end
+
+local function setFontStringTextWithFontPathSafe(fontString, text, fontPath, size, flags, fallbackObject)
+    if not fontString then
+        return
+    end
+
+    local resolvedFontPath = vesperTools:NormalizeMediaPath(fontPath)
+    local resolvedSize = math.floor((tonumber(size) or 12) + 0.5)
+    if resolvedSize < 6 then
+        resolvedSize = 6
+    end
+    local resolvedFlags = type(flags) == "string" and flags or ""
+
+    local function trySet(path, overrideFlags)
+        if type(path) ~= "string" or path == "" then
+            return false
+        end
+
+        local ok, setResult = pcall(fontString.SetFont, fontString, path, resolvedSize, overrideFlags)
+        if not ok or setResult == false then
+            return false
+        end
+
+        local assignedPath = fontString:GetFont()
+        return type(assignedPath) == "string" and assignedPath ~= ""
+    end
+
+    local hasFont = fontString.GetFont and fontString:GetFont()
+    local applied = trySet(resolvedFontPath, resolvedFlags)
+        or (resolvedFlags ~= "" and trySet(resolvedFontPath, ""))
+        or vesperTools:ApplyConfiguredFont(fontString, resolvedSize, resolvedFlags)
+
     if not applied and not hasFont then
         local fallback = fallbackObject or GameFontHighlightSmall or GameFontNormal or SystemFont_Shadow_Med1
         if fallback then
@@ -112,9 +159,8 @@ local function ensureProfile()
     vesperTools.db.profile = profile
 
     profile.style = profile.style or {}
-    if type(profile.style.fontPath) ~= "string" or profile.style.fontPath == "" then
-        profile.style.fontPath = vesperTools:GetConfiguredFontPath()
-    end
+    profile.style.fontPath = vesperTools:GetConfiguredFontPath()
+    profile.style.fontName = vesperTools:GetConfiguredFontKey()
 
     profile.style.backgroundOpacity = profile.style.backgroundOpacity or {}
     if profile.style.backgroundOpacity.roster == nil then
@@ -180,6 +226,7 @@ function Configuration:OnInitialize()
     self.contextMenuAnchor = nil
     self.fontDropdown = nil
     self.fontDropdownText = nil
+    self.fontMenuFrame = nil
     self.hearthstoneDropdown = nil
     self.hearthstoneDropdownText = nil
     self.toyWhitelistDropdown = nil
@@ -704,62 +751,33 @@ function Configuration:RefreshFontDropdownText()
         return
     end
 
-    local selectedPath = vesperTools:GetConfiguredFontPath()
-    local label = vesperTools:GetFontLabelByPath(selectedPath)
+    local label = vesperTools:GetConfiguredFontLabel()
     setFontStringTextSafe(self.fontDropdownText, label, 12, "", GameFontHighlightSmall)
 end
 
--- Open font selector with MenuUtil when available.
--- Fallback behavior cycles to the next font for compatibility.
 function Configuration:OpenFontPicker(anchorButton)
     local profile = ensureProfile()
     if not profile then
         return
     end
 
-    local options = vesperTools:GetFontOptions()
-    if type(options) ~= "table" or #options == 0 then
+    local menu = self:EnsureFontMenuFrame(anchorButton)
+    if not menu then
         return
     end
 
-    if MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
-        local menuAnchor = self:GetContextMenuAnchor(anchorButton)
-        MenuUtil.CreateContextMenu(menuAnchor, function(_, rootDescription)
-            rootDescription:CreateTitle(L["CONFIG_FONT_MENU_TITLE"])
-
-            for i = 1, #options do
-                local option = options[i]
-                local optionLabel = option.label
-                if option.path == profile.style.fontPath then
-                    optionLabel = "|cff81c784" .. option.label .. "|r"
-                end
-
-                rootDescription:CreateButton(optionLabel, function()
-                    profile.style.fontPath = option.path
-                    self:RefreshControls()
-                    self:NotifyConfigChanged()
-                end)
-            end
-        end)
+    if menu:IsShown() and menu._anchorButton == anchorButton then
+        menu:Hide()
         return
     end
 
-    local currentIndex = 1
-    for i = 1, #options do
-        if options[i].path == profile.style.fontPath then
-            currentIndex = i
-            break
-        end
-    end
-
-    local nextIndex = currentIndex + 1
-    if nextIndex > #options then
-        nextIndex = 1
-    end
-
-    profile.style.fontPath = options[nextIndex].path
-    self:RefreshControls()
-    self:NotifyConfigChanged()
+    menu._anchorButton = anchorButton
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPLEFT", anchorButton, "BOTTOMLEFT", 0, -4)
+    menu:SetWidth(anchorButton:GetWidth() or 420)
+    menu:Show()
+    menu:Raise()
+    self:RefreshFontMenu()
 end
 
 -- Refresh the primary-hearthstone dropdown caption and enabled state.
@@ -953,6 +971,35 @@ function Configuration:OpenHearthstonePicker(anchorButton)
 end
 
 -- Build one row widget used inside the scrollable whitelist dropdown.
+function Configuration:CreateFontMenuRow(parent)
+    local row = CreateFrame("Button", nil, parent)
+    row:SetHeight(FONT_MENU_ROW_HEIGHT)
+    row:SetNormalTexture("Interface\\Buttons\\WHITE8x8")
+    row:SetHighlightTexture("Interface\\Buttons\\WHITE8x8", "ADD")
+    row:SetPushedTexture("Interface\\Buttons\\WHITE8x8")
+    row:GetNormalTexture():SetVertexColor(0.08, 0.08, 0.1, 0.92)
+    row:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.2)
+    row:GetPushedTexture():SetVertexColor(0.12, 0.2, 0.3, 0.36)
+
+    local text = row:CreateFontString(nil, "ARTWORK")
+    text:SetPoint("LEFT", row, "LEFT", 8, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", -24, 0)
+    text:SetJustifyH("LEFT")
+    text:SetJustifyV("MIDDLE")
+    setFontStringTextSafe(text, "", 13, "", GameFontHighlightSmall)
+    row.Text = text
+
+    local check = row:CreateTexture(nil, "OVERLAY", nil, 2)
+    check:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    check:SetSize(14, 14)
+    check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+    check:SetVertexColor(0.35, 1, 0.35, 1)
+    check:Hide()
+    row.Check = check
+
+    return row
+end
+
 function Configuration:CreateToyWhitelistMenuRow(parent)
     local row = CreateFrame("Button", nil, parent)
     row:SetHeight(TOY_MENU_ROW_HEIGHT)
@@ -1024,6 +1071,56 @@ function Configuration:CreateCurrencyBarMenuRow(parent)
     row.Check = check
 
     return row
+end
+
+function Configuration:EnsureFontMenuFrame(anchorButton)
+    if self.fontMenuFrame then
+        return self.fontMenuFrame
+    end
+
+    local width = (anchorButton and anchorButton.GetWidth and anchorButton:GetWidth()) or 420
+    local height = (FONT_MENU_MAX_VISIBLE_ROWS * FONT_MENU_ROW_HEIGHT) + 20
+
+    local menu = CreateFrame("Frame", "vesperToolsFontMenu", UIParent, "BackdropTemplate")
+    menu:SetSize(width, height)
+    vesperTools:ApplyAddonWindowLayer(menu, 80)
+    menu:SetClampedToScreen(true)
+    menu:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    menu:SetBackdropColor(0.05, 0.05, 0.06, 0.98)
+    menu:SetBackdropBorderColor(0.2, 0.2, 0.24, 1)
+    menu:Hide()
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, menu, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", menu, "TOPLEFT", 6, -6)
+    scrollFrame:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -28, 6)
+    menu.ScrollFrame = scrollFrame
+
+    local content = CreateFrame("Frame", nil, scrollFrame)
+    content:SetPoint("TOPLEFT", 0, 0)
+    content:SetPoint("TOPRIGHT", 0, 0)
+    content:SetHeight(1)
+    scrollFrame:SetScrollChild(content)
+    menu.Content = content
+    menu.Rows = {}
+
+    menu:EnableMouseWheel(true)
+    menu:SetScript("OnMouseWheel", function(selfMenu, delta)
+        local maxScroll = math.max(0, (selfMenu.Content:GetHeight() or 0) - selfMenu.ScrollFrame:GetHeight())
+        local nextScroll = (selfMenu.ScrollFrame:GetVerticalScroll() or 0) - (delta * 24)
+        if nextScroll < 0 then
+            nextScroll = 0
+        elseif nextScroll > maxScroll then
+            nextScroll = maxScroll
+        end
+        selfMenu.ScrollFrame:SetVerticalScroll(nextScroll)
+    end)
+
+    self.fontMenuFrame = menu
+    return menu
 end
 
 -- Create the scrollable toy-whitelist dropdown frame once and keep it reusable.
@@ -1128,6 +1225,92 @@ function Configuration:EnsureCurrencyBarMenuFrame(anchorButton)
 
     self.bagsCurrencyMenuFrame = menu
     return menu
+end
+
+function Configuration:RefreshFontMenu()
+    local menu = self.fontMenuFrame
+    if not menu then
+        return
+    end
+
+    local profile = ensureProfile()
+    if not profile then
+        return
+    end
+
+    local options = vesperTools:GetFontOptions()
+    local hasOptions = type(options) == "table" and #options > 0
+    local rowCount = hasOptions and #options or 1
+    local visibleRows = math.min(rowCount, FONT_MENU_MAX_VISIBLE_ROWS)
+    menu:SetHeight((visibleRows * FONT_MENU_ROW_HEIGHT) + 20)
+
+    local contentWidth = math.floor((tonumber(menu.ScrollFrame:GetWidth()) or 0) + 0.5)
+    if contentWidth <= 0 then
+        contentWidth = math.floor((tonumber(menu:GetWidth()) or 420) - 34)
+    end
+    if contentWidth < 60 then
+        contentWidth = 60
+    end
+    menu.Content:SetWidth(contentWidth)
+
+    local selectedKey = vesperTools:GetConfiguredFontKey()
+    local selectedIndex = 1
+
+    for i = 1, rowCount do
+        local row = menu.Rows[i]
+        if not row then
+            row = self:CreateFontMenuRow(menu.Content)
+            menu.Rows[i] = row
+        end
+
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", menu.Content, "TOPLEFT", 0, -((i - 1) * FONT_MENU_ROW_HEIGHT))
+        row:SetWidth(contentWidth)
+
+        if not hasOptions then
+            setFontStringTextSafe(row.Text, "No fonts available", 12, "", GameFontHighlightSmall)
+            row.Text:SetTextColor(0.8, 0.8, 0.8, 1)
+            row.Check:Hide()
+            row:SetScript("OnClick", nil)
+        else
+            local option = options[i]
+            local isSelected = option.key == selectedKey or option.path == profile.style.fontPath
+            if isSelected then
+                selectedIndex = i
+            end
+
+            setFontStringTextWithFontPathSafe(row.Text, option.label or "", option.path, 13, "", GameFontHighlightSmall)
+            if isSelected then
+                row.Text:SetTextColor(0.86, 1, 0.86, 1)
+                row.Check:Show()
+            else
+                row.Text:SetTextColor(0.92, 0.94, 0.98, 1)
+                row.Check:Hide()
+            end
+
+            row:SetScript("OnClick", function()
+                profile.style.fontName = option.key or option.label
+                profile.style.fontPath = option.path
+                self:RefreshControls()
+                self:NotifyConfigChanged()
+                menu:Hide()
+            end)
+        end
+
+        row:Show()
+    end
+
+    for i = rowCount + 1, #menu.Rows do
+        menu.Rows[i]:Hide()
+    end
+
+    local totalHeight = rowCount * FONT_MENU_ROW_HEIGHT
+    local frameHeight = menu.ScrollFrame:GetHeight() or 0
+    local maxScroll = math.max(0, totalHeight - frameHeight)
+    local desiredScroll = math.max(0, ((selectedIndex - 1) * FONT_MENU_ROW_HEIGHT) - math.floor((frameHeight - FONT_MENU_ROW_HEIGHT) * 0.5))
+
+    menu.Content:SetHeight(math.max(frameHeight, totalHeight))
+    menu.ScrollFrame:SetVerticalScroll(math.min(maxScroll, desiredScroll))
 end
 
 -- Fill the scrollable toy-whitelist dropdown with dynamic rows.
@@ -2211,6 +2394,9 @@ function Configuration:BuildPanel()
         self:RefreshControls()
     end)
     panel:SetScript("OnHide", function()
+        if self.fontMenuFrame then
+            self.fontMenuFrame:Hide()
+        end
         if self.toyWhitelistMenuFrame then
             self.toyWhitelistMenuFrame:Hide()
         end
@@ -2404,6 +2590,9 @@ function Configuration:RefreshControls()
     end
 
     self:RefreshPanelFonts()
+    if self.fontMenuFrame and self.fontMenuFrame:IsShown() then
+        self:RefreshFontMenu()
+    end
 
     self._isRefreshing = false
 end

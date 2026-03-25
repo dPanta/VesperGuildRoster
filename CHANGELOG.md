@@ -1,3 +1,18 @@
+## 2.6.1 - 2026-03-25
+
+### Changed
+- Bundled `LibSharedMedia-3.0` directly with the addon and expanded the shared font selector to include SharedMedia-registered fonts alongside the built-in choices.
+- Reworked the configuration font dropdown into a scrollable preview list so large font libraries stay usable and each entry can render in its own font.
+
+### Fixed
+- Fixed Bags and Bank category headers, controls, and other reused text widgets so they update immediately when the configured font changes.
+- Fixed SharedMedia startup wiring that could throw a `RegisterCallback` usage error while initializing the addon.
+- Fixed SharedMedia font path handling so third-party fonts registered with `Interface\Addons\...` paths resolve more reliably on this install and show previews more consistently.
+- Fixed combined usable-item stacks in the replacement Bags and Bank windows so right-click use no longer falls back to insecure `UseContainerItem()` calls that can trigger `ADDON_ACTION_FORBIDDEN`.
+
+### Notes
+- This hotfix focuses on stabilizing font customization and secure interaction for combined usable bag items.
+
 ## 2.6.0 - 2026-03-25
 
 ### Changed

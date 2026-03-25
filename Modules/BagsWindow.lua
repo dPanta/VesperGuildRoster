@@ -84,6 +84,12 @@ local function safeColorForQuality(quality)
     return 0.18, 0.18, 0.18
 end
 
+local function applyConfiguredFontIfPresent(fontString, size, flags)
+    if fontString then
+        vesperTools:ApplyConfiguredFont(fontString, size, flags)
+    end
+end
+
 local function formatCurrencyQuantity(quantity)
     local numericQuantity = math.max(0, math.floor((tonumber(quantity) or 0) + 0.5))
     if BreakUpLargeNumbers then
@@ -1008,6 +1014,69 @@ function BagsWindow:GetCurrencyBarLayout(availableWidth, entries)
     layout.rows = rows
     layout.height = height
     return layout
+end
+
+function BagsWindow:ApplyConfiguredFonts()
+    local titleFontSize = vesperTools:GetConfiguredFontSize("roster", 12, 8, 24) + 4
+
+    applyConfiguredFontIfPresent(self.titleText, titleFontSize, "")
+    applyConfiguredFontIfPresent(self.modeText, 12, "")
+    applyConfiguredFontIfPresent(self.searchBox, 12, "")
+    applyConfiguredFontIfPresent(self.searchPlaceholder, 12, "")
+    applyConfiguredFontIfPresent(self.bagSlotsButtonText, 11, "")
+    applyConfiguredFontIfPresent(self.cleanupButtonText, 11, "")
+    applyConfiguredFontIfPresent(self.combineStacksButtonText, 11, "")
+    applyConfiguredFontIfPresent(self.characterDropdownText, 12, "")
+    applyConfiguredFontIfPresent(self.characterDropdownMatchText, 11, "")
+    applyConfiguredFontIfPresent(self.emptyText, 12, "")
+    applyConfiguredFontIfPresent(self.guildLookupResultsTitle, 12, "")
+    applyConfiguredFontIfPresent(self.guildLookupResultsStatus, 11, "")
+    applyConfiguredFontIfPresent(self.sectionTitleMeasureText, 14, "")
+    applyConfiguredFontIfPresent(self.currencyBarMeasureText, 11, "")
+
+    if self.guildLookupResultsHeaders then
+        applyConfiguredFontIfPresent(self.guildLookupResultsHeaders.item, 11, "")
+        applyConfiguredFontIfPresent(self.guildLookupResultsHeaders.player, 11, "")
+        applyConfiguredFontIfPresent(self.guildLookupResultsHeaders.count, 11, "")
+    end
+
+    for i = 1, #self.characterMenuButtons do
+        local button = self.characterMenuButtons[i]
+        if button then
+            applyConfiguredFontIfPresent(button.text, 12, "")
+            applyConfiguredFontIfPresent(button.matchText, 11, "")
+        end
+    end
+
+    for i = 1, #self.bagSlotsMenuButtons do
+        local button = self.bagSlotsMenuButtons[i]
+        if button then
+            applyConfiguredFontIfPresent(button.count, 11, "OUTLINE")
+        end
+    end
+
+    for i = 1, #self.guildLookupResultRows do
+        local row = self.guildLookupResultRows[i]
+        if row then
+            applyConfiguredFontIfPresent(row.itemText, 11, "")
+            applyConfiguredFontIfPresent(row.countText, 11, "")
+            applyConfiguredFontIfPresent(row.playerText, 11, "")
+        end
+    end
+
+    for i = 1, #self.sectionFrames do
+        local section = self.sectionFrames[i]
+        if section then
+            applyConfiguredFontIfPresent(section.title, 14, "")
+        end
+    end
+
+    for i = 1, #self.currencyButtons do
+        local button = self.currencyButtons[i]
+        if button then
+            applyConfiguredFontIfPresent(button.count, 11, "")
+        end
+    end
 end
 
 function BagsWindow:ToggleBagSlots()
@@ -2742,6 +2811,7 @@ function BagsWindow:RefreshWindow()
     end
 
     self:CleanupLegacyScrollArtifacts()
+    self:ApplyConfiguredFonts()
     wipe(self.newItemGlowKeysSeen)
     local viewSettings = self:GetViewSettings()
     self:UpdateBagSlotsButtonVisual(self.bagSlotsMenu and self.bagSlotsMenu:IsShown())

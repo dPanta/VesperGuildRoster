@@ -353,6 +353,22 @@ function vesperTools:CreateContainerItemController(host, config)
         return fallbackBagID, fallbackSlotID
     end
 
+    function controller:GetNativeOverlayBagSlot(button)
+        if not button then
+            return nil, nil
+        end
+
+        if not button.isCombined and button.bagID and button.slotID then
+            return button.bagID, button.slotID
+        end
+
+        if button.isCombined and self:CanUseCombinedButton(button) then
+            return self:GetButtonBagSlot(button, true)
+        end
+
+        return nil, nil
+    end
+
     function controller:PickupItem(button)
         if not self:IsButtonInteractive(button) or InCombatLockdown() then
             return false
@@ -397,6 +413,16 @@ function vesperTools:CreateContainerItemController(host, config)
             return
         end
 
+        if mouseButton == "RightButton"
+            and button
+            and button.isCombined
+            and self:CanUseCombinedButton(button)
+            and button.nativeContainerOverlay
+            and button.nativeContainerOverlay:IsShown()
+        then
+            return
+        end
+
         if mouseButton == "RightButton" and self:UseItem(button) then
             return
         end
@@ -409,6 +435,9 @@ function vesperTools:CreateContainerItemController(host, config)
             return self.config.overlayMouseEnabled(host, button) and true or false
         end
         if self.config.overlayMouseEnabled == nil then
+            if button and button.isCombined and self:CanUseCombinedButton(button) then
+                return true
+            end
             if button and button.categoryKey == "container" then
                 return false
             end
@@ -427,10 +456,31 @@ function vesperTools:CreateContainerItemController(host, config)
             return self.config.shouldUseNativeOverlay(host, button) and true or false
         end
 
-        return not button.isCombined
-            and self:IsButtonInteractive(button)
-            and button.bagID
-            and button.slotID
+        local bagID, slotID = self:GetNativeOverlayBagSlot(button)
+        return self:IsButtonInteractive(button)
+            and bagID
+            and slotID
+    end
+
+    function controller:ConfigureNativeContainerOverlayInput(overlay, button)
+        if not overlay or type(overlay.SetPassThroughButtons) ~= "function" then
+            return
+        end
+
+        if securecallfunction then
+            if button and button.isCombined and self:CanUseCombinedButton(button) then
+                securecallfunction(overlay.SetPassThroughButtons, overlay, "LeftButton")
+            else
+                securecallfunction(overlay.SetPassThroughButtons, overlay)
+            end
+            return
+        end
+
+        if button and button.isCombined and self:CanUseCombinedButton(button) then
+            overlay:SetPassThroughButtons("LeftButton")
+        else
+            overlay:SetPassThroughButtons()
+        end
     end
 
     function controller:AcquireNativeContainerOverlay(button)
@@ -446,6 +496,7 @@ function vesperTools:CreateContainerItemController(host, config)
         overlay:SetAllPoints(button)
         overlay:SetFrameLevel(button:GetFrameLevel() + 10)
         overlay:EnableMouse(self:GetOverlayMouseEnabled(button))
+        self:ConfigureNativeContainerOverlayInput(overlay, button)
         suppressNativeOverlayVisuals(overlay)
         overlay:Hide()
         button.nativeContainerOverlay = overlay
@@ -460,19 +511,21 @@ function vesperTools:CreateContainerItemController(host, config)
         end
 
         overlay:EnableMouse(self:GetOverlayMouseEnabled(button))
+        self:ConfigureNativeContainerOverlayInput(overlay, button)
 
         if shouldUseNativeOverlay then
+            local overlayBagID, overlaySlotID = self:GetNativeOverlayBagSlot(button)
             local currentBagID = overlay.GetBagID and overlay:GetBagID() or nil
             local needsRefresh = not overlay:IsShown()
-                or overlay:GetID() ~= button.slotID
-                or currentBagID ~= button.bagID
+                or overlay:GetID() ~= overlaySlotID
+                or currentBagID ~= overlayBagID
 
             if needsRefresh then
                 if host.pendingSecureItemRefresh ~= nil and InCombatLockdown() then
                     host.pendingSecureItemRefresh = true
                     return
                 end
-                overlay:Initialize(button.bagID, button.slotID)
+                overlay:Initialize(overlayBagID, overlaySlotID)
             end
 
             overlay:SetAllPoints(button)

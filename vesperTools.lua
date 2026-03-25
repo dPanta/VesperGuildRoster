@@ -50,6 +50,7 @@ local function RequestGuildRosterUpdate()
 end
 
 -- Shared default font used when profile-specific value is missing or invalid.
+local DEFAULT_FONT_KEY = "Expressway"
 local DEFAULT_FONT_PATH = "Interface\\AddOns\\vesperTools\\Media\\expressway.ttf"
 local DEFAULT_PRIMARY_HEARTHSTONE_ID = 6948
 local RANDOM_DISCO_HEARTHSTONE_ID = -1
@@ -87,6 +88,30 @@ local FONT_OPTIONS = {
     { label = "Ubuntu Nerd Condensed", path = "Interface\\AddOns\\vesperTools\\Media\\UbuntuNerdFont-Condensed.ttf" },
     { label = "Ubuntu Nerd Propo Regular", path = "Interface\\AddOns\\vesperTools\\Media\\UbuntuNerdFontPropo-Regular.ttf" },
 }
+
+local function normalizeMediaPath(path)
+    if type(path) ~= "string" or path == "" then
+        return path
+    end
+
+    local normalized = string.gsub(path, "/", "\\")
+    if string.sub(string.lower(normalized), 1, 18) == "interface\\addons\\" then
+        return "Interface\\AddOns\\" .. string.sub(normalized, 19)
+    end
+
+    return normalized
+end
+
+local FONT_OPTION_BY_LABEL = {}
+local FONT_OPTION_BY_PATH = {}
+local LibSharedMedia = LibStub("LibSharedMedia-3.0", true)
+
+for i = 1, #FONT_OPTIONS do
+    local option = FONT_OPTIONS[i]
+    option.path = normalizeMediaPath(option.path)
+    FONT_OPTION_BY_LABEL[option.label] = option
+    FONT_OPTION_BY_PATH[option.path] = option
+end
 
 -- Ordered list of hearthstone variants exposed in config and utility buttons.
 local HEARTHSTONE_CATALOG = {
@@ -672,9 +697,257 @@ local function getItemNameAndIcon(itemID)
     return name, icon
 end
 
--- Return available bundled font options for config UI.
+local function getFontOptionByLabel(label)
+    if type(label) ~= "string" or label == "" then
+        return nil
+    end
+
+    return FONT_OPTION_BY_LABEL[label]
+end
+
+local function getFontOptionByPath(path)
+    if type(path) ~= "string" or path == "" then
+        return nil
+    end
+
+    return FONT_OPTION_BY_PATH[normalizeMediaPath(path)]
+end
+
+local function getSharedMedia()
+    if not LibSharedMedia and LibStub then
+        LibSharedMedia = LibStub("LibSharedMedia-3.0", true)
+    end
+
+    return LibSharedMedia
+end
+
+local function getSharedMediaFontType(sharedMedia)
+    if sharedMedia and type(sharedMedia.MediaType) == "table" and type(sharedMedia.MediaType.FONT) == "string" then
+        return sharedMedia.MediaType.FONT
+    end
+
+    return "font"
+end
+
+local function getSharedMediaFontLocaleMask(sharedMedia)
+    if not sharedMedia then
+        return nil
+    end
+
+    local mask = 0
+    mask = mask + (tonumber(sharedMedia.LOCALE_BIT_western) or 0)
+    mask = mask + (tonumber(sharedMedia.LOCALE_BIT_koKR) or 0)
+    mask = mask + (tonumber(sharedMedia.LOCALE_BIT_ruRU) or 0)
+    mask = mask + (tonumber(sharedMedia.LOCALE_BIT_zhCN) or 0)
+    mask = mask + (tonumber(sharedMedia.LOCALE_BIT_zhTW) or 0)
+
+    return mask > 0 and mask or nil
+end
+
+local function getSharedMediaFontPath(sharedMedia, key)
+    if not sharedMedia or type(sharedMedia.Fetch) ~= "function" or type(key) ~= "string" or key == "" then
+        return nil
+    end
+
+    local ok, path = pcall(sharedMedia.Fetch, sharedMedia, getSharedMediaFontType(sharedMedia), key, true)
+    if ok and type(path) == "string" and path ~= "" then
+        return normalizeMediaPath(path)
+    end
+
+    return nil
+end
+
+local function getSharedMediaFontKeyByPath(sharedMedia, path)
+    if not sharedMedia or type(path) ~= "string" or path == "" or type(sharedMedia.HashTable) ~= "function" then
+        return nil
+    end
+
+    local fontTable = sharedMedia:HashTable(getSharedMediaFontType(sharedMedia))
+    if type(fontTable) ~= "table" then
+        return nil
+    end
+
+    local normalizedPath = normalizeMediaPath(path)
+    for key, registeredPath in pairs(fontTable) do
+        if normalizeMediaPath(registeredPath) == normalizedPath then
+            return key
+        end
+    end
+
+    return nil
+end
+
+function vesperTools:GetSharedMedia()
+    return getSharedMedia()
+end
+
+function vesperTools:NormalizeMediaPath(path)
+    return normalizeMediaPath(path)
+end
+
+function vesperTools:RegisterBundledSharedMediaFonts()
+    local sharedMedia = self:GetSharedMedia()
+    if not sharedMedia then
+        return false
+    end
+
+    if self._bundledSharedMediaFontsRegistered then
+        return true
+    end
+
+    local fontType = getSharedMediaFontType(sharedMedia)
+    local localeMask = getSharedMediaFontLocaleMask(sharedMedia)
+
+    for i = 1, #FONT_OPTIONS do
+        local option = FONT_OPTIONS[i]
+        if option and option.label and option.path and not sharedMedia:IsValid(fontType, option.label) then
+            pcall(sharedMedia.Register, sharedMedia, fontType, option.label, option.path, localeMask)
+        end
+    end
+
+    self._bundledSharedMediaFontsRegistered = true
+    return true
+end
+
+function vesperTools:RefreshSharedMediaFonts()
+    local Configuration = self:GetModule("Configuration", true)
+    if Configuration and Configuration.panel and Configuration.panel:IsShown() then
+        Configuration:RefreshControls()
+    end
+end
+
+function vesperTools:OnSharedMediaRegistered(_, mediatype)
+    local sharedMedia = self:GetSharedMedia()
+    if mediatype ~= getSharedMediaFontType(sharedMedia) then
+        return
+    end
+
+    self:RefreshSharedMediaFonts()
+end
+
+function vesperTools:InitializeSharedMediaSupport()
+    self:RegisterBundledSharedMediaFonts()
+
+    local sharedMedia = self:GetSharedMedia()
+    if sharedMedia
+        and type(sharedMedia.RegisterCallback) == "function"
+        and not self._sharedMediaFontCallbackRegistered
+    then
+        sharedMedia.RegisterCallback(self, "LibSharedMedia_Registered", "OnSharedMediaRegistered")
+        self._sharedMediaFontCallbackRegistered = true
+    end
+end
+
+function vesperTools:GetConfiguredFontSelection()
+    local profile = self.db and self.db.profile
+    local style = profile and profile.style or nil
+    local selectedKey = style and style.fontName or nil
+    local selectedPath = style and normalizeMediaPath(style.fontPath) or nil
+    local sharedMedia = self:GetSharedMedia()
+
+    self:RegisterBundledSharedMediaFonts()
+
+    if type(selectedKey) == "string" and selectedKey ~= "" then
+        local resolvedPath = getSharedMediaFontPath(sharedMedia, selectedKey)
+            or (getFontOptionByLabel(selectedKey) and getFontOptionByLabel(selectedKey).path)
+        if type(resolvedPath) == "string" and resolvedPath ~= "" then
+            if style then
+                style.fontPath = resolvedPath
+            end
+            return selectedKey, resolvedPath
+        end
+    end
+
+    if type(selectedPath) == "string" and selectedPath ~= "" then
+        local bundledOption = getFontOptionByPath(selectedPath)
+        if bundledOption then
+            if style then
+                style.fontName = bundledOption.label
+                style.fontPath = bundledOption.path
+            end
+            return bundledOption.label, bundledOption.path
+        end
+
+        local sharedMediaKey = getSharedMediaFontKeyByPath(sharedMedia, selectedPath)
+        if sharedMediaKey then
+            local resolvedPath = getSharedMediaFontPath(sharedMedia, sharedMediaKey) or selectedPath
+            if style then
+                style.fontName = sharedMediaKey
+                style.fontPath = resolvedPath
+            end
+            return sharedMediaKey, resolvedPath
+        end
+
+        return nil, selectedPath
+    end
+
+    if style then
+        style.fontName = DEFAULT_FONT_KEY
+        style.fontPath = DEFAULT_FONT_PATH
+    end
+
+    return DEFAULT_FONT_KEY, DEFAULT_FONT_PATH
+end
+
+function vesperTools:GetConfiguredFontKey()
+    local key = self:GetConfiguredFontSelection()
+    return key or DEFAULT_FONT_KEY
+end
+
+function vesperTools:GetConfiguredFontLabel()
+    local key = self:GetConfiguredFontKey()
+    if type(key) == "string" and key ~= "" then
+        return key
+    end
+
+    return self:GetFontLabelByPath(self:GetConfiguredFontPath())
+end
+
+-- Return available bundled and SharedMedia font options for config UI.
 function vesperTools:GetFontOptions()
-    return FONT_OPTIONS
+    local options = {}
+    local seen = {}
+    local sharedMedia = self:GetSharedMedia()
+
+    self:RegisterBundledSharedMediaFonts()
+
+    if sharedMedia and type(sharedMedia.List) == "function" then
+        local fontList = sharedMedia:List(getSharedMediaFontType(sharedMedia))
+        if type(fontList) == "table" then
+            for i = 1, #fontList do
+                local key = fontList[i]
+                local path = getSharedMediaFontPath(sharedMedia, key)
+                if type(key) == "string" and key ~= "" and type(path) == "string" and path ~= "" and not seen[key] then
+                    options[#options + 1] = {
+                        key = key,
+                        label = key,
+                        path = path,
+                        source = getFontOptionByLabel(key) and "bundled" or "sharedmedia",
+                    }
+                    seen[key] = true
+                end
+            end
+        end
+    end
+
+    for i = 1, #FONT_OPTIONS do
+        local option = FONT_OPTIONS[i]
+        if option and option.label and option.path and not seen[option.label] then
+            options[#options + 1] = {
+                key = option.label,
+                label = option.label,
+                path = option.path,
+                source = "bundled",
+            }
+            seen[option.label] = true
+        end
+    end
+
+    table.sort(options, function(a, b)
+        return (a.label or "") < (b.label or "")
+    end)
+
+    return options
 end
 
 -- Use one fixed high strata for addon-owned windows so they stay above regular UI.
@@ -1230,29 +1503,25 @@ end
 
 -- Resolve active font path from profile with default fallback.
 function vesperTools:GetConfiguredFontPath()
-    local profile = self.db and self.db.profile
-    if not profile then
-        return DEFAULT_FONT_PATH
-    end
-
-    profile.style = profile.style or {}
-    local configured = profile.style.fontPath
-    if type(configured) == "string" and configured ~= "" then
-        return configured
-    end
-
-    profile.style.fontPath = DEFAULT_FONT_PATH
-    return DEFAULT_FONT_PATH
+    local _, path = self:GetConfiguredFontSelection()
+    return path or DEFAULT_FONT_PATH
 end
 
 -- Resolve friendly label for a font path.
 function vesperTools:GetFontLabelByPath(path)
-    for i = 1, #FONT_OPTIONS do
-        local option = FONT_OPTIONS[i]
-        if option.path == path then
-            return option.label
-        end
+    path = normalizeMediaPath(path)
+
+    local bundledOption = getFontOptionByPath(path)
+    if bundledOption then
+        return bundledOption.label
     end
+
+    local sharedMedia = self:GetSharedMedia()
+    local sharedMediaKey = getSharedMediaFontKeyByPath(sharedMedia, path)
+    if sharedMediaKey then
+        return sharedMediaKey
+    end
+
     return path or L["UNKNOWN_LABEL"]
 end
 
@@ -1271,6 +1540,7 @@ function vesperTools:ApplyConfiguredFont(fontString, size, flags)
     local resolvedFlags = type(flags) == "string" and flags or ""
 
     local function trySet(path, overrideFlags)
+        path = normalizeMediaPath(path)
         if type(path) ~= "string" or path == "" then
             return false
         end
@@ -1403,6 +1673,7 @@ function vesperTools:OnInitialize()
             },
             style = {
                 -- Configurable typography and panel opacity values.
+                fontName = DEFAULT_FONT_KEY,
                 fontPath = DEFAULT_FONT_PATH,
                 fontSize = {
                     roster = 12,
@@ -1431,6 +1702,7 @@ function vesperTools:OnInitialize()
             bestKeys = {},  -- Persistent best M+ keys from guild sync
         },
     }, true)
+    self:InitializeSharedMediaSupport()
 
     self.bagsDB = LibStub("AceDB-3.0"):New(CURRENT_BAGS_DB_NAME, {
         profile = {

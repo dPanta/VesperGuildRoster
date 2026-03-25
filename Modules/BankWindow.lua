@@ -59,6 +59,12 @@ local function safeColorForQuality(quality)
     return 0.18, 0.18, 0.18
 end
 
+local function applyConfiguredFontIfPresent(fontString, size, flags)
+    if fontString then
+        vesperTools:ApplyConfiguredFont(fontString, size, flags)
+    end
+end
+
 local function buildFallbackItemName(itemID)
     return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
 end
@@ -1561,6 +1567,44 @@ function BankWindow:GetHeaderMinimumFrameWidth(viewKey)
     return math.max(MIN_WINDOW_WIDTH, requiredWidth)
 end
 
+function BankWindow:ApplyConfiguredFonts()
+    local titleFontSize = vesperTools:GetConfiguredFontSize("roster", 12, 8, 24) + 4
+
+    applyConfiguredFontIfPresent(self.titleText, titleFontSize, "")
+    applyConfiguredFontIfPresent(self.modeText, 12, "")
+    applyConfiguredFontIfPresent(self.searchBox, 12, "")
+    applyConfiguredFontIfPresent(self.searchPlaceholder, 12, "")
+    applyConfiguredFontIfPresent(self.combineStacksButtonText, 11, "")
+    applyConfiguredFontIfPresent(self.depositButtonText, 11, "")
+    applyConfiguredFontIfPresent(self.viewDropdownText, 12, "")
+    applyConfiguredFontIfPresent(self.characterDropdownText, 12, "")
+    applyConfiguredFontIfPresent(self.characterDropdownMatchText, 11, "")
+    applyConfiguredFontIfPresent(self.emptyText, 12, "")
+    applyConfiguredFontIfPresent(self.sectionTitleMeasureText, 14, "")
+
+    for i = 1, #self.viewMenuButtons do
+        local button = self.viewMenuButtons[i]
+        if button then
+            applyConfiguredFontIfPresent(button.text, 12, "")
+        end
+    end
+
+    for i = 1, #self.characterMenuButtons do
+        local button = self.characterMenuButtons[i]
+        if button then
+            applyConfiguredFontIfPresent(button.text, 12, "")
+            applyConfiguredFontIfPresent(button.matchText, 11, "")
+        end
+    end
+
+    for i = 1, #self.sectionFrames do
+        local section = self.sectionFrames[i]
+        if section then
+            applyConfiguredFontIfPresent(section.title, 14, "")
+        end
+    end
+end
+
 function BankWindow:ResolveAutoLayout(groups, maxItemCount, viewSettings, viewKey)
     local screenWidth = UIParent:GetWidth() or 1920
     local minFrameWidth = self:GetHeaderMinimumFrameWidth(viewKey)
@@ -1830,6 +1874,7 @@ function BankWindow:RefreshWindow()
         return
     end
 
+    self:ApplyConfiguredFonts()
     local viewSettings = self:GetViewSettings()
     local selectedView = self:ResolveSelectedView()
     local selectedCharacter = selectedView and selectedView.key == "character" and self:ResolveSelectedCharacter() or nil
