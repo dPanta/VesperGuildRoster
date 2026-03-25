@@ -1,3 +1,19 @@
+## 2.6.0 - 2026-03-25
+
+### Changed
+- Added a configurable currency bar to the bottom of the replacement Bags window for the current character, with gold always shown plus either tracked backpack currencies or a custom selected list.
+- Added Bags configuration controls for toggling the currency bar and selecting which currencies appear from a cleaner current-expansion-focused picker.
+- Updated the bag currency bar layout so each currency pill resizes to fit its displayed amount instead of using a fixed wide button.
+- Documented the new bag currency bar in both overview documents.
+
+### Fixed
+- Fixed a bad currency event registration that could raise an unknown `CURRENCY_LIST_UPDATE` error while enabling the Bags module.
+- Fixed the Bags currency picker across different client currency API shapes so the selection list opens and populates again when Retail-style rows expose `currencyID`.
+- Fixed currency-bar entries and picker rows to resolve more reliable currency icons while avoiding the old broad fallback list of outdated or profession-heavy currencies by default.
+
+### Notes
+- This minor release focuses on making the replacement Bags window more informative while keeping the currency UI compact and the picker stable across client API variants.
+
 ## 2.5.1 - 2026-03-25
 
 ### Changed

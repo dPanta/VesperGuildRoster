@@ -21,6 +21,7 @@ I originally made this mainly as a tool for my guildies, but it should work just
 - Best-for-key tooltip sync across guild members
 - Hearthstone, mage teleport, and toy flyout utilities
 - Full bags, bank, and warband bank replacement
+- Customizable bag currency bar with gold and tracked or selected currencies
 - Account-wide inventory browsing across characters
 - Search for items throughout the guild players inventories (see below)
 - Account-wide Weekly Vault rewards viewer with character switcher
@@ -120,6 +121,15 @@ Configure a set of your most-used toys and access them from a convenient flyout 
 ### Full bags replacement
 
 vesperTools includes a full replacement for the default bags UI.
+
+### Bag currency bar
+
+Add a compact currency strip to the bottom of the bags window for your current character.
+
+- Always shows gold
+- Can follow Blizzard tracked backpack currencies automatically
+- Or you can choose your own currencies in the Bags configuration
+- Currency boxes resize to fit the displayed amount so the bar stays compact
 
 ### Full bank replacement
 

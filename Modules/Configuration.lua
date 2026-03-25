@@ -11,6 +11,8 @@ local WINDOW_HEIGHT = 660
 local DEFAULT_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_QuestionMark"
 local TOY_MENU_ROW_HEIGHT = 22
 local TOY_MENU_MAX_VISIBLE_ROWS = 10
+local CURRENCY_MENU_ROW_HEIGHT = 22
+local CURRENCY_MENU_MAX_VISIBLE_ROWS = 10
 
 -- Clamp a number to the inclusive [min, max] interval.
 local function clamp(value, minValue, maxValue)
@@ -183,6 +185,9 @@ function Configuration:OnInitialize()
     self.toyWhitelistDropdown = nil
     self.toyWhitelistDropdownText = nil
     self.toyWhitelistMenuFrame = nil
+    self.bagsCurrencyBarDropdown = nil
+    self.bagsCurrencyBarDropdownText = nil
+    self.bagsCurrencyMenuFrame = nil
     self.toyNameInput = nil
     self.toyNameAddButton = nil
     self.toyLookupStatusText = nil
@@ -195,6 +200,8 @@ function Configuration:OnInitialize()
     self.bagsAllowGuildLookupRequestsCheckbox = nil
     self.bagsReplaceBlizzardCheckbox = nil
     self.bagsShowItemLevelCheckbox = nil
+    self.bagsShowCurrencyBarCheckbox = nil
+    self.bagsCurrencyBarHint = nil
     self.bankColumnsSlider = nil
     self.bankIconSizeSlider = nil
     self.bankStackCountFontSizeSlider = nil
@@ -218,6 +225,9 @@ function Configuration:RefreshPanelFonts()
     end
     if self.toyWhitelistMenuFrame then
         applyConfiguredFontRecursively(self.toyWhitelistMenuFrame)
+    end
+    if self.bagsCurrencyMenuFrame then
+        applyConfiguredFontRecursively(self.bagsCurrencyMenuFrame)
     end
 end
 
@@ -830,6 +840,59 @@ function Configuration:RefreshToyWhitelistDropdownText()
     )
 end
 
+function Configuration:SetBagsCurrencyBarStatus(text, r, g, b)
+    if not self.bagsCurrencyBarHint then
+        return
+    end
+
+    setFontStringTextSafe(self.bagsCurrencyBarHint, text or "", 11, "", GameFontHighlightSmall)
+    self.bagsCurrencyBarHint:SetTextColor(r or 0.78, g or 0.82, b or 0.9, 1)
+end
+
+function Configuration:RefreshBagsCurrencyBarDropdownText()
+    if not self.bagsCurrencyBarDropdown or not self.bagsCurrencyBarDropdownText then
+        return
+    end
+
+    local options = vesperTools:GetCurrencyBarSelectionOptions()
+    local hasOptions = type(options) == "table" and #options > 0
+    if not hasOptions then
+        self.bagsCurrencyBarDropdown:Enable()
+        self.bagsCurrencyBarDropdown:SetAlpha(1)
+        setFontStringTextSafe(
+            self.bagsCurrencyBarDropdownText,
+            L["CONFIG_BAGS_CURRENCY_BAR_NONE_AVAILABLE"],
+            12,
+            "",
+            GameFontHighlightSmall
+        )
+        return
+    end
+
+    self.bagsCurrencyBarDropdown:Enable()
+    self.bagsCurrencyBarDropdown:SetAlpha(1)
+
+    local selectedIDs = vesperTools:GetConfiguredBagCurrencyIDs()
+    if #selectedIDs == 0 then
+        setFontStringTextSafe(
+            self.bagsCurrencyBarDropdownText,
+            L["CONFIG_BAGS_CURRENCY_BAR_TRACKED"],
+            12,
+            "",
+            GameFontHighlightSmall
+        )
+        return
+    end
+
+    setFontStringTextSafe(
+        self.bagsCurrencyBarDropdownText,
+        string.format(L["CONFIG_BAGS_CURRENCY_BAR_SELECTED_FMT"], #selectedIDs),
+        12,
+        "",
+        GameFontHighlightSmall
+    )
+end
+
 -- Open selector for primary hearthstone with icon rows.
 -- Fallback behavior cycles through available entries when MenuUtil is unavailable.
 function Configuration:OpenHearthstonePicker(anchorButton)
@@ -928,6 +991,41 @@ function Configuration:CreateToyWhitelistMenuRow(parent)
     return row
 end
 
+function Configuration:CreateCurrencyBarMenuRow(parent)
+    local row = CreateFrame("Button", nil, parent)
+    row:SetHeight(CURRENCY_MENU_ROW_HEIGHT)
+    row:SetNormalTexture("Interface\\Buttons\\WHITE8x8")
+    row:SetHighlightTexture("Interface\\Buttons\\WHITE8x8", "ADD")
+    row:SetPushedTexture("Interface\\Buttons\\WHITE8x8")
+    row:GetNormalTexture():SetVertexColor(0.08, 0.08, 0.1, 0.92)
+    row:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.2)
+    row:GetPushedTexture():SetVertexColor(0.12, 0.2, 0.3, 0.36)
+
+    local icon = row:CreateTexture(nil, "OVERLAY", nil, 1)
+    icon:SetSize(16, 16)
+    icon:SetPoint("LEFT", row, "LEFT", 6, 0)
+    icon:SetVertexColor(1, 1, 1, 1)
+    row.Icon = icon
+
+    local text = row:CreateFontString(nil, "ARTWORK")
+    text:SetPoint("LEFT", icon, "RIGHT", 6, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", -24, 0)
+    text:SetJustifyH("LEFT")
+    text:SetJustifyV("MIDDLE")
+    setFontStringTextSafe(text, "", 12, "", GameFontHighlightSmall)
+    row.Text = text
+
+    local check = row:CreateTexture(nil, "OVERLAY", nil, 2)
+    check:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    check:SetSize(14, 14)
+    check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+    check:SetVertexColor(0.35, 1, 0.35, 1)
+    check:Hide()
+    row.Check = check
+
+    return row
+end
+
 -- Create the scrollable toy-whitelist dropdown frame once and keep it reusable.
 function Configuration:EnsureToyWhitelistMenuFrame(anchorButton)
     if self.toyWhitelistMenuFrame then
@@ -978,6 +1076,57 @@ function Configuration:EnsureToyWhitelistMenuFrame(anchorButton)
     end)
 
     self.toyWhitelistMenuFrame = menu
+    return menu
+end
+
+function Configuration:EnsureCurrencyBarMenuFrame(anchorButton)
+    if self.bagsCurrencyMenuFrame then
+        return self.bagsCurrencyMenuFrame
+    end
+
+    local width = (anchorButton and anchorButton.GetWidth and anchorButton:GetWidth()) or 396
+    local visibleRows = CURRENCY_MENU_MAX_VISIBLE_ROWS + 1
+    local height = (visibleRows * CURRENCY_MENU_ROW_HEIGHT) + 20
+
+    local menu = CreateFrame("Frame", "vesperToolsCurrencyBarMenu", UIParent, "BackdropTemplate")
+    menu:SetSize(width, height)
+    vesperTools:ApplyAddonWindowLayer(menu, 80)
+    menu:SetClampedToScreen(true)
+    menu:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    menu:SetBackdropColor(0.05, 0.05, 0.06, 0.98)
+    menu:SetBackdropBorderColor(0.2, 0.2, 0.24, 1)
+    menu:Hide()
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, menu, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", menu, "TOPLEFT", 6, -6)
+    scrollFrame:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -28, 6)
+    menu.ScrollFrame = scrollFrame
+
+    local content = CreateFrame("Frame", nil, scrollFrame)
+    content:SetPoint("TOPLEFT", 0, 0)
+    content:SetPoint("TOPRIGHT", 0, 0)
+    content:SetHeight(1)
+    scrollFrame:SetScrollChild(content)
+    menu.Content = content
+    menu.Rows = {}
+
+    menu:EnableMouseWheel(true)
+    menu:SetScript("OnMouseWheel", function(selfMenu, delta)
+        local maxScroll = math.max(0, (selfMenu.Content:GetHeight() or 0) - selfMenu.ScrollFrame:GetHeight())
+        local nextScroll = (selfMenu.ScrollFrame:GetVerticalScroll() or 0) - (delta * 24)
+        if nextScroll < 0 then
+            nextScroll = 0
+        elseif nextScroll > maxScroll then
+            nextScroll = maxScroll
+        end
+        selfMenu.ScrollFrame:SetVerticalScroll(nextScroll)
+    end)
+
+    self.bagsCurrencyMenuFrame = menu
     return menu
 end
 
@@ -1110,6 +1259,126 @@ function Configuration:RefreshToyWhitelistMenu()
     menu.ScrollFrame:SetVerticalScroll(0)
 end
 
+function Configuration:RefreshCurrencyBarMenu()
+    local menu = self.bagsCurrencyMenuFrame
+    if not menu then
+        return
+    end
+
+    local bagsProfile = ensureBagsProfile()
+    if not bagsProfile then
+        return
+    end
+
+    local options = vesperTools:GetCurrencyBarSelectionOptions()
+    local hasOptions = type(options) == "table" and #options > 0
+    local selectedIDs = vesperTools:GetConfiguredBagCurrencyIDs()
+    local selectedMap = {}
+    local limit = vesperTools:GetBagCurrencyBarLimit()
+
+    for i = 1, #selectedIDs do
+        selectedMap[selectedIDs[i]] = true
+    end
+
+    local sortedOptions = {}
+    if hasOptions then
+        for i = 1, #options do
+            sortedOptions[i] = options[i]
+        end
+        table.sort(sortedOptions, function(a, b)
+            local aSelected = selectedMap[a.currencyID] and 1 or 0
+            local bSelected = selectedMap[b.currencyID] and 1 or 0
+            if aSelected ~= bSelected then
+                return aSelected > bSelected
+            end
+            return (a.name or "") < (b.name or "")
+        end)
+    end
+
+    local rowCount = hasOptions and (#sortedOptions + 1) or 1
+    local contentWidth = math.floor((tonumber(menu.ScrollFrame:GetWidth()) or 0) + 0.5)
+    if contentWidth <= 0 then
+        contentWidth = math.floor((tonumber(menu:GetWidth()) or 396) - 34)
+    end
+    if contentWidth < 40 then
+        contentWidth = 40
+    end
+    menu.Content:SetWidth(contentWidth)
+
+    for i = 1, rowCount do
+        local row = menu.Rows[i]
+        if not row then
+            row = self:CreateCurrencyBarMenuRow(menu.Content)
+            menu.Rows[i] = row
+        end
+
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", menu.Content, "TOPLEFT", 0, -((i - 1) * CURRENCY_MENU_ROW_HEIGHT))
+        row:SetWidth(contentWidth)
+
+        if not hasOptions then
+            row.Icon:SetTexture(DEFAULT_ICON_TEXTURE)
+            row.Icon:SetVertexColor(0.6, 0.6, 0.6, 1)
+            setFontStringTextSafe(row.Text, L["CONFIG_BAGS_CURRENCY_BAR_NONE_AVAILABLE"], 12, "", GameFontHighlightSmall)
+            row.Text:SetTextColor(0.8, 0.8, 0.8, 1)
+            row.Check:Hide()
+            row:SetScript("OnClick", nil)
+        elseif i == 1 then
+            row.Icon:SetTexture("Interface\\MoneyFrame\\UI-GoldIcon")
+            row.Icon:SetVertexColor(1, 0.82, 0.12, 1)
+            setFontStringTextSafe(row.Text, L["CONFIG_BAGS_CURRENCY_BAR_USE_TRACKED"], 12, "", GameFontHighlightSmall)
+            row.Text:SetTextColor(0.84, 0.9, 1, 1)
+            if #selectedIDs == 0 then
+                row.Check:Show()
+            else
+                row.Check:Hide()
+            end
+            row:SetScript("OnClick", function()
+                vesperTools:ClearConfiguredBagCurrencies()
+                self:SetBagsCurrencyBarStatus(L["CONFIG_BAGS_CURRENCY_BAR_HINT"], 0.78, 0.82, 0.9)
+                self:RefreshControls()
+                self:NotifyConfigChanged()
+                self:RefreshCurrencyBarMenu()
+            end)
+        else
+            local option = sortedOptions[i - 1]
+            local isSelected = selectedMap[option.currencyID] and true or false
+            row.Icon:SetTexture(option.iconFileID or DEFAULT_ICON_TEXTURE)
+            row.Icon:SetVertexColor(1, 1, 1, 1)
+            setFontStringTextSafe(row.Text, option.name or string.format(L["ITEM_FALLBACK_FMT"], tostring(option.currencyID)), 12, "", GameFontHighlightSmall)
+            row.Text:SetTextColor(0.92, 0.95, 1, 1)
+            if isSelected then
+                row.Check:Show()
+            else
+                row.Check:Hide()
+            end
+            row:SetScript("OnClick", function()
+                if not isSelected and #selectedIDs >= limit then
+                    self:SetBagsCurrencyBarStatus(string.format(L["CONFIG_BAGS_CURRENCY_BAR_LIMIT_FMT"], limit), 1, 0.4, 0.4)
+                    return
+                end
+
+                if vesperTools:SetBagCurrencySelected(option.currencyID, not isSelected) then
+                    self:SetBagsCurrencyBarStatus(L["CONFIG_BAGS_CURRENCY_BAR_HINT"], 0.78, 0.82, 0.9)
+                    self:RefreshControls()
+                    self:NotifyConfigChanged()
+                    self:RefreshCurrencyBarMenu()
+                end
+            end)
+        end
+
+        row:Show()
+    end
+
+    for i = rowCount + 1, #menu.Rows do
+        menu.Rows[i]:Hide()
+    end
+
+    local totalHeight = rowCount * CURRENCY_MENU_ROW_HEIGHT
+    menu.Content:SetHeight(math.max(menu.ScrollFrame:GetHeight(), totalHeight))
+    menu.ScrollFrame:SetVerticalScroll(0)
+end
+
 -- Open a scrollable whitelist selector for utility toys.
 -- This keeps large toy collections usable by limiting visible rows.
 function Configuration:OpenToyWhitelistPicker(anchorButton)
@@ -1135,6 +1404,30 @@ function Configuration:OpenToyWhitelistPicker(anchorButton)
     menu:Show()
     menu:Raise()
     self:RefreshToyWhitelistMenu()
+end
+
+function Configuration:OpenCurrencyBarPicker(anchorButton)
+    if not ensureBagsProfile() then
+        return
+    end
+
+    local menu = self:EnsureCurrencyBarMenuFrame(anchorButton)
+    if not menu then
+        return
+    end
+
+    if menu:IsShown() and menu._anchorButton == anchorButton then
+        menu:Hide()
+        return
+    end
+
+    menu._anchorButton = anchorButton
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPLEFT", anchorButton, "BOTTOMLEFT", 0, -4)
+    menu:SetWidth(anchorButton:GetWidth() or 396)
+    menu:Show()
+    menu:Raise()
+    self:RefreshCurrencyBarMenu()
 end
 
 -- Update helper text for toy-name lookup/add flow.
@@ -1615,12 +1908,42 @@ function Configuration:BuildPanel()
         1,
         0.05
     )
+    local bagsShowCurrencyBarCheckbox = self:CreateCheckButton(
+        "vesperToolsConfigBagsShowCurrencyBarCheckbox",
+        bagsTab,
+        L["CONFIG_BAGS_SHOW_CURRENCY_BAR"],
+        bagsQualityGlowSlider,
+        -24
+    )
+    local bagsCurrencyBarLabel = bagsTab:CreateFontString(nil, "ARTWORK")
+    bagsCurrencyBarLabel:SetPoint("TOPLEFT", bagsShowCurrencyBarCheckbox, "BOTTOMLEFT", 4, -8)
+    setFontStringTextSafe(bagsCurrencyBarLabel, L["CONFIG_BAGS_CURRENCY_BAR"], 12, "", GameFontNormal)
+
+    local bagsCurrencyBarDropdown
+    bagsCurrencyBarDropdown = self:CreateFlatDropdown(
+        "vesperToolsConfigBagsCurrencyBarDropdown",
+        bagsTab,
+        bagsCurrencyBarLabel,
+        -6,
+        360,
+        function()
+            self:OpenCurrencyBarPicker(bagsCurrencyBarDropdown)
+        end
+    )
+    local bagsCurrencyBarHint = bagsTab:CreateFontString(nil, "ARTWORK")
+    bagsCurrencyBarHint:SetPoint("TOPLEFT", bagsCurrencyBarDropdown, "BOTTOMLEFT", 0, -6)
+    bagsCurrencyBarHint:SetWidth(400)
+    bagsCurrencyBarHint:SetJustifyH("LEFT")
+    bagsCurrencyBarHint:SetJustifyV("TOP")
+    setFontStringTextSafe(bagsCurrencyBarHint, L["CONFIG_BAGS_CURRENCY_BAR_HINT"], 11, "", GameFontHighlightSmall)
+    bagsCurrencyBarHint:SetTextColor(0.78, 0.82, 0.9, 1)
+
     local bagsReplaceBlizzardCheckbox = self:CreateCheckButton(
         "vesperToolsConfigBagsReplaceBlizzardCheckbox",
         bagsTab,
         L["CONFIG_BAGS_REPLACE_BLIZZARD"],
-        bagsQualityGlowSlider,
-        -30
+        bagsCurrencyBarHint,
+        -18
     )
 
     local bankSectionTitle = bankTab:CreateFontString(nil, "ARTWORK")
@@ -1873,6 +2196,7 @@ function Configuration:BuildPanel()
     bindInventoryPercentSlider(bagsQualityGlowSlider, "display", "qualityGlowIntensity")
     bindBagsGuildLookupCheckBox(bagsAllowGuildLookupRequestsCheckbox, "allowIncomingRequests")
     bindInventoryCheckBox(bagsShowItemLevelCheckbox, "display", "showItemLevel")
+    bindInventoryCheckBox(bagsShowCurrencyBarCheckbox, "display", "showCurrencyBar")
     bindBagsFlagCheckBox(bagsReplaceBlizzardCheckbox, "replaceBackpack")
     bindInventoryIntegerSlider(bankColumnsSlider, "bankDisplay", "columns", 1, 20)
     bindInventoryIntegerSlider(bankIconSizeSlider, "bankDisplay", "itemIconSize", 24, 56)
@@ -1889,6 +2213,9 @@ function Configuration:BuildPanel()
     panel:SetScript("OnHide", function()
         if self.toyWhitelistMenuFrame then
             self.toyWhitelistMenuFrame:Hide()
+        end
+        if self.bagsCurrencyMenuFrame then
+            self.bagsCurrencyMenuFrame:Hide()
         end
     end)
 
@@ -1911,6 +2238,10 @@ function Configuration:BuildPanel()
     self.bagsAllowGuildLookupRequestsCheckbox = bagsAllowGuildLookupRequestsCheckbox
     self.bagsReplaceBlizzardCheckbox = bagsReplaceBlizzardCheckbox
     self.bagsShowItemLevelCheckbox = bagsShowItemLevelCheckbox
+    self.bagsShowCurrencyBarCheckbox = bagsShowCurrencyBarCheckbox
+    self.bagsCurrencyBarDropdown = bagsCurrencyBarDropdown
+    self.bagsCurrencyBarDropdownText = bagsCurrencyBarDropdown.Text
+    self.bagsCurrencyBarHint = bagsCurrencyBarHint
     self.bankColumnsSlider = bankColumnsSlider
     self.bankIconSizeSlider = bankIconSizeSlider
     self.bankStackCountFontSizeSlider = bankStackCountFontSizeSlider
@@ -1935,6 +2266,8 @@ function Configuration:RefreshControls()
     self:RefreshFontDropdownText()
     self:RefreshHearthstoneDropdownText()
     self:RefreshToyWhitelistDropdownText()
+    self:RefreshBagsCurrencyBarDropdownText()
+    self:SetBagsCurrencyBarStatus(L["CONFIG_BAGS_CURRENCY_BAR_HINT"], 0.78, 0.82, 0.9)
 
     local rosterValue = clamp(tonumber(profile.style.backgroundOpacity.roster) or 0.95, 0.10, 1.00)
     local portalsValue = clamp(tonumber(profile.style.backgroundOpacity.portals) or 0.95, 0.10, 1.00)
@@ -1956,6 +2289,7 @@ function Configuration:RefreshControls()
     local bagsAllowGuildLookupRequests = bagsProfile.guildLookup.allowIncomingRequests and true or false
     local bagsReplaceBlizzard = bagsProfile.replaceBackpack and true or false
     local bagsShowItemLevel = bagsProfile.display.showItemLevel and true or false
+    local bagsShowCurrencyBar = bagsProfile.display.showCurrencyBar and true or false
     local bankColumns = clamp(math.floor((tonumber(bagsProfile.bankDisplay.columns) or 10) + 0.5), 1, 20)
     local bankIconSize = clamp(math.floor((tonumber(bagsProfile.bankDisplay.itemIconSize) or 38) + 0.5), 24, 56)
     local bankStackCountFontSize = clamp(math.floor((tonumber(bagsProfile.bankDisplay.stackCountFontSize) or 11) + 0.5), 8, 20)
@@ -2020,6 +2354,9 @@ function Configuration:RefreshControls()
     end
     if self.bagsShowItemLevelCheckbox then
         self.bagsShowItemLevelCheckbox:SetChecked(bagsShowItemLevel)
+    end
+    if self.bagsShowCurrencyBarCheckbox then
+        self.bagsShowCurrencyBarCheckbox:SetChecked(bagsShowCurrencyBar)
     end
     if self.bankColumnsSlider then
         self.bankColumnsSlider:SetValue(bankColumns)

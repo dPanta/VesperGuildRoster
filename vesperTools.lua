@@ -74,7 +74,9 @@ local DEFAULT_BANK_STACK_COUNT_FONT_SIZE = 11
 local DEFAULT_BANK_ITEM_LEVEL_FONT_SIZE = 9
 local DEFAULT_BANK_QUALITY_GLOW_INTENSITY = 0.65
 local MAX_UTILITY_TOY_WHITELIST = 15
+local MAX_BAGS_CURRENCY_BAR_ENTRIES = 12
 local MODERN_CLOSE_BUTTON_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\CloseModern-128"
+local GOLD_BAR_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_Coin_01"
 
 -- Curated font options exposed in configuration UI.
 local FONT_OPTIONS = {
@@ -157,6 +159,151 @@ local function normalizeIcon(iconValue)
     return nil
 end
 
+local function normalizeCurrencyIcon(iconValue)
+    local normalized = normalizeIcon(iconValue)
+    if normalized then
+        return normalized
+    end
+
+    if type(iconValue) == "string" and iconValue ~= "" then
+        local iconPath = iconValue
+        if not (string.find(iconPath, "\\", 1, true) or string.find(iconPath, "/", 1, true)) then
+            iconPath = "Interface\\Icons\\" .. iconPath
+        end
+        return iconPath
+    end
+
+    return "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+local function normalizeExpansionID(expansionID)
+    local numericID = tonumber(expansionID)
+    if not numericID then
+        return nil
+    end
+
+    numericID = math.floor(numericID + 0.5)
+    if numericID < 0 then
+        return nil
+    end
+
+    return numericID
+end
+
+local function getCurrentExpansionID()
+    local currentExpansionID = normalizeExpansionID(_G and _G.LE_EXPANSION_LEVEL_CURRENT)
+    if currentExpansionID ~= nil then
+        return currentExpansionID
+    end
+
+    if type(GetServerExpansionLevel) == "function" then
+        currentExpansionID = normalizeExpansionID(GetServerExpansionLevel())
+        if currentExpansionID ~= nil then
+            return currentExpansionID
+        end
+    end
+
+    if type(GetExpansionLevel) == "function" then
+        currentExpansionID = normalizeExpansionID(GetExpansionLevel())
+        if currentExpansionID ~= nil then
+            return currentExpansionID
+        end
+    end
+
+    return nil
+end
+
+local function getCurrentExpansionName()
+    local currentExpansionID = getCurrentExpansionID()
+    if currentExpansionID == nil then
+        return nil
+    end
+
+    local expansionName = _G["EXPANSION_NAME" .. currentExpansionID]
+    if type(expansionName) == "string" and expansionName ~= "" then
+        return expansionName
+    end
+
+    return nil
+end
+
+local function normalizeCurrencyLabel(text)
+    if type(text) ~= "string" then
+        return nil
+    end
+
+    local normalized = strtrim(text)
+    if normalized == "" then
+        return nil
+    end
+
+    normalized = normalized:gsub("[%s%p]+", " ")
+    normalized = strtrim(normalized)
+    if normalized == "" then
+        return nil
+    end
+
+    return string.lower(normalized)
+end
+
+local function addNormalizedName(nameMap, text)
+    local normalized = normalizeCurrencyLabel(text)
+    if normalized then
+        nameMap[normalized] = true
+    end
+end
+
+local function getExpansionNameSet()
+    local names = {}
+    local highestExpansionID = normalizeExpansionID(_G and _G.LE_EXPANSION_LEVEL_CURRENT) or 15
+
+    for expansionID = 0, highestExpansionID do
+        addNormalizedName(names, _G and _G["EXPANSION_NAME" .. expansionID])
+    end
+
+    return names
+end
+
+local function getProfessionNameSet()
+    local names = {}
+    addNormalizedName(names, _G and _G.PROFESSIONS_BUTTON)
+    addNormalizedName(names, _G and _G.TRADE_SKILLS)
+    addNormalizedName(names, _G and _G.PROFESSIONS_JOURNAL_TITLE)
+    addNormalizedName(names, _G and _G.SECONDARY_PROFESSION_TEXT)
+
+    if type(GetProfessions) == "function" and type(GetProfessionInfo) == "function" then
+        local professionIndices = { GetProfessions() }
+        for i = 1, #professionIndices do
+            local professionIndex = professionIndices[i]
+            if professionIndex then
+                local professionName = GetProfessionInfo(professionIndex)
+                addNormalizedName(names, professionName)
+            end
+        end
+    end
+
+    return names
+end
+
+local function labelContainsAnyToken(label, tokenMap)
+    local normalizedLabel = normalizeCurrencyLabel(label)
+    if not normalizedLabel or type(tokenMap) ~= "table" then
+        return false
+    end
+
+    if tokenMap[normalizedLabel] then
+        return true
+    end
+
+    for token in pairs(tokenMap) do
+        if token ~= "" and string.find(normalizedLabel, token, 1, true) then
+            return true
+        end
+    end
+
+    return false
+end
+
 local function sanitizePrimaryHearthstoneSelection(value)
     local numeric = tonumber(value)
     if numeric == RANDOM_DISCO_HEARTHSTONE_ID then
@@ -169,6 +316,273 @@ local function sanitizePrimaryHearthstoneSelection(value)
     end
 
     return numeric
+end
+
+local function sanitizeCurrencyIDList(idList)
+    if type(idList) ~= "table" then
+        return {}
+    end
+
+    local sanitized = {}
+    local seen = {}
+
+    for i = 1, #idList do
+        local currencyID = math.floor((tonumber(idList[i]) or 0) + 0.5)
+        if currencyID > 0 and not seen[currencyID] then
+            sanitized[#sanitized + 1] = currencyID
+            seen[currencyID] = true
+
+            if #sanitized >= MAX_BAGS_CURRENCY_BAR_ENTRIES then
+                break
+            end
+        end
+    end
+
+    return sanitized
+end
+
+local function getCurrencyListSize()
+    if C_CurrencyInfo and type(C_CurrencyInfo.GetCurrencyListSize) == "function" then
+        local ok, count = pcall(C_CurrencyInfo.GetCurrencyListSize)
+        if ok then
+            return math.max(0, math.floor((tonumber(count) or 0) + 0.5))
+        end
+    end
+
+    if type(GetCurrencyListSize) == "function" then
+        local ok, count = pcall(GetCurrencyListSize)
+        if ok then
+            return math.max(0, math.floor((tonumber(count) or 0) + 0.5))
+        end
+    end
+
+    return 0
+end
+
+local function extractCurrencyIDFromLink(link)
+    if type(link) ~= "string" or link == "" then
+        return nil
+    end
+
+    local currencyID = link:match("H?currency:(%d+):")
+    currencyID = tonumber(currencyID)
+    if currencyID and currencyID > 0 then
+        return math.floor(currencyID + 0.5)
+    end
+
+    return nil
+end
+
+local function getCurrencyListLink(index)
+    if C_CurrencyInfo and type(C_CurrencyInfo.GetCurrencyListLink) == "function" then
+        local ok, link = pcall(C_CurrencyInfo.GetCurrencyListLink, index)
+        if ok and type(link) == "string" and link ~= "" then
+            return link
+        end
+    end
+
+    return nil
+end
+
+local function getCurrencyListInfo(index)
+    if C_CurrencyInfo and type(C_CurrencyInfo.GetCurrencyListInfo) == "function" then
+        local ok, info = pcall(C_CurrencyInfo.GetCurrencyListInfo, index)
+        if ok and type(info) == "table" then
+            return {
+                currencyID = tonumber(info.currencyID or info.currencyTypesID or info.currencyType) or nil,
+                name = info.name,
+                quantity = tonumber(info.quantity or info.count) or 0,
+                iconFileID = normalizeCurrencyIcon(info.iconFileID or info.icon),
+                isHeader = info.isHeader and true or false,
+                isHeaderExpanded = info.isHeaderExpanded and true or false,
+                isTypeUnused = info.isTypeUnused and true or false,
+                isShowInBackpack = info.isShowInBackpack and true or false,
+                discovered = info.discovered ~= false,
+                maxQuantity = tonumber(info.maxQuantity) or 0,
+                totalEarned = tonumber(info.totalEarned) or nil,
+                maxWeeklyQuantity = tonumber(info.maxWeeklyQuantity) or 0,
+                quantityEarnedThisWeek = tonumber(info.quantityEarnedThisWeek) or 0,
+                description = info.description,
+                useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty and true or false,
+                canEarnPerWeek = info.canEarnPerWeek and true or false,
+            }
+        end
+    end
+
+    if type(GetCurrencyListInfo) == "function" then
+        local results = { pcall(GetCurrencyListInfo, index) }
+        local ok = table.remove(results, 1)
+        local name = results[1]
+        local isHeader = results[2]
+        local isExpanded = results[3]
+        local isUnused = results[4]
+        local isWatched = results[5]
+        local count = results[6]
+        local icon = results[7]
+        local maxQuantity = results[8]
+        local discovered = results[9]
+        local canEarnPerWeek = results[12]
+        local earnedThisWeek = results[13]
+        local currencyID = extractCurrencyIDFromLink(getCurrencyListLink(index))
+        local currencyInfo = nil
+        if currencyID and C_CurrencyInfo and type(C_CurrencyInfo.GetCurrencyInfo) == "function" then
+            local infoOK, info = pcall(C_CurrencyInfo.GetCurrencyInfo, currencyID)
+            if infoOK and type(info) == "table" then
+                currencyInfo = info
+            end
+        end
+
+        if ok and type(name) == "string" and name ~= "" then
+            return {
+                currencyID = currencyID,
+                name = currencyInfo and currencyInfo.name or name,
+                quantity = tonumber((currencyInfo and currencyInfo.quantity) or count or 0) or 0,
+                iconFileID = normalizeCurrencyIcon((currencyInfo and currencyInfo.iconFileID) or icon),
+                isHeader = isHeader and true or false,
+                isHeaderExpanded = isExpanded and true or false,
+                isTypeUnused = isUnused and true or false,
+                isShowInBackpack = ((currencyInfo and currencyInfo.isShowInBackpack) or isWatched) and true or false,
+                discovered = (currencyInfo and currencyInfo.discovered) ~= false and discovered ~= false,
+                maxQuantity = tonumber((currencyInfo and currencyInfo.maxQuantity) or maxQuantity) or 0,
+                totalEarned = tonumber(currencyInfo and currencyInfo.totalEarned) or nil,
+                maxWeeklyQuantity = tonumber((currencyInfo and currencyInfo.maxWeeklyQuantity) or (canEarnPerWeek and maxQuantity) or 0) or 0,
+                quantityEarnedThisWeek = tonumber((currencyInfo and currencyInfo.quantityEarnedThisWeek) or earnedThisWeek) or 0,
+                description = currencyInfo and currencyInfo.description or nil,
+                useTotalEarnedForMaxQty = currencyInfo and currencyInfo.useTotalEarnedForMaxQty and true or false,
+                canEarnPerWeek = (currencyInfo and currencyInfo.canEarnPerWeek) or canEarnPerWeek and true or false,
+            }
+        end
+    end
+
+    return nil
+end
+
+local function getCurrencyInfoByID(currencyID)
+    local numericCurrencyID = math.floor((tonumber(currencyID) or 0) + 0.5)
+    if numericCurrencyID <= 0 then
+        return nil
+    end
+
+    if C_CurrencyInfo and type(C_CurrencyInfo.GetCurrencyInfo) == "function" then
+        local ok, info = pcall(C_CurrencyInfo.GetCurrencyInfo, numericCurrencyID)
+        if ok and type(info) == "table" and type(info.name) == "string" and info.name ~= "" then
+            return {
+                currencyID = tonumber(info.currencyID) or numericCurrencyID,
+                name = info.name,
+                quantity = tonumber(info.quantity or info.count) or 0,
+                iconFileID = normalizeCurrencyIcon(info.iconFileID or info.icon),
+                isShowInBackpack = info.isShowInBackpack and true or false,
+                discovered = info.discovered ~= false,
+                maxQuantity = tonumber(info.maxQuantity) or 0,
+                totalEarned = tonumber(info.totalEarned) or nil,
+                maxWeeklyQuantity = tonumber(info.maxWeeklyQuantity) or 0,
+                quantityEarnedThisWeek = tonumber(info.quantityEarnedThisWeek) or 0,
+                description = info.description,
+                useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty and true or false,
+                canEarnPerWeek = info.canEarnPerWeek and true or false,
+            }
+        end
+    end
+
+    if type(GetCurrencyInfo) == "function" then
+        local results = { pcall(GetCurrencyInfo, numericCurrencyID) }
+        local ok = table.remove(results, 1)
+        local name = results[1]
+        local quantity = results[2]
+        local icon = results[3]
+        local earnedThisWeek = results[4]
+        local maxWeeklyQuantity = results[5]
+        local maxQuantity = results[6]
+        local isDiscovered = results[7]
+
+        if ok and type(name) == "string" and name ~= "" then
+            return {
+                currencyID = numericCurrencyID,
+                name = name,
+                quantity = tonumber(quantity) or 0,
+                iconFileID = normalizeCurrencyIcon(icon),
+                isShowInBackpack = false,
+                discovered = isDiscovered ~= false,
+                maxQuantity = tonumber(maxQuantity) or 0,
+                totalEarned = nil,
+                maxWeeklyQuantity = tonumber(maxWeeklyQuantity) or 0,
+                quantityEarnedThisWeek = tonumber(earnedThisWeek) or 0,
+                description = nil,
+                useTotalEarnedForMaxQty = false,
+                canEarnPerWeek = (tonumber(maxWeeklyQuantity) or 0) > 0,
+            }
+        end
+    end
+
+    return nil
+end
+
+local function getNumWatchedTokens()
+    if type(GetNumWatchedTokens) == "function" then
+        local ok, count = pcall(GetNumWatchedTokens)
+        if ok then
+            return math.max(0, math.floor((tonumber(count) or 0) + 0.5))
+        end
+    end
+
+    return 0
+end
+
+local function getBackpackCurrencyInfo(index)
+    local numericIndex = math.floor((tonumber(index) or 0) + 0.5)
+    if numericIndex <= 0 then
+        return nil
+    end
+
+    if C_CurrencyInfo and type(C_CurrencyInfo.GetBackpackCurrencyInfo) == "function" then
+        local ok, info = pcall(C_CurrencyInfo.GetBackpackCurrencyInfo, numericIndex)
+        if ok and type(info) == "table" and type(info.name) == "string" and info.name ~= "" then
+            return {
+                currencyID = tonumber(info.currencyID or info.currencyTypesID or info.currencyType) or nil,
+                name = info.name,
+                quantity = tonumber(info.quantity or info.count) or 0,
+                iconFileID = normalizeCurrencyIcon(info.iconFileID or info.icon),
+                isShowInBackpack = true,
+                discovered = true,
+                maxQuantity = 0,
+                totalEarned = nil,
+                maxWeeklyQuantity = 0,
+                quantityEarnedThisWeek = 0,
+                description = nil,
+                useTotalEarnedForMaxQty = false,
+                canEarnPerWeek = false,
+            }
+        end
+    end
+
+    if type(GetBackpackCurrencyInfo) == "function" then
+        local ok, name, quantity, icon, currencyID = pcall(GetBackpackCurrencyInfo, numericIndex)
+        if ok and type(name) == "string" and name ~= "" then
+            local info = getCurrencyInfoByID(currencyID)
+            if info then
+                info.isShowInBackpack = true
+                return info
+            end
+
+            return {
+                currencyID = tonumber(currencyID) or nil,
+                name = name,
+                quantity = tonumber(quantity) or 0,
+                iconFileID = normalizeCurrencyIcon(icon),
+                isShowInBackpack = true,
+                discovered = true,
+                maxQuantity = 0,
+                totalEarned = nil,
+                maxWeeklyQuantity = 0,
+                quantityEarnedThisWeek = 0,
+                description = nil,
+                useTotalEarnedForMaxQty = false,
+                canEarnPerWeek = false,
+            }
+        end
+    end
+
+    return nil
 end
 
 -- Resolve display name and icon with layered fallbacks (toy API -> item APIs -> question mark).
@@ -1043,6 +1457,8 @@ function vesperTools:OnInitialize()
                 itemLevelFontSize = DEFAULT_BAGS_ITEM_LEVEL_FONT_SIZE,
                 showEquippedBags = false,
                 showItemLevel = false,
+                showCurrencyBar = true,
+                currencyBarIDs = {},
                 qualityGlowIntensity = DEFAULT_BAGS_QUALITY_GLOW_INTENSITY,
                 combineStacks = false,
             },
@@ -1164,6 +1580,12 @@ function vesperTools:GetBagsProfile()
     profile.display.itemLevelFontSize = math.max(8, math.min(18, math.floor((tonumber(profile.display.itemLevelFontSize) or DEFAULT_BAGS_ITEM_LEVEL_FONT_SIZE) + 0.5)))
     profile.display.showEquippedBags = profile.display.showEquippedBags and true or false
     profile.display.showItemLevel = profile.display.showItemLevel and true or false
+    if profile.display.showCurrencyBar == nil then
+        profile.display.showCurrencyBar = true
+    else
+        profile.display.showCurrencyBar = profile.display.showCurrencyBar and true or false
+    end
+    profile.display.currencyBarIDs = sanitizeCurrencyIDList(profile.display.currencyBarIDs)
     profile.display.qualityGlowIntensity = math.max(0, math.min(1, tonumber(profile.display.qualityGlowIntensity) or DEFAULT_BAGS_QUALITY_GLOW_INTENSITY))
     profile.display.combineStacks = profile.display.combineStacks and true or false
     profile.bankDisplay = profile.bankDisplay or {}
@@ -1202,6 +1624,254 @@ function vesperTools:GetBagsProfile()
     profile.replaceAccountBank = profile.replaceAccountBank and true or false
 
     return profile
+end
+
+function vesperTools:GetBagCurrencyBarLimit()
+    return MAX_BAGS_CURRENCY_BAR_ENTRIES
+end
+
+function vesperTools:GetCurrencyInfoByID(currencyID)
+    return getCurrencyInfoByID(currencyID)
+end
+
+function vesperTools:GetTrackedBagCurrencyOptions()
+    local options = {}
+    local seen = {}
+    local watchedCount = getNumWatchedTokens()
+
+    for index = 1, watchedCount do
+        local info = getBackpackCurrencyInfo(index)
+        if info and info.currencyID and info.currencyID > 0 and not seen[info.currencyID] then
+            options[#options + 1] = {
+                currencyID = info.currencyID,
+                name = info.name,
+                quantity = info.quantity,
+                iconFileID = info.iconFileID,
+                isShowInBackpack = true,
+                maxQuantity = info.maxQuantity,
+                totalEarned = info.totalEarned,
+                maxWeeklyQuantity = info.maxWeeklyQuantity,
+                quantityEarnedThisWeek = info.quantityEarnedThisWeek,
+                sortIndex = index,
+            }
+            seen[info.currencyID] = true
+        end
+    end
+
+    return options
+end
+
+function vesperTools:GetGoldCurrencyBarEntry()
+    return {
+        isGold = true,
+        name = MONEY or "Gold",
+        quantity = GetMoney and (tonumber(GetMoney()) or 0) or 0,
+        iconFileID = GOLD_BAR_ICON_TEXTURE,
+        isShowInBackpack = true,
+        discovered = true,
+        maxQuantity = 0,
+        totalEarned = nil,
+        maxWeeklyQuantity = 0,
+        quantityEarnedThisWeek = 0,
+    }
+end
+
+function vesperTools:GetConfiguredBagCurrencyIDs()
+    local profile = self:GetBagsProfile()
+    if not profile or not profile.display then
+        return {}
+    end
+
+    return profile.display.currencyBarIDs or {}
+end
+
+function vesperTools:ClearConfiguredBagCurrencies()
+    local profile = self:GetBagsProfile()
+    if not profile then
+        return
+    end
+
+    profile.display = profile.display or {}
+    profile.display.currencyBarIDs = {}
+end
+
+function vesperTools:SetBagCurrencySelected(currencyID, shouldSelect)
+    local profile = self:GetBagsProfile()
+    if not profile then
+        return false
+    end
+
+    local numericCurrencyID = math.floor((tonumber(currencyID) or 0) + 0.5)
+    if numericCurrencyID <= 0 then
+        return false
+    end
+
+    profile.display = profile.display or {}
+    local selectedIDs = sanitizeCurrencyIDList(profile.display.currencyBarIDs)
+    local wasSelected = false
+    local existingIndex = nil
+
+    for i = 1, #selectedIDs do
+        if selectedIDs[i] == numericCurrencyID then
+            wasSelected = true
+            existingIndex = i
+            break
+        end
+    end
+
+    if shouldSelect then
+        if wasSelected then
+            profile.display.currencyBarIDs = selectedIDs
+            return true
+        end
+
+        if #selectedIDs >= MAX_BAGS_CURRENCY_BAR_ENTRIES then
+            profile.display.currencyBarIDs = selectedIDs
+            return false
+        end
+
+        selectedIDs[#selectedIDs + 1] = numericCurrencyID
+    elseif existingIndex then
+        table.remove(selectedIDs, existingIndex)
+    end
+
+    profile.display.currencyBarIDs = selectedIDs
+    return true
+end
+
+function vesperTools:GetCurrencyBarSelectionOptions()
+    local options = {}
+    local strictOptions = {}
+    local priorityOptions = {}
+    local broadOptions = {}
+    local seen = {}
+    local prioritySeen = {}
+    local broadSeen = {}
+    local count = getCurrencyListSize()
+    local index = 1
+    local currentExpansionName = getCurrentExpansionName()
+    local normalizedCurrentExpansionName = normalizeCurrencyLabel(currentExpansionName)
+    local expansionNameSet = getExpansionNameSet()
+    local professionNameSet = getProfessionNameSet()
+    local inCurrentExpansionSection = currentExpansionName == nil
+    local inProfessionSection = false
+
+    while index <= count do
+        local info = getCurrencyListInfo(index)
+        if info and info.isHeader and not info.isHeaderExpanded and type(ExpandCurrencyList) == "function" then
+            pcall(ExpandCurrencyList, index, 1)
+            count = getCurrencyListSize()
+            info = getCurrencyListInfo(index) or info
+        end
+
+        if info and info.isHeader then
+            local normalizedHeaderName = normalizeCurrencyLabel(info.name)
+            if normalizedHeaderName and expansionNameSet[normalizedHeaderName] then
+                inCurrentExpansionSection = normalizedCurrentExpansionName == nil
+                    or normalizedHeaderName == normalizedCurrentExpansionName
+                inProfessionSection = false
+            elseif inCurrentExpansionSection then
+                inProfessionSection = labelContainsAnyToken(info.name, professionNameSet)
+            end
+        end
+
+        if info
+            and not info.isHeader
+            and not info.isTypeUnused
+            and info.discovered
+            and info.currencyID
+            and info.currencyID > 0
+            and type(info.name) == "string"
+            and info.name ~= ""
+            and not inProfessionSection
+        then
+            local option = {
+                currencyID = info.currencyID,
+                name = info.name,
+                quantity = info.quantity,
+                iconFileID = info.iconFileID,
+                isShowInBackpack = info.isShowInBackpack,
+                maxQuantity = info.maxQuantity,
+                totalEarned = info.totalEarned,
+                maxWeeklyQuantity = info.maxWeeklyQuantity,
+                quantityEarnedThisWeek = info.quantityEarnedThisWeek,
+                canEarnPerWeek = info.canEarnPerWeek,
+                useTotalEarnedForMaxQty = info.useTotalEarnedForMaxQty,
+                sortIndex = index,
+            }
+
+            if not broadSeen[option.currencyID] then
+                broadOptions[#broadOptions + 1] = option
+                broadSeen[option.currencyID] = true
+            end
+
+            if inCurrentExpansionSection and not seen[option.currencyID] then
+                strictOptions[#strictOptions + 1] = option
+                seen[option.currencyID] = true
+            end
+
+            if not prioritySeen[option.currencyID]
+                and (option.isShowInBackpack
+                    or option.canEarnPerWeek
+                    or (tonumber(option.maxWeeklyQuantity) or 0) > 0
+                    or option.useTotalEarnedForMaxQty)
+            then
+                priorityOptions[#priorityOptions + 1] = option
+                prioritySeen[option.currencyID] = true
+            end
+        end
+
+        index = index + 1
+    end
+
+    if #strictOptions > 0 then
+        options = strictOptions
+    elseif #priorityOptions > 0 then
+        options = priorityOptions
+    elseif #broadOptions > 0 then
+        options = broadOptions
+    end
+
+    seen = {}
+    for i = 1, #options do
+        seen[options[i].currencyID] = true
+    end
+
+    if #options == 0 then
+        local trackedOptions = self:GetTrackedBagCurrencyOptions()
+        for i = 1, #trackedOptions do
+            local option = trackedOptions[i]
+            if option and option.currencyID and not seen[option.currencyID] then
+                options[#options + 1] = option
+                seen[option.currencyID] = true
+            end
+        end
+    end
+
+    local selectedIDs = self:GetConfiguredBagCurrencyIDs()
+    for i = 1, #selectedIDs do
+        local currencyID = selectedIDs[i]
+        if not seen[currencyID] then
+            local info = getCurrencyInfoByID(currencyID)
+            if info then
+                options[#options + 1] = {
+                    currencyID = currencyID,
+                    name = info.name,
+                    quantity = info.quantity,
+                    iconFileID = info.iconFileID,
+                    isShowInBackpack = info.isShowInBackpack,
+                    maxQuantity = info.maxQuantity,
+                    totalEarned = info.totalEarned,
+                    maxWeeklyQuantity = info.maxWeeklyQuantity,
+                    quantityEarnedThisWeek = info.quantityEarnedThisWeek,
+                    sortIndex = 100000 + i,
+                }
+                seen[currencyID] = true
+            end
+        end
+    end
+
+    return options
 end
 
 function vesperTools:GetCurrentCharacterGUID()

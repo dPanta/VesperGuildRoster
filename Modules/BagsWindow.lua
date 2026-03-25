@@ -39,6 +39,15 @@ local GUILD_LOOKUP_RESULT_ROW_HEIGHT = 22
 local GUILD_LOOKUP_RESULT_MAX_VISIBLE_ROWS = 8
 local SECTION_TITLE_GAP = 4
 local SECTION_TITLE_RIGHT_PADDING = 8
+local CURRENCY_BAR_SIDE_PADDING = 8
+local CURRENCY_BAR_VERTICAL_PADDING = 8
+local CURRENCY_BAR_BUTTON_HEIGHT = 20
+local CURRENCY_BAR_BUTTON_GAP = 6
+local CURRENCY_BAR_BUTTON_PADDING = 6
+local CURRENCY_BAR_BUTTON_MIN_WIDTH = 46
+local CURRENCY_BAR_BUTTON_MAX_WIDTH = 96
+local CURRENCY_BAR_ICON_SIZE = 16
+local CURRENCY_BAR_ICON_GAP = 6
 local EQUIPPED_BAG_IDS = {}
 local REAGENT_BAG_ID = Enum and Enum.BagIndex and Enum.BagIndex.ReagentBag or nil
 
@@ -73,6 +82,20 @@ local function safeColorForQuality(quality)
     end
 
     return 0.18, 0.18, 0.18
+end
+
+local function formatCurrencyQuantity(quantity)
+    local numericQuantity = math.max(0, math.floor((tonumber(quantity) or 0) + 0.5))
+    if BreakUpLargeNumbers then
+        return BreakUpLargeNumbers(numericQuantity)
+    end
+    return tostring(numericQuantity)
+end
+
+local function formatGoldQuantity(copperAmount)
+    local copper = math.max(0, math.floor((tonumber(copperAmount) or 0) + 0.5))
+    local gold = math.floor(copper / (COPPER_PER_GOLD or 10000))
+    return string.format("%sg", formatCurrencyQuantity(gold))
 end
 
 local function buildFallbackItemName(itemID)
@@ -198,11 +221,14 @@ function BagsWindow:OnInitialize()
     self.combineStacksButtonText = nil
     self.combineStacksButtonGlow = nil
     self.content = nil
+    self.currencyBar = nil
+    self.currencyBarDivider = nil
     self.emptyText = nil
     self.sectionFrames = {}
     self.itemButtons = {}
     self.equippedBagButtons = {}
     self.summaryButtons = {}
+    self.currencyButtons = {}
     self.selectedCharacterKey = nil
     self.displayCharacters = {}
     self.characterSearchMatchCounts = nil
@@ -220,6 +246,7 @@ function BagsWindow:OnEnable()
     self:RegisterMessage("VESPERTOOLS_GUILD_LOOKUP_UPDATED", "OnGuildLookupUpdated")
     self:RegisterEvent("PLAYER_ENTERING_WORLD")
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
+    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyDataChanged")
 end
 
 function BagsWindow:GetStore()
@@ -280,6 +307,12 @@ end
 
 function BagsWindow:OnGuildLookupUpdated()
     self:RefreshGuildLookupPresentation()
+end
+
+function BagsWindow:OnCurrencyDataChanged()
+    if self.frame and self.frame:IsShown() then
+        self:RefreshWindow()
+    end
 end
 
 function BagsWindow:PLAYER_REGEN_ENABLED()
@@ -853,6 +886,128 @@ function BagsWindow:GetViewSettings()
         qualityGlowIntensity = qualityGlowIntensity,
         combineStacks = display and display.combineStacks and true or false,
     }
+end
+
+function BagsWindow:GetCurrencyBarEntries(selectedCharacter)
+    local entries = {}
+    local bagsProfile = vesperTools:GetBagsProfile()
+    if not selectedCharacter
+        or not selectedCharacter.isCurrent
+        or not bagsProfile
+        or not bagsProfile.display
+        or not bagsProfile.display.showCurrencyBar
+    then
+        return entries
+    end
+
+    local goldEntry = vesperTools.GetGoldCurrencyBarEntry and vesperTools:GetGoldCurrencyBarEntry() or nil
+    if goldEntry then
+        entries[#entries + 1] = goldEntry
+    end
+
+    local selectedIDs = vesperTools:GetConfiguredBagCurrencyIDs()
+
+    if #selectedIDs > 0 then
+        for i = 1, #selectedIDs do
+            local info = vesperTools:GetCurrencyInfoByID(selectedIDs[i])
+            if info then
+                entries[#entries + 1] = info
+            end
+        end
+        return entries
+    end
+
+    local trackedOptions = vesperTools:GetTrackedBagCurrencyOptions()
+    for i = 1, #trackedOptions do
+        if trackedOptions[i] then
+            entries[#entries + 1] = trackedOptions[i]
+        end
+    end
+
+    return entries
+end
+
+function BagsWindow:GetCurrencyBarMeasureText()
+    if self.currencyBarMeasureText then
+        return self.currencyBarMeasureText
+    end
+
+    local parent = self.currencyBar or self.frame or UIParent
+    local measureText = parent:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    measureText:SetWordWrap(false)
+    measureText:Hide()
+    self.currencyBarMeasureText = measureText
+    return measureText
+end
+
+function BagsWindow:GetCurrencyBarButtonText(entry)
+    if not entry then
+        return "0"
+    end
+
+    if entry.isGold then
+        return formatGoldQuantity(entry.quantity)
+    end
+
+    return formatCurrencyQuantity(entry.quantity)
+end
+
+function BagsWindow:GetCurrencyBarLayout(availableWidth, entries)
+    local layout = {
+        rows = 0,
+        height = 0,
+        buttons = {},
+    }
+
+    local count = type(entries) == "table" and #entries or 0
+    if count <= 0 then
+        return layout
+    end
+
+    local width = math.max(CURRENCY_BAR_BUTTON_MIN_WIDTH, math.floor((tonumber(availableWidth) or 0) + 0.5))
+    local innerWidth = math.max(CURRENCY_BAR_BUTTON_MIN_WIDTH, width - (CURRENCY_BAR_SIDE_PADDING * 2))
+    local measureText = self:GetCurrencyBarMeasureText()
+    local row = 0
+    local xOffset = 0
+
+    vesperTools:ApplyConfiguredFont(measureText, 11, "")
+
+    for index = 1, count do
+        local buttonText = self:GetCurrencyBarButtonText(entries[index])
+        measureText:SetText(buttonText)
+
+        local buttonWidth = math.ceil(measureText:GetStringWidth() or 0)
+            + (CURRENCY_BAR_BUTTON_PADDING * 2)
+            + CURRENCY_BAR_ICON_SIZE
+            + CURRENCY_BAR_ICON_GAP
+        buttonWidth = clamp(buttonWidth, CURRENCY_BAR_BUTTON_MIN_WIDTH, math.min(CURRENCY_BAR_BUTTON_MAX_WIDTH, innerWidth))
+
+        if xOffset > 0 and (xOffset + buttonWidth) > innerWidth then
+            row = row + 1
+            xOffset = 0
+        end
+
+        layout.buttons[index] = {
+            row = row,
+            xOffset = xOffset,
+            width = buttonWidth,
+            text = buttonText,
+        }
+
+        xOffset = xOffset + buttonWidth + CURRENCY_BAR_BUTTON_GAP
+    end
+
+    local rows = row + 1
+    local height = CURRENCY_BAR_VERTICAL_PADDING
+        + 1
+        + CURRENCY_BAR_VERTICAL_PADDING
+        + (rows * CURRENCY_BAR_BUTTON_HEIGHT)
+        + (math.max(0, rows - 1) * CURRENCY_BAR_BUTTON_GAP)
+        + CURRENCY_BAR_VERTICAL_PADDING
+
+    layout.rows = rows
+    layout.height = height
+    return layout
 end
 
 function BagsWindow:ToggleBagSlots()
@@ -1950,6 +2105,21 @@ function BagsWindow:CreateWindow()
     emptyText:Hide()
     self.emptyText = emptyText
 
+    local currencyBar = CreateFrame("Frame", nil, frame)
+    currencyBar:SetPoint("LEFT", frame, "LEFT", 10, 0)
+    currencyBar:SetPoint("RIGHT", frame, "RIGHT", -10, 0)
+    currencyBar:SetPoint("BOTTOM", frame, "BOTTOM", 0, 8)
+    currencyBar:SetHeight(1)
+    currencyBar:Hide()
+    self.currencyBar = currencyBar
+
+    local currencyBarDivider = currencyBar:CreateTexture(nil, "BACKGROUND")
+    currencyBarDivider:SetPoint("TOPLEFT", currencyBar, "TOPLEFT", 0, 0)
+    currencyBarDivider:SetPoint("TOPRIGHT", currencyBar, "TOPRIGHT", 0, 0)
+    currencyBarDivider:SetHeight(1)
+    currencyBarDivider:SetColorTexture(1, 1, 1, 0.08)
+    self.currencyBarDivider = currencyBarDivider
+
     self.frame = frame
     frame:SetScript("OnHide", function()
         self:HideCharacterMenu()
@@ -2057,7 +2227,7 @@ function BagsWindow:MeasureContentHeight(groups, columns, viewSettings, hasSumma
     return height + 12
 end
 
-function BagsWindow:ResolveAutoLayout(groups, maxItemCount, viewSettings)
+function BagsWindow:ResolveAutoLayout(groups, maxItemCount, viewSettings, currencyEntries)
     local screenWidth = UIParent:GetWidth() or 1920
     local maxFrameWidth = math.max(MIN_WINDOW_WIDTH, math.floor(screenWidth - WINDOW_SCREEN_MARGIN))
     local maxContentWidth = math.max(MIN_WINDOW_WIDTH - 32, maxFrameWidth - 32)
@@ -2076,7 +2246,8 @@ function BagsWindow:ResolveAutoLayout(groups, maxItemCount, viewSettings)
     local desiredWidth = math.max(MIN_WINDOW_WIDTH, contentWidth + 20)
     local desiredHeight = WINDOW_CHROME_HEIGHT + contentHeight
     local frameWidth = clamp(desiredWidth, MIN_WINDOW_WIDTH, maxFrameWidth)
-    local frameHeight = math.max(MIN_WINDOW_HEIGHT, desiredHeight)
+    local currencyBarLayout = self:GetCurrencyBarLayout(frameWidth - 20, currencyEntries)
+    local frameHeight = math.max(MIN_WINDOW_HEIGHT, desiredHeight + currencyBarLayout.height)
 
     return {
         columns = columns,
@@ -2084,6 +2255,7 @@ function BagsWindow:ResolveAutoLayout(groups, maxItemCount, viewSettings)
         contentHeight = contentHeight,
         frameWidth = frameWidth,
         frameHeight = frameHeight,
+        currencyBarLayout = currencyBarLayout,
     }
 end
 
@@ -2176,6 +2348,39 @@ function BagsWindow:AcquireSummaryButton()
     return button
 end
 
+function BagsWindow:AcquireCurrencyButton()
+    local parent = self.currencyBar or self.frame
+    local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
+    button:SetSize(CURRENCY_BAR_BUTTON_MIN_WIDTH, CURRENCY_BAR_BUTTON_HEIGHT)
+    button:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    button:SetBackdropColor(0.08, 0.08, 0.1, 0.92)
+    button:SetBackdropBorderColor(1, 1, 1, 0.08)
+    button:SetHighlightTexture("Interface\\Buttons\\WHITE8x8", "ADD")
+    button:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.2)
+
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetSize(CURRENCY_BAR_ICON_SIZE, CURRENCY_BAR_ICON_SIZE)
+    icon:SetPoint("LEFT", button, "LEFT", CURRENCY_BAR_BUTTON_PADDING, 0)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    button.icon = icon
+
+    local count = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    count:SetPoint("LEFT", icon, "RIGHT", CURRENCY_BAR_ICON_GAP, 0)
+    count:SetPoint("RIGHT", button, "RIGHT", -CURRENCY_BAR_BUTTON_PADDING, 0)
+    count:SetJustifyH("RIGHT")
+    count:SetJustifyV("MIDDLE")
+    count:SetWordWrap(false)
+    vesperTools:ApplyConfiguredFont(count, 11, "")
+    button.count = count
+
+    self.currencyButtons[#self.currencyButtons + 1] = button
+    return button
+end
+
 function BagsWindow:AcquireEquippedBagButton()
     local button = CreateFrame("Button", nil, self.content, "BackdropTemplate")
     button:SetSize(DEFAULT_BUTTON_SIZE, DEFAULT_BUTTON_SIZE)
@@ -2216,6 +2421,12 @@ function BagsWindow:HideAllReusableFrames()
     end
     for i = 1, #self.summaryButtons do
         self.summaryButtons[i]:Hide()
+    end
+    for i = 1, #self.currencyButtons do
+        self.currencyButtons[i]:Hide()
+    end
+    if self.currencyBar then
+        self.currencyBar:Hide()
     end
 end
 
@@ -2397,6 +2608,54 @@ function BagsWindow:HandleItemClick(button, mouseButton)
     end
 end
 
+function BagsWindow:ConfigureCurrencyTooltip(button)
+    GameTooltip:SetOwner(button, "ANCHOR_TOP")
+
+    if button.isGold then
+        GameTooltip:SetText(button.currencyName or (MONEY or "Gold"), 1, 1, 1)
+        if GetMoneyString then
+            GameTooltip:AddLine(GetMoneyString(button.quantity or 0), 1, 0.82, 0.12)
+        else
+            GameTooltip:AddLine(formatGoldQuantity(button.quantity or 0), 1, 0.82, 0.12)
+        end
+        GameTooltip:Show()
+        return
+    end
+
+    if C_CurrencyInfo and type(C_CurrencyInfo.GetCurrencyLink) == "function" and GameTooltip.SetHyperlink then
+        local ok, currencyLink = pcall(C_CurrencyInfo.GetCurrencyLink, button.currencyID)
+        if ok and type(currencyLink) == "string" and currencyLink ~= "" then
+            GameTooltip:SetHyperlink(currencyLink)
+            return
+        end
+    end
+
+    GameTooltip:SetText(button.currencyName or UNKNOWN, 1, 1, 1)
+    GameTooltip:AddLine(formatCurrencyQuantity(button.quantity or 0), 0.85, 0.85, 0.85)
+    if button.maxQuantity and button.maxQuantity > 0 then
+        GameTooltip:AddLine(string.format("%s / %s", formatCurrencyQuantity(button.quantity or 0), formatCurrencyQuantity(button.maxQuantity)), 0.62, 0.84, 1)
+    end
+    GameTooltip:Show()
+end
+
+function BagsWindow:ConfigureCurrencyButton(button, entry, layoutInfo)
+    button.isGold = entry.isGold and true or false
+    button.currencyID = entry.currencyID
+    button.currencyName = entry.name
+    button.quantity = entry.quantity
+    button.maxQuantity = entry.maxQuantity
+    button:SetWidth(layoutInfo and layoutInfo.width or CURRENCY_BAR_BUTTON_MIN_WIDTH)
+    button.icon:SetTexture(entry.iconFileID or "Interface\\Icons\\INV_Misc_Coin_01")
+    button.count:SetText(layoutInfo and layoutInfo.text or self:GetCurrencyBarButtonText(entry))
+    button:SetScript("OnEnter", function(selfButton)
+        self:ConfigureCurrencyTooltip(selfButton)
+    end)
+    button:SetScript("OnLeave", function()
+        GameTooltip:Hide()
+    end)
+    button:Show()
+end
+
 -- Item presentation and final window refresh pass.
 function BagsWindow:CanDisplayItemLevel(record)
     local itemInteraction = self:GetItemInteraction()
@@ -2488,6 +2747,7 @@ function BagsWindow:RefreshWindow()
     self:UpdateBagSlotsButtonVisual(self.bagSlotsMenu and self.bagSlotsMenu:IsShown())
     self:UpdateCombineStacksButtonVisual(viewSettings.combineStacks)
     self:RefreshGuildLookupPresentation()
+    self:HideAllReusableFrames()
 
     local store = self:GetStore()
     if not store then
@@ -2496,7 +2756,6 @@ function BagsWindow:RefreshWindow()
     end
 
     local selectedCharacter = self:ResolveSelectedCharacter()
-    self:HideAllReusableFrames()
 
     if not selectedCharacter then
         self.characterSearchMatchCounts = nil
@@ -2562,8 +2821,10 @@ function BagsWindow:RefreshWindow()
     local sectionIndex = 0
     local itemIndex = 0
     local summaryIndex = 0
+    local currencyIndex = 0
     local groups, maxItemCount = self:BuildLayoutGroups(store, selectedCharacter.key, categories, viewSettings)
-    local layout = self:ResolveAutoLayout(groups, maxItemCount, viewSettings)
+    local currencyEntries = self:GetCurrencyBarEntries(selectedCharacter)
+    local layout = self:ResolveAutoLayout(groups, maxItemCount, viewSettings, currencyEntries)
     local contentWidth = layout.contentWidth
     local columns = layout.columns
     local slotPitch = viewSettings.itemIconSize + viewSettings.buttonGap
@@ -2664,6 +2925,30 @@ function BagsWindow:RefreshWindow()
         button:ClearAllPoints()
         button:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, yOffset)
         self:ConfigureSummaryButton(button, emptySlotSummary[i], viewSettings)
+    end
+
+    local currencyBarLayout = layout.currencyBarLayout or self:GetCurrencyBarLayout(layout.frameWidth - 20, currencyEntries)
+    if #currencyEntries > 0 and self.currencyBar and currencyBarLayout.height > 0 then
+        self.currencyBar:SetHeight(currencyBarLayout.height)
+        self.currencyBar:Show()
+
+        local buttonStartY = -((CURRENCY_BAR_VERTICAL_PADDING * 2) + 1)
+        local buttonPitch = CURRENCY_BAR_BUTTON_HEIGHT + CURRENCY_BAR_BUTTON_GAP
+
+        for i = 1, #currencyEntries do
+            currencyIndex = currencyIndex + 1
+            local button = self.currencyButtons[currencyIndex] or self:AcquireCurrencyButton()
+            local buttonLayout = currencyBarLayout.buttons[i] or {}
+            button:ClearAllPoints()
+            button:SetPoint(
+                "TOPLEFT",
+                self.currencyBar,
+                "TOPLEFT",
+                CURRENCY_BAR_SIDE_PADDING + (buttonLayout.xOffset or 0),
+                buttonStartY - ((buttonLayout.row or 0) * buttonPitch)
+            )
+            self:ConfigureCurrencyButton(button, currencyEntries[i], buttonLayout)
+        end
     end
 
     self.content:SetSize(contentWidth, layout.contentHeight)
