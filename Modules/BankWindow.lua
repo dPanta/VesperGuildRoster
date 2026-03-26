@@ -506,11 +506,7 @@ function BankWindow:GetViewMenuFrames()
     if not self.viewMenu then
         local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
         menu:SetClampedToScreen(true)
-        menu:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            edgeSize = 1,
-        })
+        vesperTools:ApplyRoundedWindowBackdrop(menu)
         menu:SetBackdropColor(0.06, 0.06, 0.08, 0.98)
         menu:SetBackdropBorderColor(1, 1, 1, 0.12)
         menu:SetFrameStrata("TOOLTIP")
@@ -543,11 +539,7 @@ function BankWindow:GetCharacterMenuFrames()
     if not self.characterMenu then
         local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
         menu:SetClampedToScreen(true)
-        menu:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            edgeSize = 1,
-        })
+        vesperTools:ApplyRoundedWindowBackdrop(menu)
         menu:SetBackdropColor(0.06, 0.06, 0.08, 0.98)
         menu:SetBackdropBorderColor(1, 1, 1, 0.12)
         menu:SetFrameStrata("TOOLTIP")
@@ -1190,11 +1182,7 @@ function BankWindow:CreateWindow()
     frame:EnableMouse(true)
     frame:SetResizable(false)
     frame:SetClampedToScreen(true)
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(frame)
     frame:SetBackdropColor(0.07, 0.07, 0.07, 0.95)
 
     local _, englishClass = UnitClass("player")

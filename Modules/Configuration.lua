@@ -11,6 +11,8 @@ local WINDOW_HEIGHT = 660
 local DEFAULT_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_QuestionMark"
 local FONT_MENU_ROW_HEIGHT = 26
 local FONT_MENU_MAX_VISIBLE_ROWS = 12
+local ROSTER_BLACKLIST_MENU_ROW_HEIGHT = 22
+local ROSTER_BLACKLIST_MENU_MAX_VISIBLE_ROWS = 10
 local TOY_MENU_ROW_HEIGHT = 22
 local TOY_MENU_MAX_VISIBLE_ROWS = 10
 local CURRENCY_MENU_ROW_HEIGHT = 22
@@ -180,6 +182,11 @@ local function ensureProfile()
     profile.style.fontSize.portals = tonumber(profile.style.fontSize.portals) or 12
     profile.style.fontSize.bestKeys = tonumber(profile.style.fontSize.bestKeys) or 11
 
+    profile.roster = profile.roster or {}
+    if type(profile.roster.onlineCountBlacklist) ~= "table" then
+        profile.roster.onlineCountBlacklist = {}
+    end
+
     profile.portals = profile.portals or {}
     if profile.portals.primaryHearthstoneItemID ~= nil then
         profile.portals.primaryHearthstoneItemID = tonumber(profile.portals.primaryHearthstoneItemID) or 6948
@@ -227,6 +234,10 @@ function Configuration:OnInitialize()
     self.fontDropdown = nil
     self.fontDropdownText = nil
     self.fontMenuFrame = nil
+    self.rosterOnlineBlacklistDropdown = nil
+    self.rosterOnlineBlacklistDropdownText = nil
+    self.rosterOnlineBlacklistMenuFrame = nil
+    self.rosterOnlineBlacklistHint = nil
     self.hearthstoneDropdown = nil
     self.hearthstoneDropdownText = nil
     self.toyWhitelistDropdown = nil
@@ -272,6 +283,9 @@ function Configuration:RefreshPanelFonts()
     end
     if self.toyWhitelistMenuFrame then
         applyConfiguredFontRecursively(self.toyWhitelistMenuFrame)
+    end
+    if self.rosterOnlineBlacklistMenuFrame then
+        applyConfiguredFontRecursively(self.rosterOnlineBlacklistMenuFrame)
     end
     if self.bagsCurrencyMenuFrame then
         applyConfiguredFontRecursively(self.bagsCurrencyMenuFrame)
@@ -755,6 +769,35 @@ function Configuration:RefreshFontDropdownText()
     setFontStringTextSafe(self.fontDropdownText, label, 12, "", GameFontHighlightSmall)
 end
 
+function Configuration:RefreshRosterOnlineBlacklistDropdownText()
+    if not self.rosterOnlineBlacklistDropdown or not self.rosterOnlineBlacklistDropdownText then
+        return
+    end
+
+    self.rosterOnlineBlacklistDropdown:Enable()
+    self.rosterOnlineBlacklistDropdown:SetAlpha(1)
+
+    local selectedCount = vesperTools:GetRosterOnlineCountBlacklistCount()
+    if selectedCount <= 0 then
+        setFontStringTextSafe(
+            self.rosterOnlineBlacklistDropdownText,
+            L["CONFIG_ROSTER_ONLINE_BLACKLIST_NONE"],
+            12,
+            "",
+            GameFontHighlightSmall
+        )
+        return
+    end
+
+    setFontStringTextSafe(
+        self.rosterOnlineBlacklistDropdownText,
+        string.format(L["CONFIG_ROSTER_ONLINE_BLACKLIST_SELECTED_FMT"], selectedCount),
+        12,
+        "",
+        GameFontHighlightSmall
+    )
+end
+
 function Configuration:OpenFontPicker(anchorButton)
     local profile = ensureProfile()
     if not profile then
@@ -1000,6 +1043,35 @@ function Configuration:CreateFontMenuRow(parent)
     return row
 end
 
+function Configuration:CreateRosterOnlineBlacklistMenuRow(parent)
+    local row = CreateFrame("Button", nil, parent)
+    row:SetHeight(ROSTER_BLACKLIST_MENU_ROW_HEIGHT)
+    row:SetNormalTexture("Interface\\Buttons\\WHITE8x8")
+    row:SetHighlightTexture("Interface\\Buttons\\WHITE8x8", "ADD")
+    row:SetPushedTexture("Interface\\Buttons\\WHITE8x8")
+    row:GetNormalTexture():SetVertexColor(0.08, 0.08, 0.1, 0.92)
+    row:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.2)
+    row:GetPushedTexture():SetVertexColor(0.12, 0.2, 0.3, 0.36)
+
+    local text = row:CreateFontString(nil, "ARTWORK")
+    text:SetPoint("LEFT", row, "LEFT", 8, 0)
+    text:SetPoint("RIGHT", row, "RIGHT", -24, 0)
+    text:SetJustifyH("LEFT")
+    text:SetJustifyV("MIDDLE")
+    setFontStringTextSafe(text, "", 12, "", GameFontHighlightSmall)
+    row.Text = text
+
+    local check = row:CreateTexture(nil, "OVERLAY", nil, 2)
+    check:SetPoint("RIGHT", row, "RIGHT", -6, 0)
+    check:SetSize(14, 14)
+    check:SetTexture("Interface\\RaidFrame\\ReadyCheck-Ready")
+    check:SetVertexColor(0.35, 1, 0.35, 1)
+    check:Hide()
+    row.Check = check
+
+    return row
+end
+
 function Configuration:CreateToyWhitelistMenuRow(parent)
     local row = CreateFrame("Button", nil, parent)
     row:SetHeight(TOY_MENU_ROW_HEIGHT)
@@ -1085,11 +1157,7 @@ function Configuration:EnsureFontMenuFrame(anchorButton)
     menu:SetSize(width, height)
     vesperTools:ApplyAddonWindowLayer(menu, 80)
     menu:SetClampedToScreen(true)
-    menu:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(menu)
     menu:SetBackdropColor(0.05, 0.05, 0.06, 0.98)
     menu:SetBackdropBorderColor(0.2, 0.2, 0.24, 1)
     menu:Hide()
@@ -1123,6 +1191,53 @@ function Configuration:EnsureFontMenuFrame(anchorButton)
     return menu
 end
 
+function Configuration:EnsureRosterOnlineBlacklistMenuFrame(anchorButton)
+    if self.rosterOnlineBlacklistMenuFrame then
+        return self.rosterOnlineBlacklistMenuFrame
+    end
+
+    local width = (anchorButton and anchorButton.GetWidth and anchorButton:GetWidth()) or 396
+    local visibleRows = ROSTER_BLACKLIST_MENU_MAX_VISIBLE_ROWS + 1
+    local height = (visibleRows * ROSTER_BLACKLIST_MENU_ROW_HEIGHT) + 20
+
+    local menu = CreateFrame("Frame", "vesperToolsRosterOnlineBlacklistMenu", UIParent, "BackdropTemplate")
+    menu:SetSize(width, height)
+    vesperTools:ApplyAddonWindowLayer(menu, 80)
+    menu:SetClampedToScreen(true)
+    vesperTools:ApplyRoundedWindowBackdrop(menu)
+    menu:SetBackdropColor(0.05, 0.05, 0.06, 0.98)
+    menu:SetBackdropBorderColor(0.2, 0.2, 0.24, 1)
+    menu:Hide()
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, menu, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", menu, "TOPLEFT", 6, -6)
+    scrollFrame:SetPoint("BOTTOMRIGHT", menu, "BOTTOMRIGHT", -28, 6)
+    menu.ScrollFrame = scrollFrame
+
+    local content = CreateFrame("Frame", nil, scrollFrame)
+    content:SetPoint("TOPLEFT", 0, 0)
+    content:SetPoint("TOPRIGHT", 0, 0)
+    content:SetHeight(1)
+    scrollFrame:SetScrollChild(content)
+    menu.Content = content
+    menu.Rows = {}
+
+    menu:EnableMouseWheel(true)
+    menu:SetScript("OnMouseWheel", function(selfMenu, delta)
+        local maxScroll = math.max(0, (selfMenu.Content:GetHeight() or 0) - selfMenu.ScrollFrame:GetHeight())
+        local nextScroll = (selfMenu.ScrollFrame:GetVerticalScroll() or 0) - (delta * 24)
+        if nextScroll < 0 then
+            nextScroll = 0
+        elseif nextScroll > maxScroll then
+            nextScroll = maxScroll
+        end
+        selfMenu.ScrollFrame:SetVerticalScroll(nextScroll)
+    end)
+
+    self.rosterOnlineBlacklistMenuFrame = menu
+    return menu
+end
+
 -- Create the scrollable toy-whitelist dropdown frame once and keep it reusable.
 function Configuration:EnsureToyWhitelistMenuFrame(anchorButton)
     if self.toyWhitelistMenuFrame then
@@ -1137,11 +1252,7 @@ function Configuration:EnsureToyWhitelistMenuFrame(anchorButton)
     menu:SetSize(width, height)
     vesperTools:ApplyAddonWindowLayer(menu, 80)
     menu:SetClampedToScreen(true)
-    menu:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(menu)
     menu:SetBackdropColor(0.05, 0.05, 0.06, 0.98)
     menu:SetBackdropBorderColor(0.2, 0.2, 0.24, 1)
     menu:Hide()
@@ -1189,11 +1300,7 @@ function Configuration:EnsureCurrencyBarMenuFrame(anchorButton)
     menu:SetSize(width, height)
     vesperTools:ApplyAddonWindowLayer(menu, 80)
     menu:SetClampedToScreen(true)
-    menu:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(menu)
     menu:SetBackdropColor(0.05, 0.05, 0.06, 0.98)
     menu:SetBackdropBorderColor(0.2, 0.2, 0.24, 1)
     menu:Hide()
@@ -1311,6 +1418,116 @@ function Configuration:RefreshFontMenu()
 
     menu.Content:SetHeight(math.max(frameHeight, totalHeight))
     menu.ScrollFrame:SetVerticalScroll(math.min(maxScroll, desiredScroll))
+end
+
+function Configuration:RefreshRosterOnlineBlacklistMenu()
+    local menu = self.rosterOnlineBlacklistMenuFrame
+    if not menu then
+        return
+    end
+
+    local onlineMembers = vesperTools:GetOnlineGuildMembers(true)
+    local blacklist = vesperTools:GetRosterOnlineCountBlacklist()
+    local blacklistCount = vesperTools:GetRosterOnlineCountBlacklistCount()
+    local hasOnlineMembers = type(onlineMembers) == "table" and #onlineMembers > 0
+    local sortedMembers = {}
+
+    if hasOnlineMembers then
+        for i = 1, #onlineMembers do
+            sortedMembers[i] = onlineMembers[i]
+        end
+        table.sort(sortedMembers, function(a, b)
+            local aSelected = blacklist[a.fullName] and 1 or 0
+            local bSelected = blacklist[b.fullName] and 1 or 0
+            if aSelected ~= bSelected then
+                return aSelected > bSelected
+            end
+
+            local aLabel = (Ambiguate and Ambiguate(a.fullName or a.name or "", "guild")) or a.name or a.fullName or ""
+            local bLabel = (Ambiguate and Ambiguate(b.fullName or b.name or "", "guild")) or b.name or b.fullName or ""
+            if aLabel ~= bLabel then
+                return aLabel < bLabel
+            end
+            return (a.fullName or "") < (b.fullName or "")
+        end)
+    end
+
+    local rowCount = 1
+    if hasOnlineMembers then
+        rowCount = #sortedMembers + 1
+    elseif blacklistCount > 0 then
+        rowCount = 2
+    end
+
+    local contentWidth = math.floor((tonumber(menu.ScrollFrame:GetWidth()) or 0) + 0.5)
+    if contentWidth <= 0 then
+        contentWidth = math.floor((tonumber(menu:GetWidth()) or 396) - 34)
+    end
+    if contentWidth < 40 then
+        contentWidth = 40
+    end
+    menu.Content:SetWidth(contentWidth)
+
+    for i = 1, rowCount do
+        local row = menu.Rows[i]
+        if not row then
+            row = self:CreateRosterOnlineBlacklistMenuRow(menu.Content)
+            menu.Rows[i] = row
+        end
+
+        row:ClearAllPoints()
+        row:SetPoint("TOPLEFT", menu.Content, "TOPLEFT", 0, -((i - 1) * ROSTER_BLACKLIST_MENU_ROW_HEIGHT))
+        row:SetWidth(contentWidth)
+
+        if i == 1 and (hasOnlineMembers or blacklistCount > 0) then
+            setFontStringTextSafe(row.Text, L["CONFIG_CLEAR_BLACKLIST"], 12, "", GameFontHighlightSmall)
+            row.Text:SetTextColor(1, 0.75, 0.75, 1)
+            row.Check:Hide()
+            row:SetScript("OnClick", function()
+                vesperTools:ClearRosterOnlineCountBlacklist()
+                self:RefreshControls()
+                self:NotifyConfigChanged()
+                self:RefreshRosterOnlineBlacklistMenu()
+            end)
+        elseif not hasOnlineMembers then
+            setFontStringTextSafe(row.Text, L["CONFIG_ROSTER_ONLINE_BLACKLIST_NO_PLAYERS"], 12, "", GameFontHighlightSmall)
+            row.Text:SetTextColor(0.8, 0.8, 0.8, 1)
+            row.Check:Hide()
+            row:SetScript("OnClick", nil)
+        else
+            local member = sortedMembers[i - 1]
+            local isSelected = blacklist[member.fullName] and true or false
+            local label = (Ambiguate and Ambiguate(member.fullName or member.name or "", "guild")) or member.name or member.fullName
+            if type(member.zone) == "string" and member.zone ~= "" and member.zone ~= UNKNOWN then
+                label = string.format("%s |cff8c98a4(%s)|r", label, member.zone)
+            end
+
+            setFontStringTextSafe(row.Text, label, 12, "", GameFontHighlightSmall)
+            if isSelected then
+                row.Text:SetTextColor(0.86, 1, 0.86, 1)
+                row.Check:Show()
+            else
+                row.Text:SetTextColor(0.92, 0.95, 1, 1)
+                row.Check:Hide()
+            end
+            row:SetScript("OnClick", function()
+                vesperTools:SetRosterOnlineCountBlacklisted(member.fullName, not isSelected)
+                self:RefreshControls()
+                self:NotifyConfigChanged()
+                self:RefreshRosterOnlineBlacklistMenu()
+            end)
+        end
+
+        row:Show()
+    end
+
+    for i = rowCount + 1, #menu.Rows do
+        menu.Rows[i]:Hide()
+    end
+
+    local totalHeight = rowCount * ROSTER_BLACKLIST_MENU_ROW_HEIGHT
+    menu.Content:SetHeight(math.max(menu.ScrollFrame:GetHeight(), totalHeight))
+    menu.ScrollFrame:SetVerticalScroll(0)
 end
 
 -- Fill the scrollable toy-whitelist dropdown with dynamic rows.
@@ -1589,6 +1806,35 @@ function Configuration:OpenToyWhitelistPicker(anchorButton)
     self:RefreshToyWhitelistMenu()
 end
 
+function Configuration:OpenRosterOnlineBlacklistPicker(anchorButton)
+    local profile = ensureProfile()
+    if not profile then
+        return
+    end
+
+    if IsInGuild() then
+        vesperTools:RequestGuildRosterUpdate()
+    end
+
+    local menu = self:EnsureRosterOnlineBlacklistMenuFrame(anchorButton)
+    if not menu then
+        return
+    end
+
+    if menu:IsShown() and menu._anchorButton == anchorButton then
+        menu:Hide()
+        return
+    end
+
+    menu._anchorButton = anchorButton
+    menu:ClearAllPoints()
+    menu:SetPoint("TOPLEFT", anchorButton, "BOTTOMLEFT", 0, -4)
+    menu:SetWidth(anchorButton:GetWidth() or 396)
+    menu:Show()
+    menu:Raise()
+    self:RefreshRosterOnlineBlacklistMenu()
+end
+
 function Configuration:OpenCurrencyBarPicker(anchorButton)
     if not ensureBagsProfile() then
         return
@@ -1751,11 +1997,7 @@ function Configuration:BuildPanel()
     panel:SetMovable(true)
     panel:EnableMouse(true)
     panel:SetClampedToScreen(true)
-    panel:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(panel)
     panel:SetBackdropColor(0.05, 0.05, 0.06, 0.95)
     panel:SetBackdropBorderColor(0.2, 0.2, 0.24, 1)
     panel:Hide()
@@ -1892,6 +2134,31 @@ function Configuration:BuildPanel()
         rosterFontSizeSlider,
         -30
     )
+
+    local rosterOnlineBlacklistLabel = rosterTab:CreateFontString(nil, "ARTWORK")
+    rosterOnlineBlacklistLabel:SetPoint("TOPLEFT", rosterOpacitySlider, "BOTTOMLEFT", 0, -34)
+    setFontStringTextSafe(rosterOnlineBlacklistLabel, L["CONFIG_ROSTER_ONLINE_BLACKLIST"], 12, "", GameFontNormal)
+
+    local rosterOnlineBlacklistDropdown = self:CreateFlatDropdown(
+        "vesperToolsConfigRosterOnlineBlacklistDropdown",
+        rosterTab,
+        rosterOnlineBlacklistLabel,
+        -6,
+        396,
+        function(button)
+            self:OpenRosterOnlineBlacklistPicker(button)
+        end
+    )
+    local rosterOnlineBlacklistText = rosterOnlineBlacklistDropdown.Text
+
+    local rosterOnlineBlacklistHint = rosterTab:CreateFontString(nil, "ARTWORK")
+    rosterOnlineBlacklistHint:SetPoint("TOPLEFT", rosterOnlineBlacklistDropdown, "BOTTOMLEFT", 0, -6)
+    rosterOnlineBlacklistHint:SetPoint("RIGHT", rosterTab, "RIGHT", -12, 0)
+    rosterOnlineBlacklistHint:SetJustifyH("LEFT")
+    rosterOnlineBlacklistHint:SetJustifyV("TOP")
+    rosterOnlineBlacklistHint:SetWordWrap(true)
+    setFontStringTextSafe(rosterOnlineBlacklistHint, L["CONFIG_ROSTER_ONLINE_BLACKLIST_HINT"], 11, "", GameFontHighlightSmall)
+    rosterOnlineBlacklistHint:SetTextColor(0.78, 0.82, 0.9, 1)
 
     local portalsSectionTitle = portalsTab:CreateFontString(nil, "ARTWORK")
     portalsSectionTitle:SetPoint("TOPLEFT", 0, -2)
@@ -2397,6 +2664,9 @@ function Configuration:BuildPanel()
         if self.fontMenuFrame then
             self.fontMenuFrame:Hide()
         end
+        if self.rosterOnlineBlacklistMenuFrame then
+            self.rosterOnlineBlacklistMenuFrame:Hide()
+        end
         if self.toyWhitelistMenuFrame then
             self.toyWhitelistMenuFrame:Hide()
         end
@@ -2408,6 +2678,9 @@ function Configuration:BuildPanel()
     self.panel = panel
     self.fontDropdown = fontDropdown
     self.fontDropdownText = fontText
+    self.rosterOnlineBlacklistDropdown = rosterOnlineBlacklistDropdown
+    self.rosterOnlineBlacklistDropdownText = rosterOnlineBlacklistText
+    self.rosterOnlineBlacklistHint = rosterOnlineBlacklistHint
     self.hearthstoneDropdown = hearthstoneDropdown
     self.hearthstoneDropdownText = hearthstoneText
     self.toyWhitelistDropdown = toyWhitelistDropdown
@@ -2450,6 +2723,7 @@ function Configuration:RefreshControls()
     self._isRefreshing = true
 
     self:RefreshFontDropdownText()
+    self:RefreshRosterOnlineBlacklistDropdownText()
     self:RefreshHearthstoneDropdownText()
     self:RefreshToyWhitelistDropdownText()
     self:RefreshBagsCurrencyBarDropdownText()
@@ -2592,6 +2866,9 @@ function Configuration:RefreshControls()
     self:RefreshPanelFonts()
     if self.fontMenuFrame and self.fontMenuFrame:IsShown() then
         self:RefreshFontMenu()
+    end
+    if self.rosterOnlineBlacklistMenuFrame and self.rosterOnlineBlacklistMenuFrame:IsShown() then
+        self:RefreshRosterOnlineBlacklistMenu()
     end
 
     self._isRefreshing = false

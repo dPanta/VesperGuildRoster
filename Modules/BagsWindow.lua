@@ -541,11 +541,7 @@ function BagsWindow:GetCharacterMenuFrames()
     if not self.characterMenu then
         local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
         menu:SetClampedToScreen(true)
-        menu:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            edgeSize = 1,
-        })
+        vesperTools:ApplyRoundedWindowBackdrop(menu)
         menu:SetBackdropColor(0.06, 0.06, 0.08, 0.98)
         menu:SetBackdropBorderColor(1, 1, 1, 0.12)
         menu:SetFrameStrata("TOOLTIP")
@@ -565,11 +561,7 @@ function BagsWindow:GetBagSlotsMenuFrames()
     if not self.bagSlotsMenu then
         local menu = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
         menu:SetClampedToScreen(true)
-        menu:SetBackdrop({
-            bgFile = "Interface\\Buttons\\WHITE8x8",
-            edgeFile = "Interface\\Buttons\\WHITE8x8",
-            edgeSize = 1,
-        })
+        vesperTools:ApplyRoundedWindowBackdrop(menu)
         menu:SetBackdropColor(0.06, 0.06, 0.08, 0.98)
         menu:SetBackdropBorderColor(1, 1, 1, 0.12)
         menu:SetFrameStrata("TOOLTIP")
@@ -1387,11 +1379,7 @@ function BagsWindow:GetGuildLookupResultsFrame()
     local resultsFrame = CreateFrame("Frame", nil, UIParent, "BackdropTemplate")
     resultsFrame:SetClampedToScreen(true)
     vesperTools:ApplyAddonWindowLayer(resultsFrame, self.frame and (self.frame:GetFrameLevel() or 0) + 30 or nil)
-    resultsFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(resultsFrame)
     resultsFrame:SetBackdropColor(0.06, 0.06, 0.08, 0.98)
     resultsFrame:SetBackdropBorderColor(0.55, 0.84, 1, 0.24)
     resultsFrame:Hide()
@@ -1977,11 +1965,7 @@ function BagsWindow:CreateWindow()
     frame:EnableMouse(true)
     frame:SetResizable(false)
     frame:SetClampedToScreen(true)
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(frame)
     frame:SetBackdropColor(0.07, 0.07, 0.07, 0.95)
 
     local _, englishClass = UnitClass("player")

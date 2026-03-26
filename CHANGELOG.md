@@ -1,3 +1,16 @@
+## 2.9.0 - 2026-03-26
+
+### Changed
+- Added an `Online Players Blacklist` control to the Roster configuration so specific currently online guild members can be excluded from the sheep-icon online count and tooltip list.
+- Applied a shared soft-rounded corner treatment to addon-owned windows and popup menus for a more polished look across Bags, Bank, Vault, Roster, Portals, and Configuration panels.
+
+### Fixed
+- Fixed the roster blacklist picker so opening it no longer fails on clients where `RequestGuildRosterUpdate()` is not exposed as a global function.
+- Fixed the rounded-corner window helper so its corner border textures use valid WoW texture sublevels and render with fuller, cleaner curved edges.
+
+### Notes
+- This minor release focuses on giving roster counts a simple exclusion control while continuing the shared UI polish pass across the addon windows.
+
 ## 2.8.0 - 2026-03-26
 
 ### Changed

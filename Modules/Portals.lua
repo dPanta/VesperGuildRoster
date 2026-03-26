@@ -1232,11 +1232,7 @@ function Portals:CreateTopUtilityFrame()
     self.topUtilityFrame:SetPoint("BOTTOM", self.VesperPortalsUI, "TOP", 0, 10)
     vesperTools:ApplyAddonWindowLayer(self.topUtilityFrame)
 
-    self.topUtilityFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(self.topUtilityFrame)
     self.topUtilityFrame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("portals"))
     self.topUtilityFrame:SetBackdropBorderColor(self.classColor.r, self.classColor.g, self.classColor.b, 1)
 
@@ -1597,11 +1593,7 @@ function Portals:CreatePortalFrame()
     end)
     self.VesperPortalsUI:Hide()
 
-    self.VesperPortalsUI:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(self.VesperPortalsUI)
     self.VesperPortalsUI:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("portals")) -- #121212
     self.VesperPortalsUI:SetBackdropBorderColor(classColor.r, classColor.g, classColor.b, 1)
 
@@ -1709,11 +1701,7 @@ function Portals:CreateVaultFrame()
     self.vaultFrame:SetPoint("TOP", self.VesperPortalsUI, "BOTTOM", 0, -10)
     vesperTools:ApplyAddonWindowLayer(self.vaultFrame)
 
-    self.vaultFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(self.vaultFrame)
     self.vaultFrame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("portals"))
     self.vaultFrame:SetBackdropBorderColor(self.classColor.r, self.classColor.g, self.classColor.b, 1)
 
@@ -1805,11 +1793,7 @@ function Portals:CreateMPlusProgFrame(curSeason)
     self.mplusProgFrame:SetPoint("LEFT", self.VesperPortalsUI, "RIGHT", 10, 0)
     vesperTools:ApplyAddonWindowLayer(self.mplusProgFrame)
 
-    self.mplusProgFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
+    vesperTools:ApplyRoundedWindowBackdrop(self.mplusProgFrame)
     self.mplusProgFrame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("bestKeys"))
     self.mplusProgFrame:SetBackdropBorderColor(self.classColor.r, self.classColor.g, self.classColor.b, 1)
 

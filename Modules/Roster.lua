@@ -212,11 +212,7 @@ function Roster:ShowRoster()
     self.frame:SetResizeBounds(600, 250)
     
 --   Background
-     self.frame:SetBackdrop({
-         bgFile = "Interface\\Buttons\\WHITE8x8",
-         edgeFile = "Interface\\Buttons\\WHITE8x8",
-         edgeSize = 1,
-     })
+     vesperTools:ApplyRoundedWindowBackdrop(self.frame)
      self.frame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("roster")) -- #121212
      local _, englishClass = UnitClass("player")
      local classColor = C_ClassColor.GetClassColor(englishClass)

@@ -49,6 +49,10 @@ local function RequestGuildRosterUpdate()
     end
 end
 
+function vesperTools:RequestGuildRosterUpdate()
+    RequestGuildRosterUpdate()
+end
+
 -- Shared default font used when profile-specific value is missing or invalid.
 local DEFAULT_FONT_KEY = "Expressway"
 local DEFAULT_FONT_PATH = "Interface\\AddOns\\vesperTools\\Media\\expressway.ttf"
@@ -78,6 +82,9 @@ local MAX_UTILITY_TOY_WHITELIST = 15
 local MAX_BAGS_CURRENCY_BAR_ENTRIES = 12
 local MODERN_CLOSE_BUTTON_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\CloseModern-128"
 local GOLD_BAR_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_Coin_01"
+local ROUNDED_WINDOW_CORNER_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\RoundedCornerFill-8"
+local ROUNDED_WINDOW_BORDER_CORNER_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\RoundedCornerBorder-8"
+local ROUNDED_WINDOW_CORNER_SIZE = 6
 
 -- Curated font options exposed in configuration UI.
 local FONT_OPTIONS = {
@@ -971,6 +978,132 @@ function vesperTools:ApplyAddonWindowLayer(frame, frameLevel)
     end
 end
 
+function vesperTools:ApplyRoundedWindowBackdrop(frame, options)
+    if not frame or type(frame.SetBackdrop) ~= "function" then
+        return
+    end
+
+    local resolvedOptions = type(options) == "table" and options or {}
+    local cornerTexture = resolvedOptions.cornerTexture or ROUNDED_WINDOW_CORNER_TEXTURE
+    local borderCornerTexture = resolvedOptions.borderCornerTexture or ROUNDED_WINDOW_BORDER_CORNER_TEXTURE
+    local cornerSize = math.max(2, math.floor((tonumber(resolvedOptions.cornerSize) or ROUNDED_WINDOW_CORNER_SIZE) + 0.5))
+
+    frame:SetBackdrop({
+        bgFile = resolvedOptions.bgFile or "Interface\\Buttons\\WHITE8x8",
+        edgeFile = resolvedOptions.edgeFile or "Interface\\Buttons\\WHITE8x8",
+        edgeSize = math.max(1, math.floor((tonumber(resolvedOptions.edgeSize) or 1) + 0.5)),
+    })
+
+    local overlay = frame.vesperRoundedCornerOverlay
+    if not overlay then
+        overlay = CreateFrame("Frame", nil, frame)
+        overlay:SetAllPoints(frame)
+        overlay:EnableMouse(false)
+        overlay.corners = {}
+        overlay.borderCorners = {}
+        frame.vesperRoundedCornerOverlay = overlay
+
+        local anchors = { "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT" }
+        for i = 1, #anchors do
+            local corner = overlay:CreateTexture(nil, "OVERLAY", nil, 6)
+            corner:SetTexture(cornerTexture)
+            overlay.corners[anchors[i]] = corner
+
+            local borderCorner = overlay:CreateTexture(nil, "OVERLAY", nil, 7)
+            borderCorner:SetTexture(borderCornerTexture)
+            overlay.borderCorners[anchors[i]] = borderCorner
+        end
+
+        if not frame.vesperRoundedCornerHooked then
+            local function syncRoundedOverlay(self)
+                local roundedOverlay = self.vesperRoundedCornerOverlay
+                if not roundedOverlay then
+                    return
+                end
+
+                roundedOverlay:SetFrameStrata(self:GetFrameStrata())
+                roundedOverlay:SetFrameLevel(math.max((self.GetFrameLevel and self:GetFrameLevel() or 0) + 40, 1))
+            end
+
+            hooksecurefunc(frame, "SetBackdropColor", function(self, r, g, b, a)
+                local roundedOverlay = self.vesperRoundedCornerOverlay
+                if not roundedOverlay or not roundedOverlay.corners then
+                    return
+                end
+
+                syncRoundedOverlay(self)
+
+                for _, texture in pairs(roundedOverlay.corners) do
+                    texture:SetVertexColor(r or 0, g or 0, b or 0, a == nil and 1 or a)
+                end
+            end)
+            hooksecurefunc(frame, "SetBackdropBorderColor", function(self, r, g, b, a)
+                local roundedOverlay = self.vesperRoundedCornerOverlay
+                if not roundedOverlay or not roundedOverlay.borderCorners then
+                    return
+                end
+
+                syncRoundedOverlay(self)
+
+                for _, texture in pairs(roundedOverlay.borderCorners) do
+                    texture:SetVertexColor(r or 0, g or 0, b or 0, a == nil and 1 or a)
+                end
+            end)
+            hooksecurefunc(frame, "SetFrameLevel", syncRoundedOverlay)
+            hooksecurefunc(frame, "SetFrameStrata", syncRoundedOverlay)
+            frame.vesperRoundedCornerHooked = true
+        end
+    end
+
+    overlay:SetAllPoints(frame)
+    overlay:SetFrameStrata(frame:GetFrameStrata())
+    overlay:SetFrameLevel(math.max((frame:GetFrameLevel() or 0) + 40, 1))
+
+    local topLeft = overlay.corners.TOPLEFT
+    topLeft:ClearAllPoints()
+    topLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    topLeft:SetSize(cornerSize, cornerSize)
+    topLeft:SetTexCoord(0, 1, 0, 1)
+    local topLeftBorder = overlay.borderCorners.TOPLEFT
+    topLeftBorder:ClearAllPoints()
+    topLeftBorder:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
+    topLeftBorder:SetSize(cornerSize, cornerSize)
+    topLeftBorder:SetTexCoord(0, 1, 0, 1)
+
+    local topRight = overlay.corners.TOPRIGHT
+    topRight:ClearAllPoints()
+    topRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    topRight:SetSize(cornerSize, cornerSize)
+    topRight:SetTexCoord(1, 0, 0, 1)
+    local topRightBorder = overlay.borderCorners.TOPRIGHT
+    topRightBorder:ClearAllPoints()
+    topRightBorder:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    topRightBorder:SetSize(cornerSize, cornerSize)
+    topRightBorder:SetTexCoord(1, 0, 0, 1)
+
+    local bottomLeft = overlay.corners.BOTTOMLEFT
+    bottomLeft:ClearAllPoints()
+    bottomLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    bottomLeft:SetSize(cornerSize, cornerSize)
+    bottomLeft:SetTexCoord(0, 1, 1, 0)
+    local bottomLeftBorder = overlay.borderCorners.BOTTOMLEFT
+    bottomLeftBorder:ClearAllPoints()
+    bottomLeftBorder:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    bottomLeftBorder:SetSize(cornerSize, cornerSize)
+    bottomLeftBorder:SetTexCoord(0, 1, 1, 0)
+
+    local bottomRight = overlay.corners.BOTTOMRIGHT
+    bottomRight:ClearAllPoints()
+    bottomRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    bottomRight:SetSize(cornerSize, cornerSize)
+    bottomRight:SetTexCoord(1, 0, 1, 0)
+    local bottomRightBorder = overlay.borderCorners.BOTTOMRIGHT
+    bottomRightBorder:ClearAllPoints()
+    bottomRightBorder:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    bottomRightBorder:SetSize(cornerSize, cornerSize)
+    bottomRightBorder:SetTexCoord(1, 0, 1, 0)
+end
+
 function vesperTools:CreateModernCloseButton(parent, onClick, options)
     if not parent then
         return nil
@@ -1689,6 +1822,9 @@ function vesperTools:OnInitialize()
                     bestKeys = 0.95,
                 },
             },
+            roster = {
+                onlineCountBlacklist = {},
+            },
             portals = {
                 -- Toy IDs shown in the utility flyout button above portals.
                 utilityToyWhitelist = {},
@@ -2185,6 +2321,117 @@ function vesperTools:GetCurrentCharacterFullName()
     return string.format("%s-%s", name, realm)
 end
 
+function vesperTools:NormalizePlayerFullName(name)
+    if type(name) ~= "string" then
+        return nil
+    end
+
+    local normalized = strtrim(name)
+    if normalized == "" then
+        return nil
+    end
+
+    if not string.find(normalized, "-", 1, true) then
+        local realm = GetNormalizedRealmName and GetNormalizedRealmName() or GetRealmName() or "UnknownRealm"
+        normalized = string.format("%s-%s", normalized, realm)
+    end
+
+    return normalized
+end
+
+function vesperTools:GetRosterOnlineCountBlacklist()
+    local profile = self.db and self.db.profile
+    if not profile then
+        return {}
+    end
+
+    profile.roster = profile.roster or {}
+    if type(profile.roster.onlineCountBlacklist) ~= "table" then
+        profile.roster.onlineCountBlacklist = {}
+    end
+
+    local blacklist = profile.roster.onlineCountBlacklist
+    local sanitized = {}
+    local changed = false
+
+    for key, value in pairs(blacklist) do
+        local candidateName = nil
+        if type(key) == "number" then
+            candidateName = type(value) == "string" and value or nil
+            changed = true
+        elseif value then
+            candidateName = type(key) == "string" and key or nil
+            if value ~= true then
+                changed = true
+            end
+        elseif value ~= nil then
+            changed = true
+        end
+
+        local normalized = self:NormalizePlayerFullName(candidateName)
+        if normalized then
+            sanitized[normalized] = true
+            if key ~= normalized then
+                changed = true
+            end
+        elseif candidateName ~= nil then
+            changed = true
+        end
+    end
+
+    if changed then
+        profile.roster.onlineCountBlacklist = sanitized
+        blacklist = sanitized
+    end
+
+    return blacklist
+end
+
+function vesperTools:GetRosterOnlineCountBlacklistCount()
+    local count = 0
+    for _ in pairs(self:GetRosterOnlineCountBlacklist()) do
+        count = count + 1
+    end
+    return count
+end
+
+function vesperTools:IsRosterOnlineCountBlacklisted(name)
+    local normalized = self:NormalizePlayerFullName(name)
+    if not normalized then
+        return false
+    end
+
+    return self:GetRosterOnlineCountBlacklist()[normalized] and true or false
+end
+
+function vesperTools:SetRosterOnlineCountBlacklisted(name, isBlacklisted)
+    local normalized = self:NormalizePlayerFullName(name)
+    if not normalized then
+        return false
+    end
+
+    local blacklist = self:GetRosterOnlineCountBlacklist()
+    if isBlacklisted then
+        blacklist[normalized] = true
+    else
+        blacklist[normalized] = nil
+    end
+
+    self:UpdateFloatingIconOnlineCount()
+    return true
+end
+
+function vesperTools:ClearRosterOnlineCountBlacklist()
+    local profile = self.db and self.db.profile
+    if not profile then
+        return
+    end
+
+    profile.roster = profile.roster or {}
+    profile.roster.onlineCountBlacklist = {}
+    self:UpdateFloatingIconOnlineCount()
+end
+
 function vesperTools:GetCharacterBagSnapshot(characterKey)
     local BagsStore = self:GetModule("BagsStore", true)
     if not BagsStore then
@@ -2233,27 +2480,37 @@ function vesperTools:MarkFullCarryRescan(reason)
     BagsStore:MarkFullCarryRescan(reason)
 end
 
-function vesperTools:GetOnlineGuildMembers()
+function vesperTools:GetOnlineGuildMembers(includeBlacklisted)
     local members = {}
     if not IsInGuild() then
         return members
     end
 
+    local blacklist = includeBlacklisted and nil or self:GetRosterOnlineCountBlacklist()
     local numMembers = GetNumGuildMembers()
     for i = 1, numMembers do
         local name, _, _, level, _, zone, _, _, isOnline = GetGuildRosterInfo(i)
         if isOnline and name then
-            local displayName = name:match("([^-]+)") or name
-            table.insert(members, {
-                name = displayName,
-                level = level or 0,
-                zone = (zone and zone ~= "" and zone) or UNKNOWN,
-            })
+            local fullName = self:NormalizePlayerFullName(name) or name
+            if includeBlacklisted or not blacklist or not blacklist[fullName] then
+                local displayName = name:match("([^-]+)") or name
+                table.insert(members, {
+                    name = displayName,
+                    fullName = fullName,
+                    level = level or 0,
+                    zone = (zone and zone ~= "" and zone) or UNKNOWN,
+                })
+            end
         end
     end
 
     table.sort(members, function(a, b)
-        return a.name < b.name
+        local aName = a.name or a.fullName or ""
+        local bName = b.name or b.fullName or ""
+        if aName ~= bName then
+            return aName < bName
+        end
+        return (a.fullName or "") < (b.fullName or "")
     end)
 
     return members
