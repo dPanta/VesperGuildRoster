@@ -9,6 +9,12 @@ local RAID_DIFFICULTY_RANKS = {
     [15] = 3, -- Heroic
     [16] = 4, -- Mythic
 }
+local DELVE_MAP_ITEM_IDS = {
+    233071, -- Delver's Bounty
+    235628, -- Delver's Bounty with upgrade data
+}
+local DELVE_MAP_ACTIVE_AURA_SPELL_ID = 473218
+local DELVE_MAP_WEEKLY_ACQUIRED_QUEST_ID = 86371
 
 local function buildRewardTypeOrder()
     local order = {}
@@ -164,6 +170,68 @@ local function resolveRaidSourceDifficultyID(encounterInfo, threshold)
     return difficulties[pickIndex]
 end
 
+local function getCurrentDelveMapItemCount()
+    local getItemCount = C_Item and C_Item.GetItemCount or GetItemCount
+    if type(getItemCount) ~= "function" then
+        return 0
+    end
+
+    local total = 0
+    for i = 1, #DELVE_MAP_ITEM_IDS do
+        total = total + math.max(0, tonumber(getItemCount(DELVE_MAP_ITEM_IDS[i], true)) or 0)
+    end
+
+    return total
+end
+
+local function hasPlayerAuraBySpellID(spellID)
+    if C_UnitAuras and type(C_UnitAuras.GetPlayerAuraBySpellID) == "function" then
+        return C_UnitAuras.GetPlayerAuraBySpellID(spellID) ~= nil
+    end
+
+    if AuraUtil and type(AuraUtil.FindAuraBySpellID) == "function" then
+        return AuraUtil.FindAuraBySpellID(spellID, "player", "HELPFUL") ~= nil
+    end
+
+    return false
+end
+
+local function isQuestCompleted(questID)
+    if C_QuestLog and type(C_QuestLog.IsQuestFlaggedCompleted) == "function" then
+        return C_QuestLog.IsQuestFlaggedCompleted(questID) and true or false
+    end
+
+    if type(IsQuestFlaggedCompleted) == "function" then
+        return IsQuestFlaggedCompleted(questID) and true or false
+    end
+
+    return false
+end
+
+local function getCurrentWeekStartTime()
+    if C_DateAndTime and type(C_DateAndTime.GetWeeklyResetStartTime) == "function" then
+        local resetStartTime = tonumber(C_DateAndTime.GetWeeklyResetStartTime())
+        if resetStartTime and resetStartTime > 0 then
+            return math.floor(resetStartTime + 0.5)
+        end
+    end
+
+    return nil
+end
+
+local function areDelveMapStatesEqual(left, right)
+    if type(left) ~= "table" or type(right) ~= "table" then
+        return false
+    end
+
+    return (tonumber(left.mapItemCount) or 0) == (tonumber(right.mapItemCount) or 0)
+        and (left.hasMapItem and true or false) == (right.hasMapItem and true or false)
+        and (left.hasPendingBuff and true or false) == (right.hasPendingBuff and true or false)
+        and (left.weeklyMapAcquired and true or false) == (right.weeklyMapAcquired and true or false)
+        and (left.usedThisWeek and true or false) == (right.usedThisWeek and true or false)
+        and (tonumber(left.weekStartAt) or 0) == (tonumber(right.weekStartAt) or 0)
+end
+
 function VaultStore:OnInitialize()
     self.pendingCaptureToken = 0
 end
@@ -173,6 +241,9 @@ function VaultStore:OnEnable()
     self:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE")
     self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED")
+    self:RegisterEvent("BAG_UPDATE_DELAYED")
+    self:RegisterEvent("QUEST_LOG_UPDATE")
+    self:RegisterEvent("UNIT_AURA")
 end
 
 function VaultStore:GetDB()
@@ -248,6 +319,61 @@ function VaultStore:GetCurrentWeekExpiration(now)
     return resolvedNow + DEFAULT_SNAPSHOT_LIFETIME
 end
 
+function VaultStore:BuildCurrentCharacterDelveMapState(now)
+    local resolvedNow = tonumber(now) or time()
+    local mapItemCount = getCurrentDelveMapItemCount()
+    local hasMapItem = mapItemCount > 0
+    local hasPendingBuff = hasPlayerAuraBySpellID(DELVE_MAP_ACTIVE_AURA_SPELL_ID)
+    local weeklyMapAcquired = isQuestCompleted(DELVE_MAP_WEEKLY_ACQUIRED_QUEST_ID)
+
+    return {
+        capturedAt = resolvedNow,
+        expiresAt = self:GetCurrentWeekExpiration(resolvedNow),
+        weekStartAt = getCurrentWeekStartTime(),
+        mapItemCount = mapItemCount,
+        hasMapItem = hasMapItem,
+        hasPendingBuff = hasPendingBuff,
+        weeklyMapAcquired = weeklyMapAcquired,
+        usedThisWeek = hasPendingBuff or (weeklyMapAcquired and not hasMapItem),
+    }
+end
+
+function VaultStore:GetStoredCharacterDelveMapItemCount(characterKey)
+    if type(characterKey) ~= "string" or characterKey == "" then
+        return 0
+    end
+
+    local total = 0
+    for i = 1, #DELVE_MAP_ITEM_IDS do
+        total = total + math.max(0, tonumber(vesperTools:GetCharacterItemCount(characterKey, DELVE_MAP_ITEM_IDS[i])) or 0)
+    end
+
+    return total
+end
+
+function VaultStore:UpdateCurrentCharacterDelveMapState()
+    local now = time()
+    self:CleanupExpiredSnapshots(now)
+
+    local characterKey, character = self:CreateOrUpdateCurrentCharacter()
+    if not characterKey or not character then
+        return false
+    end
+
+    local nextState = self:BuildCurrentCharacterDelveMapState(now)
+    local previousState = type(character.delveMap) == "table" and character.delveMap or nil
+    local changed = previousState == nil or not areDelveMapStatesEqual(previousState, nextState)
+
+    character.delveMap = nextState
+    character.lastSeen = now
+
+    if changed then
+        vesperTools:SendMessage("VESPERTOOLS_VAULT_CHARACTER_UPDATED", characterKey)
+    end
+
+    return true
+end
+
 function VaultStore:CleanupExpiredSnapshots(now)
     local root = self:GetVaultRoot()
     if not root then
@@ -263,6 +389,13 @@ function VaultStore:CleanupExpiredSnapshots(now)
             local expiresAt = tonumber(snapshot and snapshot.expiresAt) or 0
             if snapshot and expiresAt > 0 and expiresAt <= resolvedNow then
                 data.vault = nil
+                removedAny = true
+            end
+
+            local delveMap = type(data.delveMap) == "table" and data.delveMap or nil
+            local delveMapExpiresAt = tonumber(delveMap and delveMap.expiresAt) or 0
+            if delveMap and delveMapExpiresAt > 0 and delveMapExpiresAt <= resolvedNow then
+                data.delveMap = nil
                 removedAny = true
             end
         end
@@ -297,6 +430,7 @@ end
 function VaultStore:PLAYER_ENTERING_WORLD()
     self:CreateOrUpdateCurrentCharacter()
     self:CleanupExpiredSnapshots()
+    self:UpdateCurrentCharacterDelveMapState()
     self:QueueCapture(1.0)
 end
 
@@ -314,6 +448,22 @@ end
 
 function VaultStore:WEEKLY_REWARDS_ITEM_CHANGED()
     self:QueueCapture(0)
+end
+
+function VaultStore:BAG_UPDATE_DELAYED()
+    self:UpdateCurrentCharacterDelveMapState()
+end
+
+function VaultStore:QUEST_LOG_UPDATE()
+    self:UpdateCurrentCharacterDelveMapState()
+end
+
+function VaultStore:UNIT_AURA(_, unitTarget)
+    if unitTarget ~= "player" then
+        return
+    end
+
+    self:UpdateCurrentCharacterDelveMapState()
 end
 
 function VaultStore:BuildActivitySnapshot(rewardType, activity, index)
@@ -453,6 +603,29 @@ function VaultStore:GetCharacterVaultSnapshot(characterKey)
     return record and record.vault or nil
 end
 
+function VaultStore:GetCharacterDelveMapState(characterKey)
+    self:CleanupExpiredSnapshots()
+
+    local record = self:GetCharacterRecord(characterKey)
+    if record and type(record.delveMap) == "table" then
+        return record.delveMap
+    end
+
+    local mapItemCount = self:GetStoredCharacterDelveMapItemCount(characterKey)
+    if mapItemCount > 0 then
+        return {
+            mapItemCount = mapItemCount,
+            hasMapItem = true,
+            hasPendingBuff = false,
+            weeklyMapAcquired = false,
+            usedThisWeek = false,
+            isFallback = true,
+        }
+    end
+
+    return nil
+end
+
 function VaultStore:GetCurrentCharacterSnapshot()
     local currentKey = self:GetCurrentCharacterKey()
     return currentKey and self:GetCharacterVaultSnapshot(currentKey) or nil
@@ -473,19 +646,26 @@ function VaultStore:GetDisplayCharacters()
     for characterKey, data in pairs(root.charactersByGUID) do
         if type(data) == "table" then
             local snapshot = type(data.vault) == "table" and data.vault or nil
+            local delveMap = type(data.delveMap) == "table" and data.delveMap or nil
             local hasSnapshot = snapshot and true or false
+            local hasDelveMapState = delveMap and true or false
             local entry = {
                 key = characterKey,
                 fullName = data.fullName or characterKey,
                 classID = data.classID,
                 faction = data.faction,
-                lastSeen = math.max(tonumber(data.lastSeen) or 0, tonumber(snapshot and snapshot.capturedAt) or 0),
+                lastSeen = math.max(
+                    tonumber(data.lastSeen) or 0,
+                    tonumber(snapshot and snapshot.capturedAt) or 0,
+                    tonumber(delveMap and delveMap.capturedAt) or 0
+                ),
                 hasSnapshot = hasSnapshot,
+                hasDelveMapState = hasDelveMapState,
                 isCurrent = characterKey == currentKey,
                 isLive = characterKey == currentKey,
             }
 
-            if hasSnapshot then
+            if hasSnapshot or hasDelveMapState then
                 characters[#characters + 1] = entry
             elseif entry.isCurrent then
                 currentPlaceholder = entry
@@ -505,6 +685,9 @@ function VaultStore:GetDisplayCharacters()
         end
         if a.hasSnapshot ~= b.hasSnapshot then
             return a.hasSnapshot
+        end
+        if a.hasDelveMapState ~= b.hasDelveMapState then
+            return a.hasDelveMapState
         end
         return a.fullName < b.fullName
     end)

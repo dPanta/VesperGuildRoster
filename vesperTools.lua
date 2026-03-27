@@ -1897,7 +1897,7 @@ function vesperTools:OnInitialize()
                 xOfs = 0,
                 yOfs = 0,
                 width = 760,
-                height = 600,
+                height = 644,
             },
             replaceBackpack = false,
             replaceCharacterBank = false,
@@ -1983,7 +1983,7 @@ function vesperTools:GetBagsProfile()
     profile.vaultWindow.xOfs = tonumber(profile.vaultWindow.xOfs) or 0
     profile.vaultWindow.yOfs = tonumber(profile.vaultWindow.yOfs) or 0
     profile.vaultWindow.width = math.max(560, math.floor((tonumber(profile.vaultWindow.width) or 760) + 0.5))
-    profile.vaultWindow.height = math.max(600, math.floor((tonumber(profile.vaultWindow.height) or 600) + 0.5))
+    profile.vaultWindow.height = math.max(644, math.floor((tonumber(profile.vaultWindow.height) or 644) + 0.5))
 
     profile.display = profile.display or {}
     profile.display.columns = math.max(1, math.min(20, math.floor((tonumber(profile.display.columns) or DEFAULT_BAGS_COLUMNS) + 0.5)))

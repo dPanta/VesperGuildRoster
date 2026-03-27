@@ -3,7 +3,7 @@ local VaultWindow = vesperTools:NewModule("VaultWindow", "AceEvent-3.0")
 local L = vesperTools.L
 
 local MIN_WINDOW_WIDTH = 560
-local MIN_WINDOW_HEIGHT = 600
+local MIN_WINDOW_HEIGHT = 644
 local CHARACTER_DROPDOWN_WIDTH = 240
 local CHARACTER_DROPDOWN_HEIGHT = 22
 local CHARACTER_MENU_ROW_HEIGHT = 24
@@ -13,6 +13,8 @@ local NAV_LEFT_INSET = 10
 local NAV_RIGHT_INSET = 40
 local WINDOW_CONTENT_PADDING = 10
 local SECTION_GAP = 12
+local MAP_STATUS_BOX_HEIGHT = 34
+local MAP_STATUS_BOX_GAP = 10
 local SECTION_HEADER_HEIGHT = 22
 local ROW_HEIGHT = 42
 local ROW_GAP = 6
@@ -83,6 +85,9 @@ local RAID_DIFFICULTY_SOURCE_KEYS = {
     [15] = "VAULT_SOURCE_RAID_HEROIC",
     [16] = "VAULT_SOURCE_RAID_MYTHIC",
 }
+local MAP_STATUS_USED_COLOR = "19ff19"
+local MAP_STATUS_UNUSED_COLOR = "ff4d4d"
+local MAP_STATUS_UNKNOWN_COLOR = "9d9d9d"
 local normalizeTooltipText
 
 local function buildRewardTypeOrder()
@@ -115,6 +120,10 @@ local function normalizeLink(value)
     end
 
     return value
+end
+
+local function wrapColorCode(colorCode, text)
+    return string.format("|cff%s%s|r", colorCode, tostring(text or ""))
 end
 
 local function getRewardDisplayLink(activity)
@@ -598,6 +607,8 @@ function VaultWindow:OnInitialize()
     self.openLiveButton = nil
     self.openLiveButtonText = nil
     self.captureText = nil
+    self.mapStatusBox = nil
+    self.mapStatusText = nil
     self.content = nil
     self.scrollFrame = nil
     self.scrollContent = nil
@@ -607,6 +618,7 @@ function VaultWindow:OnInitialize()
     self.displayCharacters = {}
     self.currentDisplayCharacter = nil
     self.currentSnapshot = nil
+    self.currentDelveMapState = nil
 end
 
 function VaultWindow:OnEnable()
@@ -1104,11 +1116,33 @@ function VaultWindow:CreateWindow()
     vesperTools:ApplyConfiguredFont(captureText, 11, "")
     self.captureText = captureText
 
+    local mapStatusBox = CreateFrame("Frame", nil, frame, "BackdropTemplate")
+    mapStatusBox:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", WINDOW_CONTENT_PADDING, WINDOW_CONTENT_PADDING)
+    mapStatusBox:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -WINDOW_CONTENT_PADDING, WINDOW_CONTENT_PADDING)
+    mapStatusBox:SetHeight(MAP_STATUS_BOX_HEIGHT)
+    mapStatusBox:SetBackdrop({
+        bgFile = "Interface\\Buttons\\WHITE8x8",
+        edgeFile = "Interface\\Buttons\\WHITE8x8",
+        edgeSize = 1,
+    })
+    mapStatusBox:SetBackdropColor(0.08, 0.08, 0.1, 0.9)
+    mapStatusBox:SetBackdropBorderColor(1, 1, 1, 0.12)
+    self.mapStatusBox = mapStatusBox
+
+    local mapStatusText = mapStatusBox:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    mapStatusText:SetPoint("LEFT", mapStatusBox, "LEFT", 10, 0)
+    mapStatusText:SetPoint("RIGHT", mapStatusBox, "RIGHT", -10, 0)
+    mapStatusText:SetJustifyH("CENTER")
+    mapStatusText:SetJustifyV("MIDDLE")
+    mapStatusText:SetWordWrap(false)
+    vesperTools:ApplyConfiguredFont(mapStatusText, 12, "")
+    self.mapStatusText = mapStatusText
+
     local content = CreateFrame("Frame", nil, frame)
     content:SetPoint("TOPLEFT", navFrame, "BOTTOMLEFT", 0, -16)
     content:SetPoint("TOPRIGHT", navFrame, "BOTTOMRIGHT", 0, -16)
-    content:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", WINDOW_CONTENT_PADDING, WINDOW_CONTENT_PADDING)
-    content:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -WINDOW_CONTENT_PADDING, WINDOW_CONTENT_PADDING)
+    content:SetPoint("BOTTOMLEFT", mapStatusBox, "TOPLEFT", 0, MAP_STATUS_BOX_GAP)
+    content:SetPoint("BOTTOMRIGHT", mapStatusBox, "TOPRIGHT", 0, MAP_STATUS_BOX_GAP)
     self.content = content
 
     local scrollContent = CreateFrame("Frame", nil, content)
@@ -1368,6 +1402,32 @@ function VaultWindow:RefreshSections(snapshot)
     return shownCount
 end
 
+function VaultWindow:RefreshMapStatus(selectedCharacter, delveMapState)
+    if not self.mapStatusText then
+        return
+    end
+
+    if not selectedCharacter then
+        self.mapStatusText:SetText("")
+        return
+    end
+
+    local valueText = L["UNKNOWN_LABEL"]
+    local colorCode = MAP_STATUS_UNKNOWN_COLOR
+
+    if type(delveMapState) == "table" then
+        if delveMapState.usedThisWeek then
+            valueText = YES
+            colorCode = MAP_STATUS_USED_COLOR
+        else
+            valueText = NO
+            colorCode = MAP_STATUS_UNUSED_COLOR
+        end
+    end
+
+    self.mapStatusText:SetText(string.format("%s %s", L["VAULT_DELVE_MAP_USED_LABEL"], wrapColorCode(colorCode, valueText)))
+end
+
 function VaultWindow:RefreshWindow()
     if not self.frame then
         return
@@ -1376,6 +1436,9 @@ function VaultWindow:RefreshWindow()
     local store = self:GetStore()
     if store and type(store.CreateOrUpdateCurrentCharacter) == "function" then
         store:CreateOrUpdateCurrentCharacter()
+    end
+    if store and type(store.UpdateCurrentCharacterDelveMapState) == "function" then
+        store:UpdateCurrentCharacterDelveMapState()
     end
 
     local bagsProfile = vesperTools:GetBagsProfile()
@@ -1387,9 +1450,13 @@ function VaultWindow:RefreshWindow()
     local snapshot = selectedCharacter and store and type(store.GetCharacterVaultSnapshot) == "function"
         and store:GetCharacterVaultSnapshot(selectedCharacter.key)
         or nil
+    local delveMapState = selectedCharacter and store and type(store.GetCharacterDelveMapState) == "function"
+        and store:GetCharacterDelveMapState(selectedCharacter.key)
+        or nil
 
     self.currentDisplayCharacter = selectedCharacter
     self.currentSnapshot = snapshot
+    self.currentDelveMapState = delveMapState
 
     if self.characterDropdownText then
         self.characterDropdownText:SetText(selectedCharacter and selectedCharacter.fullName or vesperTools:GetCurrentCharacterFullName())
@@ -1414,6 +1481,7 @@ function VaultWindow:RefreshWindow()
 
     self:UpdateCharacterDropdownVisual()
     self:HideCharacterMenu()
+    self:RefreshMapStatus(selectedCharacter, delveMapState)
 
     local hasSections = self:RefreshSections(snapshot)
     if hasSections and hasSections > 0 then

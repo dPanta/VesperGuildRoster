@@ -1,3 +1,18 @@
+## 3.0.0 - 2026-03-27
+
+### Changed
+- Added persistent per-character Delver's Bounty tracking to the Great Vault data store so weekly delve-map state now follows the selected character across your warband.
+- Expanded the Great Vault viewer with a dedicated footer status strip that shows `Map used this week: Yes/No` for the currently displayed character.
+- Promoted the recent Great Vault and multi-character vault-work improvements into a `3.0.0` milestone release.
+
+### Fixed
+- Increased the Great Vault window's default and minimum height so the new delve-map status footer no longer overlaps the last vault reward row.
+- Fixed the delve-map footer status text so color formatting no longer leaks raw digits into the label.
+- Centered the delve-map footer value so the status strip reads cleanly instead of hugging the left edge.
+
+### Notes
+- `3.0.0` marks the Great Vault viewer as a more complete warband-aware utility, with Delver's Bounty tracking and the supporting UI polish bundled into one milestone release.
+
 ## 2.9.1 - 2026-03-27
 
 ### Changed

@@ -149,6 +149,7 @@ local EN_MISSING = {
     UNKNOWN_COMMAND_FMT = "Unknown command: %s",
     UTILITY_TOOLTIP_RANDOM_HEARTHSTONE = "Left-click: Random hearthstone",
     VAULT_CURRENT_CHARACTER_ONLY = "Current character only",
+    VAULT_DELVE_MAP_USED_LABEL = "Map used this week:",
     VAULT_EMPTY = "No current-week Great Vault snapshot is available yet for this character.",
     VAULT_LANE_ACTIVITIES = "Activities",
     VAULT_LANE_RAID = "Raid",
