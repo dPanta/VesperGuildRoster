@@ -1,3 +1,12 @@
+## 3.0.1 - 2026-03-27
+
+### Fixed
+- Current-season equippable items from previous-expansion dungeons now stay in the `Gear` category instead of being forced into `Past Expansions` when they use modern upgrade tracks.
+- Added a bags data migration so already stored carried-bag snapshots are recategorized for existing characters instead of waiting for each alt to log in again.
+
+### Notes
+- This hotfix keeps seasonal dungeon gear grouped with your active equipment inventory even when the item's source dungeon originally belonged to an older expansion.
+
 ## 3.0.0 - 2026-03-27
 
 ### Changed

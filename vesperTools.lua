@@ -1904,7 +1904,7 @@ function vesperTools:OnInitialize()
             replaceAccountBank = false,
         },
         global = {
-            schemaVersion = 1,
+            schemaVersion = 2,
             charactersByGUID = {},
             itemMeta = {},
             accountIndex = {

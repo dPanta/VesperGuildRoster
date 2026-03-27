@@ -5,6 +5,7 @@ local L = vesperTools.L
 -- BagsStore owns the live carried-bag snapshot for the current character and the
 -- account-wide aggregate index used by the replacement inventory views.
 local ITEM_CLASS = Enum and Enum.ItemClass or {}
+local CURRENT_BAGS_SCHEMA_VERSION = 2
 local BAG_CATEGORY_DEFS = {
     { key = "quest", labelKey = "BAGS_CATEGORY_QUEST", order = 1 },
     { key = "junk", labelKey = "BAGS_CATEGORY_JUNK", order = 2 },
@@ -23,6 +24,26 @@ local CATEGORY_LABEL_KEY_BY_ID = {}
 local CATEGORY_PRIORITY_BY_ID = {}
 local EXPANSION_CATEGORY_KEY_PREFIX = "expansion:"
 local PAST_EXPANSIONS_CATEGORY_KEY = "past_expansions"
+local LEGACY_SEASONAL_EQUIPMENT_TRACK_MARKERS = {
+    "upgrade level: explorer",
+    "upgrade level: adventurer",
+    "upgrade level: veteran",
+    "upgrade level: champion",
+    "upgrade level: hero",
+    "upgrade level: myth",
+    "upgrade: explorer",
+    "upgrade: adventurer",
+    "upgrade: veteran",
+    "upgrade: champion",
+    "upgrade: hero",
+    "upgrade: myth",
+    "track: explorer",
+    "track: adventurer",
+    "track: veteran",
+    "track: champion",
+    "track: hero",
+    "track: myth",
+}
 for i = 1, #BAG_CATEGORY_DEFS do
     local def = BAG_CATEGORY_DEFS[i]
     CATEGORY_ORDER[i] = def.key
@@ -134,6 +155,20 @@ end
 
 local function buildFallbackItemName(itemID)
     return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
+end
+
+local function textContainsAnyMarker(text, markers)
+    if type(text) ~= "string" or text == "" then
+        return false
+    end
+
+    for i = 1, #markers do
+        if text:find(markers[i], 1, true) then
+            return true
+        end
+    end
+
+    return false
 end
 
 local function normalizeExpansionID(expansionID)
@@ -320,7 +355,8 @@ function BagsStore:GetGlobalDB()
 
     local global = db.global or {}
     db.global = global
-    global.schemaVersion = tonumber(global.schemaVersion) or 1
+    local schemaVersion = tonumber(global.schemaVersion) or 1
+    global.schemaVersion = schemaVersion
     global.charactersByGUID = global.charactersByGUID or {}
     global.itemMeta = global.itemMeta or {}
     global.accountIndex = global.accountIndex or {}
@@ -328,6 +364,13 @@ function BagsStore:GetGlobalDB()
     global.accountIndex.itemTotals = global.accountIndex.itemTotals or {}
     global.accountIndex.categoryTotals = global.accountIndex.categoryTotals or {}
     global.accountIndex.categoryItems = global.accountIndex.categoryItems or {}
+
+    if schemaVersion < CURRENT_BAGS_SCHEMA_VERSION then
+        local migrated = self:RunGlobalMigrations(global, schemaVersion)
+        if not migrated then
+            global.schemaVersion = schemaVersion
+        end
+    end
 
     return global
 end
@@ -363,6 +406,25 @@ function BagsStore:GetCategoryOrder(categoryKey)
     end
 
     return CATEGORY_PRIORITY_BY_ID[categoryKey] or 999
+end
+
+function BagsStore:UpdateLegacySeasonalEquipmentFlag(meta)
+    if type(meta) ~= "table" then
+        return false
+    end
+
+    local expansionID = normalizeExpansionID(meta.expansionID)
+    local currentExpansionID = getCurrentExpansionID()
+    local classID = meta.classID
+    local searchText = meta.searchText or normalizeSearchText(meta.itemDescription or "")
+    local isLegacySeasonalEquipment = expansionID ~= nil
+        and currentExpansionID ~= nil
+        and expansionID ~= currentExpansionID
+        and (classID == ITEM_CLASS.Weapon or classID == ITEM_CLASS.Armor)
+        and textContainsAnyMarker(searchText, LEGACY_SEASONAL_EQUIPMENT_TRACK_MARKERS)
+
+    meta.isLegacySeasonalDungeonEquipment = isLegacySeasonalEquipment and true or nil
+    return isLegacySeasonalEquipment
 end
 
 -- Return the stable GUID-like key used for current-character bag storage.
@@ -607,6 +669,7 @@ function BagsStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
         meta.itemName or buildFallbackItemName(itemID),
         meta.itemDescription or "",
     }, " ")) or meta.searchText
+    self:UpdateLegacySeasonalEquipmentFlag(meta)
 
     meta.lastResolved = time()
     return meta
@@ -616,6 +679,9 @@ function BagsStore:ResolveCategoryKey(meta, info, questInfo)
     local expansionID = meta and normalizeExpansionID(meta.expansionID) or nil
     local currentExpansionID = getCurrentExpansionID()
     if expansionID ~= nil and currentExpansionID ~= nil and expansionID ~= currentExpansionID then
+        if meta and self:UpdateLegacySeasonalEquipmentFlag(meta) then
+            return "equipment"
+        end
         return getExpansionCategoryKey(expansionID)
     end
 
@@ -850,8 +916,7 @@ function BagsStore:BuildFullCarriedSnapshot()
 end
 
 -- Rebuild the global cross-character inventory index from all saved characters.
-function BagsStore:BuildAccountIndexFromCharacters()
-    local global = self:GetGlobalDB()
+function BagsStore:BuildAccountIndexFromCharacters(charactersByGUID)
     local rebuilt = {
         itemOwners = {},
         itemTotals = {},
@@ -859,11 +924,18 @@ function BagsStore:BuildAccountIndexFromCharacters()
         categoryItems = {},
     }
 
-    if not global then
+    local resolvedCharacters = charactersByGUID
+    if resolvedCharacters == nil then
+        local global = self:GetGlobalDB()
+        resolvedCharacters = global and global.charactersByGUID or nil
+    end
+
+    charactersByGUID = resolvedCharacters
+    if not charactersByGUID then
         return rebuilt
     end
 
-    for characterKey, character in pairs(global.charactersByGUID) do
+    for characterKey, character in pairs(charactersByGUID) do
         local carried = character and character.carried
         if type(carried) == "table" then
             for itemID, count in pairs(carried.itemTotals or {}) do
@@ -886,6 +958,80 @@ function BagsStore:BuildAccountIndexFromCharacters()
     end
 
     return rebuilt
+end
+
+function BagsStore:RecategorizeCarriedSnapshot(global, carried)
+    if type(global) ~= "table" or type(carried) ~= "table" or type(carried.bags) ~= "table" then
+        return false
+    end
+
+    local changed = false
+
+    for _, bagID in ipairs(TRACKED_BAG_IDS) do
+        local bag = carried.bags[bagID]
+        if type(bag) == "table" and type(bag.slots) == "table" then
+            for slotID = 1, tonumber(bag.size) or 0 do
+                local record = bag.slots[slotID]
+                if type(record) == "table" and record.itemID then
+                    local meta = global.itemMeta and global.itemMeta[record.itemID] or nil
+                    local nextCategoryKey = record.categoryKey
+
+                    if meta then
+                        self:UpdateLegacySeasonalEquipmentFlag(meta)
+                        nextCategoryKey = self:ResolveCategoryKey(meta, record, record)
+                    end
+
+                    if nextCategoryKey ~= record.categoryKey then
+                        record.categoryKey = nextCategoryKey
+                        changed = true
+                    end
+                end
+            end
+        end
+    end
+
+    local aggregate = self:BuildAggregatesFromBags(carried.bags)
+    carried.itemTotals = aggregate.itemTotals
+    carried.categoryTotals = aggregate.categoryTotals
+    carried.categoryItems = aggregate.categoryItems
+
+    return changed
+end
+
+function BagsStore:RunGlobalMigrations(global, startingVersion)
+    if type(global) ~= "table" then
+        return false
+    end
+
+    local schemaVersion = tonumber(startingVersion) or 1
+    if schemaVersion >= CURRENT_BAGS_SCHEMA_VERSION then
+        global.schemaVersion = schemaVersion
+        return true
+    end
+
+    if getCurrentExpansionID() == nil then
+        return false
+    end
+
+    if schemaVersion < 2 then
+        for _, meta in pairs(global.itemMeta or {}) do
+            if type(meta) == "table" then
+                self:UpdateLegacySeasonalEquipmentFlag(meta)
+            end
+        end
+
+        for _, character in pairs(global.charactersByGUID or {}) do
+            if type(character) == "table" and type(character.carried) == "table" then
+                self:RecategorizeCarriedSnapshot(global, character.carried)
+            end
+        end
+
+        global.accountIndex = self:BuildAccountIndexFromCharacters(global.charactersByGUID)
+        schemaVersion = 2
+    end
+
+    global.schemaVersion = schemaVersion
+    return true
 end
 
 function BagsStore:RebuildAccountIndex()
