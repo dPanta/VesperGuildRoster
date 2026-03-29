@@ -1,3 +1,12 @@
+## 3.1.2 - 2026-03-29
+
+### Fixed
+- Corrected the Skyreach dungeon portal mapping so the addon now points at the working teleport spell again.
+- Hardened teleport unlock detection for portal buttons and roster row casts so learned dungeon teleports are no longer treated as unavailable just because they are missing from the strict spellbook lookup path.
+
+### Notes
+- This hotfix focuses on restoring reliable Skyreach portal access while making the addon's dungeon-teleport availability checks more tolerant of current client API behavior.
+
 ## 3.1.1 - 2026-03-27
 
 ### Fixed

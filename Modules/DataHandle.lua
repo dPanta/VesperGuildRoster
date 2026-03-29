@@ -75,7 +75,7 @@ local dungList = {
         { exp = "TWW", mapID = 542, spellID = 1237215, dungeonName = "Eco-Dome Al'dani" },
         
         -- Midnight (Mid) - Season 1 portal catalog
-        { exp = "Mid", mapID = 161, spellID = 1254557, dungeonName = "Skyreach" },
+        { exp = "Mid", mapID = 161, spellID = 159898, dungeonName = "Skyreach" },
         { exp = "Mid", mapID = 239, spellID = 1254551, dungeonName = "Seat of the Triumvirate" },
         { exp = "Mid", mapID = 556, spellID = 1254555, dungeonName = "Pit of Saron" },
         { exp = "Mid", mapID = 557, spellID = 1254400, dungeonName = "Windrunner Spire" },

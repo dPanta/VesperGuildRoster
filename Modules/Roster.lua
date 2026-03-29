@@ -6,6 +6,31 @@ local L = vesperTools.L
 local HEADER_ACTION_BUTTON_HEIGHT = 22
 local HEADER_ACTION_BUTTON_GAP = 6
 
+local function isSpellKnownForPlayer(spellID)
+    local normalizedSpellID = tonumber(spellID)
+    if not normalizedSpellID or normalizedSpellID <= 0 then
+        return false
+    end
+
+    if C_SpellBook and C_SpellBook.IsSpellInSpellBook and C_SpellBook.IsSpellInSpellBook(normalizedSpellID) then
+        return true
+    end
+
+    if IsSpellKnownOrOverridesKnown and IsSpellKnownOrOverridesKnown(normalizedSpellID) then
+        return true
+    end
+
+    if IsSpellKnown and IsSpellKnown(normalizedSpellID) then
+        return true
+    end
+
+    if IsPlayerSpell and IsPlayerSpell(normalizedSpellID) then
+        return true
+    end
+
+    return false
+end
+
 -- Build one consistent titlebar action button for roster header controls.
 local function createHeaderActionButton(parent, anchor, width, label, onClick)
     local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
@@ -738,8 +763,7 @@ function Roster:UpdateRosterList()
             if dungInfo then
                 local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
                 local spellName = spellInfo and spellInfo.name
-                local hasPortal = C_SpellBook and C_SpellBook.IsSpellInSpellBook
-                    and C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
+                local hasPortal = isSpellKnownForPlayer(dungInfo.spellID)
                 if spellName and hasPortal then
                     portalSpellName = spellName
                     rowBtn:SetAttribute("type1", "spell")

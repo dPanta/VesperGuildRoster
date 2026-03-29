@@ -15,6 +15,31 @@ local TOY_FLYOUT_ANCHOR_Y_OFFSET = 8
 local TOY_FLYOUT_SCREEN_MARGIN = 10
 local COOLDOWN_TEXT_UPDATE_INTERVAL = 0.1
 
+local function isSpellKnownForPlayer(spellID)
+    local normalizedSpellID = tonumber(spellID)
+    if not normalizedSpellID or normalizedSpellID <= 0 then
+        return false
+    end
+
+    if C_SpellBook and C_SpellBook.IsSpellInSpellBook and C_SpellBook.IsSpellInSpellBook(normalizedSpellID) then
+        return true
+    end
+
+    if IsSpellKnownOrOverridesKnown and IsSpellKnownOrOverridesKnown(normalizedSpellID) then
+        return true
+    end
+
+    if IsSpellKnown and IsSpellKnown(normalizedSpellID) then
+        return true
+    end
+
+    if IsPlayerSpell and IsPlayerSpell(normalizedSpellID) then
+        return true
+    end
+
+    return false
+end
+
 -- Curated mage travel catalogs. We still supplement this with spellbook scanning so
 -- newly added/seasonal travel spells can appear without hardcoding every edge case.
 local MAGE_TELEPORT_SPELL_IDS = {
@@ -288,7 +313,7 @@ function Portals:GetKnownMageTravelSpells(kind)
             return
         end
 
-        local known = C_SpellBook and C_SpellBook.IsSpellInSpellBook and C_SpellBook.IsSpellInSpellBook(spellID)
+        local known = isSpellKnownForPlayer(spellID)
         if not known then
             return
         end
@@ -1622,8 +1647,7 @@ function Portals:CreatePortalFrame()
             local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
             local spellName = spellInfo and spellInfo.name
             local iconFileID = spellInfo and (spellInfo.iconID or spellInfo.originalIconID)
-            local known = C_SpellBook and C_SpellBook.IsSpellInSpellBook
-                and C_SpellBook.IsSpellInSpellBook(dungInfo.spellID)
+            local known = isSpellKnownForPlayer(dungInfo.spellID)
             local btn = CreateFrame(
                 "Button",
                 "PortalButton" .. index,
