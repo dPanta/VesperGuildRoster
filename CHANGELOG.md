@@ -1,3 +1,21 @@
+## 3.2.0 - 2026-03-30
+
+### Changed
+- Rebuilt the Roster window on native Blizzard frames instead of `AceGUI`, while keeping the existing guild roster actions and adding a cleaner modern scrollbar treatment.
+- Added Midnight skinning-lure markers to configured Midnight zone maps, with click-to-waypoint behavior that uses Blizzard's built-in navigation arrow.
+- Added `Ready` and `Pull` action buttons above Blizzard's party and raid frame headers for group leaders and raid assistants.
+- Added shared internal helpers for window lifecycle, combat-safe deferred refreshes, comm routing, timer handling, and reusable modern button styling as groundwork for reducing Ace dependencies.
+
+### Fixed
+- Fixed roster window lifecycle so reopening it no longer risks duplicate named-frame issues, and live keystone updates now refresh the open roster correctly.
+- Fixed bundled locale loading so non-`enUS` translations work correctly when using the packaged addon libraries on their own.
+- Fixed native container overlay input handling so replacement Bags and Bank interactions no longer trigger the protected-action warning seen during live item overlay refreshes.
+- Fixed the new Midnight lure map pins so parent/child world-map navigation no longer trips a `Blizzard_MapCanvas` assertion during map changes.
+- Fixed the roster scrollbar and close-button polish pass so the scrollbar hides when not needed, uses a softer darker style, and the close icon now adopts the player's class color.
+
+### Notes
+- This minor release bundles a larger roster modernization pass with new world-map skinning markers, party/raid utility buttons, and the supporting internal cleanup needed to keep future de-Ace work safer.
+
 ## 3.1.2 - 2026-03-29
 
 ### Fixed

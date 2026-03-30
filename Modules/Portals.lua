@@ -1,6 +1,8 @@
+local _, addonTable = ...
 local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools")
-local Portals = vesperTools:NewModule("Portals", "AceConsole-3.0", "AceEvent-3.0")
+local Portals = vesperTools:NewModule("Portals", "AceEvent-3.0")
 local L = vesperTools.L
+local AddonServices = addonTable.AddonServices
 -- Portals owns the seasonal portal frame and the top utility button cluster.
 -- It also tracks cooldown text, mage travel menus, and hearthstone/toy flyouts.
 local FALLBACK_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_QuestionMark"
@@ -200,7 +202,7 @@ function Portals:OnEnable()
 end
 
 function Portals:PLAYER_LOGIN()
-    self:RegisterChatCommand("vesperportals", "Toggle")
+    AddonServices:RegisterChatCommand(self, "vesperportals", "Toggle")
     self:CreatePortalFrame()
 end
 

@@ -464,23 +464,54 @@ function vesperTools:CreateContainerItemController(host, config)
 
     function controller:ConfigureNativeContainerOverlayInput(overlay, button)
         if not overlay or type(overlay.SetPassThroughButtons) ~= "function" then
-            return
+            return true
+        end
+
+        local desiredSignature = ""
+        local desiredButtons = nil
+        if button and button.isCombined and self:CanUseCombinedButton(button) then
+            desiredSignature = "LeftButton"
+            desiredButtons = { "LeftButton" }
+        end
+
+        local currentSignature = overlay.vgPassThroughButtonsSignature
+        if currentSignature == nil then
+            currentSignature = ""
+        end
+
+        -- Fresh container overlays already behave like the default "no pass-through"
+        -- case, so avoid touching the protected setter unless we actually need to
+        -- transition the overlay input state.
+        if currentSignature == desiredSignature then
+            overlay.vgPassThroughButtonsSignature = desiredSignature
+            return true
+        end
+
+        if type(InCombatLockdown) == "function" and InCombatLockdown() then
+            if host.pendingSecureItemRefresh ~= nil then
+                host.pendingSecureItemRefresh = true
+            end
+            return false
         end
 
         if securecallfunction then
-            if button and button.isCombined and self:CanUseCombinedButton(button) then
-                securecallfunction(overlay.SetPassThroughButtons, overlay, "LeftButton")
+            if desiredButtons then
+                securecallfunction(overlay.SetPassThroughButtons, overlay, unpack(desiredButtons))
             else
                 securecallfunction(overlay.SetPassThroughButtons, overlay)
             end
-            return
+            overlay.vgPassThroughButtonsSignature = desiredSignature
+            return true
         end
 
-        if button and button.isCombined and self:CanUseCombinedButton(button) then
-            overlay:SetPassThroughButtons("LeftButton")
+        if desiredButtons then
+            overlay:SetPassThroughButtons(unpack(desiredButtons))
         else
             overlay:SetPassThroughButtons()
         end
+
+        overlay.vgPassThroughButtonsSignature = desiredSignature
+        return true
     end
 
     function controller:AcquireNativeContainerOverlay(button)
@@ -496,7 +527,9 @@ function vesperTools:CreateContainerItemController(host, config)
         overlay:SetAllPoints(button)
         overlay:SetFrameLevel(button:GetFrameLevel() + 10)
         overlay:EnableMouse(self:GetOverlayMouseEnabled(button))
-        self:ConfigureNativeContainerOverlayInput(overlay, button)
+        if not self:ConfigureNativeContainerOverlayInput(overlay, button) then
+            overlay.vgPassThroughButtonsSignature = overlay.vgPassThroughButtonsSignature or ""
+        end
         suppressNativeOverlayVisuals(overlay)
         overlay:Hide()
         button.nativeContainerOverlay = overlay
@@ -511,7 +544,9 @@ function vesperTools:CreateContainerItemController(host, config)
         end
 
         overlay:EnableMouse(self:GetOverlayMouseEnabled(button))
-        self:ConfigureNativeContainerOverlayInput(overlay, button)
+        if not self:ConfigureNativeContainerOverlayInput(overlay, button) then
+            return
+        end
 
         if shouldUseNativeOverlay then
             local overlayBagID, overlaySlotID = self:GetNativeOverlayBagSlot(button)

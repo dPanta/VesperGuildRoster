@@ -1,5 +1,5 @@
 local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools")
-local KeystoneSync = vesperTools:NewModule("KeystoneSync", "AceEvent-3.0", "AceTimer-3.0")
+local KeystoneSync = vesperTools:NewModule("KeystoneSync", "AceEvent-3.0")
 local LibKeystone = LibStub("LibKeystone")
 local L = vesperTools.L
 

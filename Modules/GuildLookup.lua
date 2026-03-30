@@ -1,6 +1,9 @@
+local _, addonTable = ...
 local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools")
-local GuildLookup = vesperTools:NewModule("GuildLookup", "AceEvent-3.0", "AceTimer-3.0", "AceComm-3.0")
+local GuildLookup = vesperTools:NewModule("GuildLookup", "AceEvent-3.0")
 local L = vesperTools.L
+local CommAdapter = addonTable.CommAdapter
+local TimerService = addonTable.TimerService
 
 -- Guild lookup adds a guild-only remote search layer on top of BagsStore snapshots.
 -- It tracks the active query, throttles requests, and aggregates whisper responses.
@@ -159,14 +162,19 @@ end
 
 -- Register comm channels and refresh the guild-member allowlist on enable.
 function GuildLookup:OnEnable()
-    self:RegisterComm(REQUEST_PREFIX, "OnLookupRequestReceived")
-    self:RegisterComm(RESPONSE_PREFIX, "OnLookupResponseReceived")
+    CommAdapter:Register(self, REQUEST_PREFIX, "OnLookupRequestReceived")
+    CommAdapter:Register(self, RESPONSE_PREFIX, "OnLookupResponseReceived")
     self:RegisterEvent("GUILD_ROSTER_UPDATE", "RefreshGuildMemberCache")
     self:RegisterEvent("PLAYER_GUILD_UPDATE", "OnGuildMembershipChanged")
     self:RefreshGuildMemberCache()
     if IsInGuild() then
         requestGuildRosterUpdate()
     end
+end
+
+function GuildLookup:OnDisable()
+    self:CancelFinalizeTimer()
+    CommAdapter:UnregisterOwner(self)
 end
 
 function GuildLookup:OnGuildMembershipChanged()
@@ -245,8 +253,7 @@ end
 -- Cancel the delayed finalize step used to collect whisper responses for one query.
 function GuildLookup:CancelFinalizeTimer()
     if self.finalizeTimer then
-        self:CancelTimer(self.finalizeTimer, true)
-        self.finalizeTimer = nil
+        self.finalizeTimer = TimerService:Cancel(self.finalizeTimer)
     end
 end
 
@@ -513,8 +520,8 @@ function GuildLookup:StartLookup(queryText)
     self:NotifyUpdated()
 
     self:CancelFinalizeTimer()
-    self.finalizeTimer = self:ScheduleTimer("FinalizeActiveLookup", RESPONSE_WINDOW_SECONDS)
-    self:SendCommMessage(REQUEST_PREFIX, table.concat({
+    self.finalizeTimer = TimerService:Schedule(self, "FinalizeActiveLookup", RESPONSE_WINDOW_SECONDS)
+    CommAdapter:Send(REQUEST_PREFIX, table.concat({
         "QUERY",
         PROTOCOL_VERSION,
         self.activeQueryID,
@@ -570,7 +577,7 @@ function GuildLookup:OnLookupRequestReceived(prefix, message, distribution, send
     local matches, truncated = self:BuildCurrentCharacterMatches(normalizedQuery, MAX_RESPONSE_ITEMS)
     for index = 1, #matches do
         local match = matches[index]
-        self:SendCommMessage(RESPONSE_PREFIX, table.concat({
+        CommAdapter:Send(RESPONSE_PREFIX, table.concat({
             "ITEM",
             PROTOCOL_VERSION,
             queryID,
@@ -581,7 +588,7 @@ function GuildLookup:OnLookupRequestReceived(prefix, message, distribution, send
     end
 
     if truncated then
-        self:SendCommMessage(RESPONSE_PREFIX, table.concat({
+        CommAdapter:Send(RESPONSE_PREFIX, table.concat({
             "META",
             PROTOCOL_VERSION,
             queryID,

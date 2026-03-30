@@ -1,6 +1,9 @@
+local _, addonTable = ...
 local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools")
-local Automation = vesperTools:NewModule("Automation", "AceConsole-3.0", "AceEvent-3.0", "AceComm-3.0")
+local Automation = vesperTools:NewModule("Automation", "AceEvent-3.0")
 local L = vesperTools.L
+local AddonServices = addonTable.AddonServices
+local CommAdapter = addonTable.CommAdapter
 
 -- Automation module responsibilities:
 -- 1) Guild-wide ilvl + best-key broadcasts (AceComm).
@@ -41,10 +44,9 @@ end
 
 function Automation:OnEnable()
     -- Register all communication channels used by this module.
-    -- Register comm prefixes
-    self:RegisterComm(ILVL_PREFIX, "OnIlvlReceived")
-    self:RegisterComm(BESTKEYS_PREFIX, "OnBestKeysReceived")
-    self:RegisterComm(BESTKEYS_REQ_PREFIX, "OnBestKeysRequested")
+    CommAdapter:Register(self, ILVL_PREFIX, "OnIlvlReceived")
+    CommAdapter:Register(self, BESTKEYS_PREFIX, "OnBestKeysReceived")
+    CommAdapter:Register(self, BESTKEYS_REQ_PREFIX, "OnBestKeysRequested")
 
     -- Use "addon opened" as a practical sync moment when the user expects fresh data.
     self:RegisterMessage("VESPERTOOLS_ADDON_OPENED", "OnAddonOpened")
@@ -55,7 +57,7 @@ function Automation:OnEnable()
     -- Warm up Blizzard M+ cache so best-run API is populated before we read it.
     C_MythicPlus.RequestMapInfo()
 
-    self:RegisterChatCommand("vespertest", "TestKeyReminder")
+    AddonServices:RegisterChatCommand(self, "vespertest", "TestKeyReminder")
 
     -- Trim stale SavedVariables entries at startup to keep roster data relevant.
     local DataHandle = vesperTools:GetModule("DataHandle", true)
@@ -67,6 +69,10 @@ function Automation:OnEnable()
     -- Reset runtime-only anti-spam state on module (re)enable.
     lastBestKeysRequestBySender = {}
     pendingBestKeysRequestResponse = false
+end
+
+function Automation:OnDisable()
+    CommAdapter:UnregisterOwner(self)
 end
 
 -- Trigger a full guild sync pass when the main addon UI opens.
@@ -98,7 +104,7 @@ function Automation:BroadcastIlvl()
 
     -- Payload format: "ilvl:classID" (example: "635:11").
     local payload = string.format("%d:%d", ilvl, classID)
-    self:SendCommMessage(ILVL_PREFIX, payload, "GUILD")
+    CommAdapter:Send(ILVL_PREFIX, payload, "GUILD")
 end
 
 -- Handle incoming ilvl messages from guild members
@@ -172,7 +178,7 @@ function Automation:BroadcastBestKeys()
 
     -- Full payload format: "classID;mapID:level:duration:inTime,..."
     local payload = classID .. ";" .. table.concat(parts, ",")
-    self:SendCommMessage(BESTKEYS_PREFIX, payload, "GUILD")
+    CommAdapter:Send(BESTKEYS_PREFIX, payload, "GUILD")
 end
 
 -- Handle incoming best keys messages from guild members
@@ -266,7 +272,7 @@ end
 function Automation:RequestBestKeys()
     if not IsInGuild() then return end
     -- Lightweight "pull" request; peers answer with BESTKEYS_PREFIX payload.
-    self:SendCommMessage(BESTKEYS_REQ_PREFIX, "req", "GUILD")
+    CommAdapter:Send(BESTKEYS_REQ_PREFIX, "req", "GUILD")
 end
 
 -- M+ end reminder (only if timed and current key level <= completed level)

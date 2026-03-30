@@ -1,10 +1,40 @@
+local _, addonTable = ...
 local vesperTools = vesperTools or LibStub("AceAddon-3.0"):GetAddon("vesperTools")
-local Roster = vesperTools:NewModule("Roster", "AceConsole-3.0", "AceEvent-3.0")
-local AceGUI = LibStub("AceGUI-3.0")
+local Roster = vesperTools:NewModule("Roster", "AceEvent-3.0")
 local L = vesperTools.L
+local CombatGate = addonTable.CombatGate
+local WindowLifecycle = addonTable.WindowLifecycle
+
 -- Roster renders the guild list view and wires its action buttons, sorting, and menus.
 local HEADER_ACTION_BUTTON_HEIGHT = 22
 local HEADER_ACTION_BUTTON_GAP = 6
+local ROSTER_HEADER_HEIGHT = 24
+local ROSTER_HEADER_BOTTOM_MARGIN = 5
+local ROSTER_ROW_HEIGHT = 24
+local ROSTER_SCROLL_STEP = ROSTER_ROW_HEIGHT * 2
+local ROSTER_SCROLLBAR_GUTTER = 27
+local ROSTER_MIN_CONTENT_WIDTH = 520
+local ROSTER_TEXT_INSET = 4
+
+-- Sort arrow indicators (WoW built-in arrow textures)
+local ARROW_UP = " |TInterface\\Buttons\\Arrow-Up-Up:12:12|t"
+local ARROW_DOWN = " |TInterface\\Buttons\\Arrow-Down-Up:12:12|t"
+
+-- Column definitions: key, label, width, sort type
+local COLUMNS = {
+    { key = "name", label = L["ROSTER_COLUMN_NAME"], width = 0.15, sort = "string" },
+    { key = "faction", label = L["ROSTER_COLUMN_FACTION"], width = 0.05, sort = "string" },
+    { key = "zone", label = L["ROSTER_COLUMN_ZONE"], width = 0.20, sort = "string" },
+    { key = "status", label = L["ROSTER_COLUMN_STATUS"], width = 0.10, sort = "string" },
+    { key = "ilvl", label = L["ROSTER_COLUMN_ILVL"], width = 0.10, sort = "number" },
+    { key = "rating", label = L["ROSTER_COLUMN_RATING"], width = 0.10, sort = "number" },
+    { key = "keyLevel", label = L["ROSTER_COLUMN_KEY"], width = 0.20, sort = "number" },
+}
+
+local TOTAL_COLUMN_WEIGHT = 0
+for i = 1, #COLUMNS do
+    TOTAL_COLUMN_WEIGHT = TOTAL_COLUMN_WEIGHT + (tonumber(COLUMNS[i].width) or 0)
+end
 
 local function isSpellKnownForPlayer(spellID)
     local normalizedSpellID = tonumber(spellID)
@@ -29,6 +59,25 @@ local function isSpellKnownForPlayer(spellID)
     end
 
     return false
+end
+
+local function getSpellName(spellID)
+    if not spellID then
+        return nil
+    end
+
+    if C_Spell and C_Spell.GetSpellInfo then
+        local spellInfo = C_Spell.GetSpellInfo(spellID)
+        if spellInfo and spellInfo.name then
+            return spellInfo.name
+        end
+    end
+
+    if GetSpellInfo then
+        return GetSpellInfo(spellID)
+    end
+
+    return nil
 end
 
 -- Build one consistent titlebar action button for roster header controls.
@@ -60,41 +109,122 @@ local function createHeaderActionButton(parent, anchor, width, label, onClick)
     return button
 end
 
+local function createRosterText(parent, template)
+    local text = parent:CreateFontString(nil, "OVERLAY", template or "GameFontHighlightSmall")
+    text:SetJustifyH("LEFT")
+    text:SetJustifyV("MIDDLE")
+    text:SetWordWrap(false)
+    return text
+end
+
 function Roster:OnInitialize()
-    -- Called when the module is initialized
+    self.frame = nil
+    self.contentFrame = nil
+    self.titleText = nil
+    self.headerFrame = nil
+    self.headerButtons = {}
+    self.scrollFrame = nil
+    self.scrollContent = nil
+    self.rosterRows = {}
+    self.currentColumnLayout = nil
+    self.pendingRosterRefresh = false
 end
 
 function Roster:OnEnable()
     self:RegisterMessage("VESPERTOOLS_ILVL_UPDATE", "OnSyncUpdate")
     self:RegisterMessage("VESPERTOOLS_BESTKEYS_UPDATE", "OnSyncUpdate")
+    self:RegisterMessage("VESPERTOOLS_KEYSTONE_UPDATE", "OnSyncUpdate")
     self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "OnConfigChanged")
 end
 
 -- Redraw the list whenever synced guild data changes.
 function Roster:OnSyncUpdate()
-    if self.frame and self.frame:IsShown() then
-        self:UpdateRosterList()
+    self:RequestRosterRefresh()
+end
+
+function Roster:OnConfigChanged()
+    self:ApplyRosterStyling()
+end
+
+function Roster:OnDisable()
+    if CombatGate then
+        CombatGate:CancelOwner(self)
     end
 end
 
--- Handle central style/config updates (font + opacity) and repaint visible UI.
-function Roster:OnConfigChanged()
+function Roster:RestoreWindowReferences(frame)
+    if not frame then
+        return
+    end
+
+    self.frame = frame
+    self.contentFrame = frame.vgContentFrame or self.contentFrame
+    self.titleText = frame.vgTitleText or self.titleText
+    self.headerFrame = frame.vgHeaderFrame or self.headerFrame
+    self.headerButtons = frame.vgHeaderButtons or self.headerButtons
+    self.scrollFrame = frame.vgScrollFrame or self.scrollFrame
+    self.scrollContent = frame.vgScrollContent or self.scrollContent
+    self.rosterRows = frame.vgRosterRows or self.rosterRows
+end
+
+function Roster:ApplyRosterStyling()
     if not self.frame then
         return
     end
 
     local baseFontSize = vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
     self.frame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("roster"))
+
     if self.titleText then
+        self.titleText:SetText(GetGuildInfo("player") or L["ROSTER_TITLE_FALLBACK"])
         vesperTools:ApplyConfiguredFont(self.titleText, baseFontSize + 4, "")
     end
-    if self.frame:IsShown() then
-        self:UpdateRosterList()
+
+    for i = 1, #(self.headerButtons or {}) do
+        local button = self.headerButtons[i]
+        if button and button.text then
+            vesperTools:ApplyConfiguredFont(button.text, baseFontSize, "")
+        end
+    end
+
+    for i = 1, #(self.rosterRows or {}) do
+        local row = self.rosterRows[i]
+        if row and row.columns then
+            for _, text in pairs(row.columns) do
+                vesperTools:ApplyConfiguredFont(text, baseFontSize, "")
+            end
+        end
     end
 end
 
-function Roster:OnDisable()
-    -- Called when the module is disabled
+function Roster:PerformRosterRefresh()
+    self.pendingRosterRefresh = false
+    if not self.frame or not self.frame:IsShown() then
+        return
+    end
+
+    self:UpdateRosterList()
+end
+
+function Roster:RequestRosterRefresh()
+    if not self.frame or not self.frame:IsShown() then
+        return
+    end
+
+    if CombatGate then
+        local executedNow = CombatGate:RunNamed(self, "refresh", function()
+            self:PerformRosterRefresh()
+        end)
+        self.pendingRosterRefresh = not executedNow
+        return
+    end
+
+    if type(InCombatLockdown) == "function" and InCombatLockdown() then
+        self.pendingRosterRefresh = true
+        return
+    end
+
+    self:PerformRosterRefresh()
 end
 
 -- Lazily create one dropdown frame used by legacy fallback context menus.
@@ -207,93 +337,223 @@ function Roster:OpenRosterContextMenu(anchorButton, fullName)
     return false
 end
 
--- --- GUI Creation ---
+function Roster:BuildColumnLayout(availableWidth)
+    local resolvedWidth = math.max(ROSTER_MIN_CONTENT_WIDTH, math.floor((tonumber(availableWidth) or 0) + 0.5))
+    local layout = {}
+    local usedWidth = 0
 
--- Create the roster frame lazily, then refresh its contents on every open.
-function Roster:ShowRoster()
-    if self.frame then
-        self.frame:Show()
-        self.frame:Raise()
-        self:UpdateRosterList()
+    for i = 1, #COLUMNS do
+        local column = COLUMNS[i]
+        local width
+        if i == #COLUMNS then
+            width = math.max(32, resolvedWidth - usedWidth)
+        else
+            width = math.max(32, math.floor((resolvedWidth * (column.width / TOTAL_COLUMN_WEIGHT)) + 0.5))
+        end
+
+        layout[i] = {
+            key = column.key,
+            label = column.label,
+            sort = column.sort,
+            offset = usedWidth,
+            width = width,
+        }
+        usedWidth = usedWidth + width
+    end
+
+    if layout[#layout] then
+        layout[#layout].width = math.max(32, resolvedWidth - layout[#layout].offset)
+    end
+
+    layout.totalWidth = resolvedWidth
+    return layout
+end
+
+function Roster:GetListContentWidth()
+    local width = 0
+    if self.scrollFrame and self.scrollFrame.GetWidth then
+        width = self.scrollFrame:GetWidth() or 0
+    elseif self.headerFrame and self.headerFrame.GetWidth then
+        width = self.headerFrame:GetWidth() or 0
+    end
+
+    return math.max(ROSTER_MIN_CONTENT_WIDTH, math.floor(width + 0.5))
+end
+
+function Roster:UpdateListViewportLayout(hasScrollBar)
+    if not self.contentFrame or not self.headerFrame or not self.scrollFrame then
         return
     end
 
-    -- Create Custom Frame
-    self.frame = CreateFrame("Frame", "vesperToolsFrame", UIParent, "BackdropTemplate" )
-    self.frame:SetSize(600, 250)
+    local shouldShowScrollBar = hasScrollBar and true or false
+    if self.rosterScrollBarVisible == shouldShowScrollBar then
+        vesperTools:SetModernScrollBarVisibility(self.scrollFrame, shouldShowScrollBar)
+        return
+    end
+
+    self.rosterScrollBarVisible = shouldShowScrollBar
+    vesperTools:SetModernScrollBarVisibility(self.scrollFrame, shouldShowScrollBar)
+
+    local rightInset = shouldShowScrollBar and -ROSTER_SCROLLBAR_GUTTER or 0
+
+    self.headerFrame:ClearAllPoints()
+    self.headerFrame:SetPoint("TOPLEFT", self.contentFrame, "TOPLEFT", 0, 0)
+    self.headerFrame:SetPoint("TOPRIGHT", self.contentFrame, "TOPRIGHT", rightInset, 0)
+
+    self.scrollFrame:ClearAllPoints()
+    self.scrollFrame:SetPoint("TOPLEFT", self.headerFrame, "BOTTOMLEFT", 0, -ROSTER_HEADER_BOTTOM_MARGIN)
+    self.scrollFrame:SetPoint("BOTTOMRIGHT", self.contentFrame, "BOTTOMRIGHT", rightInset, 0)
+end
+
+function Roster:UpdateHeaderLayout(columnLayout, fontSize)
+    if not self.headerFrame then
+        return
+    end
+
+    local resolvedFontSize = tonumber(fontSize) or vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
+    for i = 1, #COLUMNS do
+        local layout = columnLayout[i]
+        local button = self.headerButtons and self.headerButtons[i] or nil
+        if layout and button then
+            button:ClearAllPoints()
+            button:SetPoint("TOPLEFT", self.headerFrame, "TOPLEFT", layout.offset, 0)
+            button:SetSize(layout.width, ROSTER_HEADER_HEIGHT)
+            vesperTools:ApplyConfiguredFont(button.text, resolvedFontSize, "")
+
+            local arrow = ""
+            if self.sortColumn == layout.key then
+                arrow = self.sortAscending and ARROW_UP or ARROW_DOWN
+            end
+            button.text:SetText(layout.label .. arrow)
+        end
+    end
+end
+
+function Roster:LayoutRowColumns(row, columnLayout, fontSize)
+    if not row or not row.columns then
+        return
+    end
+
+    local resolvedFontSize = tonumber(fontSize) or vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
+    row:SetSize(columnLayout.totalWidth, ROSTER_ROW_HEIGHT)
+
+    for i = 1, #COLUMNS do
+        local layout = columnLayout[i]
+        local text = row.columns[layout.key]
+        if text then
+            text:ClearAllPoints()
+            text:SetPoint("TOPLEFT", row, "TOPLEFT", layout.offset + ROSTER_TEXT_INSET, -1)
+            text:SetPoint("BOTTOMRIGHT", row, "TOPLEFT", layout.offset + layout.width - ROSTER_TEXT_INSET, -(ROSTER_ROW_HEIGHT - 1))
+            vesperTools:ApplyConfiguredFont(text, resolvedFontSize, "")
+        end
+    end
+end
+
+function Roster:HideRosterRows(startIndex)
+    local firstIndex = math.max(1, tonumber(startIndex) or 1)
+    for index = firstIndex, #(self.rosterRows or {}) do
+        local row = self.rosterRows[index]
+        if row then
+            row.member = nil
+            row.portalSpellName = nil
+            row.tooltipMapID = nil
+            row.dataHandle = nil
+            row.fullName = nil
+            if row.button then
+                row.button.ownerRow = nil
+            end
+            row:Hide()
+        end
+    end
+end
+
+function Roster:CreateWindow()
+    if self.frame then
+        return self.frame
+    end
+
+    local frame, wasCreated = WindowLifecycle:GetOrCreateNamedFrame(self, "frame", "vesperToolsFrame", function()
+        return CreateFrame("Frame", "vesperToolsFrame", UIParent, "BackdropTemplate")
+    end)
+    self:RestoreWindowReferences(frame)
+    if not wasCreated then
+        return frame
+    end
+
+    frame:SetSize(600, 250)
 
     -- Restore saved position or use default
     if vesperTools.db.profile.rosterPosition then
         local pos = vesperTools.db.profile.rosterPosition
-        self.frame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
+        frame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
     else
-        self.frame:SetPoint("RIGHT", UIParent, "CENTER", -250, 0)
+        frame:SetPoint("RIGHT", UIParent, "CENTER", -250, 0)
     end
 
-    vesperTools:ApplyAddonWindowLayer(self.frame)
-    self.frame:SetMovable(true)
-    self.frame:EnableMouse(true)
-    self.frame:SetResizable(true)
-    self.frame:SetResizeBounds(600, 250)
-    
---   Background
-     vesperTools:ApplyRoundedWindowBackdrop(self.frame)
-     self.frame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("roster")) -- #121212
-     local _, englishClass = UnitClass("player")
-     local classColor = C_ClassColor.GetClassColor(englishClass)
-     self.frame:SetBackdropBorderColor(classColor.r, classColor.g, classColor.b, 1)
-    vesperTools:RegisterEscapeFrame(self.frame, function()
+    vesperTools:ApplyAddonWindowLayer(frame)
+    frame:SetMovable(true)
+    frame:EnableMouse(true)
+    frame:SetResizable(true)
+    frame:SetResizeBounds(600, 250)
+
+    vesperTools:ApplyRoundedWindowBackdrop(frame)
+    frame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("roster"))
+    local _, englishClass = UnitClass("player")
+    local classColor = englishClass and C_ClassColor.GetClassColor(englishClass) or nil
+    if classColor then
+        frame:SetBackdropBorderColor(classColor.r, classColor.g, classColor.b, 1)
+    end
+    vesperTools:RegisterEscapeFrame(frame, function()
         self:HandleCloseRequest()
     end)
-    
---   Titlebar
-    local titlebar = CreateFrame("Frame", nil, self.frame)
+
+    -- Titlebar
+    local titlebar = CreateFrame("Frame", nil, frame)
     titlebar:SetHeight(32)
     titlebar:SetPoint("TOPLEFT", 1, -1)
     titlebar:SetPoint("TOPRIGHT", -1, -1)
-    
+
     local titlebg = titlebar:CreateTexture(nil, "BACKGROUND")
     titlebg:SetAllPoints()
-    titlebg:SetColorTexture(0.1, 0.1, 0.1, 1) -- #1A1A1A
-    
+    titlebg:SetColorTexture(0.1, 0.1, 0.1, 1)
+
     local title = titlebar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", 10, 0)
-    local guildName = GetGuildInfo("player")
-    title:SetText(guildName or L["ROSTER_TITLE_FALLBACK"])
+    title:SetText(GetGuildInfo("player") or L["ROSTER_TITLE_FALLBACK"])
     vesperTools:ApplyConfiguredFont(title, vesperTools:GetConfiguredFontSize("roster", 12, 8, 24) + 4, "")
     self.titleText = title
-    
+
     -- Make draggable via titlebar
     titlebar:EnableMouse(true)
     titlebar:RegisterForDrag("LeftButton")
-    titlebar:SetScript("OnDragStart", function() self.frame:StartMoving() end)
+    titlebar:SetScript("OnDragStart", function()
+        frame:StartMoving()
+    end)
     titlebar:SetScript("OnDragStop", function()
-        self.frame:StopMovingOrSizing()
-        -- Save position to database
-        local point, _, relativePoint, xOfs, yOfs = self.frame:GetPoint()
+        frame:StopMovingOrSizing()
+        local point, _, relativePoint, xOfs, yOfs = frame:GetPoint()
         vesperTools.db.profile.rosterPosition = {
             point = point,
             relativePoint = relativePoint,
             xOfs = xOfs,
-            yOfs = yOfs
+            yOfs = yOfs,
         }
     end)
-    
-    -- Close Button
+
     local closeBtn = vesperTools:CreateModernCloseButton(titlebar, function()
         self:HandleCloseRequest()
     end, {
         size = 20,
         iconScale = 0.52,
+        useClassColor = true,
         backgroundAlpha = 0.04,
         borderAlpha = 0.08,
         hoverAlpha = 0.12,
         pressedAlpha = 0.18,
     })
     closeBtn:SetPoint("RIGHT", -6, 0)
-    
-    -- Resize Grip
-    local resizeBtn = CreateFrame("Button", nil, self.frame)
+
+    local resizeBtn = CreateFrame("Button", nil, frame)
     resizeBtn:SetSize(16, 16)
     resizeBtn:SetPoint("BOTTOMRIGHT")
     resizeBtn:EnableMouse(true)
@@ -304,14 +564,14 @@ function Roster:ShowRoster()
 
     resizeBtn:SetScript("OnMouseDown", function(_, button)
         if button == "LeftButton" then
-            self.frame:StartSizing("BOTTOMRIGHT")
+            frame:StartSizing("BOTTOMRIGHT")
         end
     end)
     resizeBtn:SetScript("OnMouseUp", function()
-        self.frame:StopMovingOrSizing()
+        frame:StopMovingOrSizing()
+        self:RequestRosterRefresh()
     end)
-    
-    -- Sync Button
+
     local syncBtn = createHeaderActionButton(titlebar, closeBtn, 72, L["ROSTER_BUTTON_SYNC"], function()
         local KeystoneSync = vesperTools:GetModule("KeystoneSync", true)
         if KeystoneSync then
@@ -321,10 +581,9 @@ function Roster:ShowRoster()
         if Auto then
             Auto:ManualSync()
         end
-        self:UpdateRosterList()
+        self:RequestRosterRefresh()
     end)
 
-    -- Configuration button (left of Sync) opens the custom config panel.
     local confBtn = createHeaderActionButton(titlebar, syncBtn, 56, L["ROSTER_BUTTON_CONFIG"], function(_, mouseButton)
         if mouseButton == "LeftButton" then
             vesperTools:OpenConfig()
@@ -348,22 +607,505 @@ function Roster:ShowRoster()
             end
         end
     end)
-    
-    -- Content Container
-    local contentFrame = CreateFrame("Frame", nil, self.frame, "BackdropTemplate")
+
+    local contentFrame = CreateFrame("Frame", nil, frame)
     contentFrame:SetPoint("TOPLEFT", titlebar, "BOTTOMLEFT", 5, -5)
     contentFrame:SetPoint("BOTTOMRIGHT", -5, 20)
     self.contentFrame = contentFrame
-    
-    self.scroll = AceGUI:Create("ScrollFrame")
-    self.scroll:SetLayout("Flow")
-    self.scroll.frame:SetParent(contentFrame)
-    self.scroll.frame:SetAllPoints()
-    self.scroll.frame:Show()
 
-    self.frame:Raise()
+    local headerFrame = CreateFrame("Frame", nil, contentFrame)
+    headerFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, 0)
+    headerFrame:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -27, 0)
+    headerFrame:SetHeight(ROSTER_HEADER_HEIGHT)
+    self.headerFrame = headerFrame
 
-    self:UpdateRosterList()
+    local headerBackground = headerFrame:CreateTexture(nil, "BACKGROUND")
+    headerBackground:SetAllPoints()
+    headerBackground:SetColorTexture(0.1, 0.1, 0.1, 1)
+    headerFrame.vgBackground = headerBackground
+
+    local headerDivider = contentFrame:CreateTexture(nil, "BORDER")
+    headerDivider:SetHeight(1)
+    headerDivider:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, -1)
+    headerDivider:SetPoint("TOPRIGHT", headerFrame, "BOTTOMRIGHT", 0, -1)
+    headerDivider:SetColorTexture(1, 1, 1, 0.08)
+    contentFrame.vgHeaderDivider = headerDivider
+
+    self.headerButtons = {}
+    for i = 1, #COLUMNS do
+        local column = COLUMNS[i]
+        local button = CreateFrame("Button", nil, headerFrame)
+        button.columnKey = column.key
+        button.columnLabel = column.label
+        button.sortType = column.sort
+        button:SetHighlightTexture("Interface\\Buttons\\WHITE8x8", "ADD")
+        button:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.18)
+
+        local text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetPoint("LEFT", button, "LEFT", ROSTER_TEXT_INSET, 0)
+        text:SetPoint("RIGHT", button, "RIGHT", -ROSTER_TEXT_INSET, 0)
+        text:SetJustifyH("LEFT")
+        text:SetJustifyV("MIDDLE")
+        text:SetWordWrap(false)
+        vesperTools:ApplyConfiguredFont(text, vesperTools:GetConfiguredFontSize("roster", 12, 8, 24), "")
+        button.text = text
+
+        button:SetScript("OnClick", function(selfButton)
+            if self.sortColumn == selfButton.columnKey then
+                self.sortAscending = not self.sortAscending
+            else
+                self.sortColumn = selfButton.columnKey
+                self.sortAscending = (selfButton.sortType == "string")
+            end
+            self:RequestRosterRefresh()
+        end)
+        button:SetScript("OnEnter", function(selfButton)
+            GameTooltip:SetOwner(selfButton, "ANCHOR_TOPLEFT")
+            GameTooltip:SetText(string.format(L["ROSTER_SORT_BY_FMT"], selfButton.columnLabel))
+            GameTooltip:Show()
+        end)
+        button:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+
+        self.headerButtons[i] = button
+    end
+
+    local scrollFrame = CreateFrame("ScrollFrame", nil, contentFrame, "UIPanelScrollFrameTemplate")
+    scrollFrame:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, -ROSTER_HEADER_BOTTOM_MARGIN)
+    scrollFrame:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -27, 0)
+    scrollFrame:EnableMouseWheel(true)
+    scrollFrame:SetScript("OnMouseWheel", function(selfFrame, delta)
+        local current = selfFrame:GetVerticalScroll() or 0
+        local maximum = math.max(0, (selfFrame.contentHeight or 0) - (selfFrame:GetHeight() or 0))
+        local nextValue = math.max(0, math.min(maximum, current - (delta * ROSTER_SCROLL_STEP)))
+        selfFrame:SetVerticalScroll(nextValue)
+    end)
+
+    local scrollChild = CreateFrame("Frame", nil, scrollFrame)
+    scrollChild:SetSize(1, 1)
+    scrollFrame:SetScrollChild(scrollChild)
+    scrollFrame.child = scrollChild
+    vesperTools:ApplyModernScrollBar(scrollFrame)
+    vesperTools:SetModernScrollBarVisibility(scrollFrame, false)
+
+    self.scrollFrame = scrollFrame
+    self.scrollContent = scrollChild
+    self.rosterRows = {}
+    self.rosterScrollBarVisible = nil
+
+    frame.vgContentFrame = contentFrame
+    frame.vgTitleText = title
+    frame.vgHeaderFrame = headerFrame
+    frame.vgHeaderButtons = self.headerButtons
+    frame.vgScrollFrame = scrollFrame
+    frame.vgScrollContent = scrollChild
+    frame.vgRosterRows = self.rosterRows
+
+    self:ApplyRosterStyling()
+    return frame
+end
+
+function Roster:AcquireRosterRow()
+    local parent = self.scrollContent
+    if not parent then
+        return nil
+    end
+
+    local row = CreateFrame("Frame", nil, parent)
+    row:SetHeight(ROSTER_ROW_HEIGHT)
+
+    local background = row:CreateTexture(nil, "BACKGROUND")
+    background:SetAllPoints()
+    row.background = background
+
+    row.columns = {
+        name = createRosterText(row, "GameFontHighlightSmall"),
+        faction = createRosterText(row, "GameFontHighlightSmall"),
+        zone = createRosterText(row, "GameFontHighlightSmall"),
+        status = createRosterText(row, "GameFontHighlightSmall"),
+        ilvl = createRosterText(row, "GameFontHighlightSmall"),
+        rating = createRosterText(row, "GameFontHighlightSmall"),
+        keyLevel = createRosterText(row, "GameFontHighlightSmall"),
+    }
+
+    local actionButton = CreateFrame("Button", nil, row, "InsecureActionButtonTemplate")
+    actionButton:SetPoint("TOPLEFT", row, "TOPLEFT")
+    actionButton:SetPoint("BOTTOMRIGHT", row, "BOTTOMRIGHT")
+    actionButton:SetFrameLevel(row:GetFrameLevel() + 1)
+    actionButton:RegisterForClicks("AnyUp", "AnyDown")
+    actionButton:HookScript("OnClick", function(selfButton, button, down)
+        local ownerRow = selfButton.ownerRow
+        if ownerRow and button == "RightButton" and not down then
+            self:OpenRosterContextMenu(selfButton, ownerRow.fullName)
+        end
+    end)
+    actionButton:SetScript("OnEnter", function(selfButton)
+        local ownerRow = selfButton.ownerRow
+        if ownerRow then
+            self:ShowRosterRowTooltip(ownerRow, selfButton)
+        end
+    end)
+    actionButton:SetScript("OnLeave", function(selfButton)
+        local ownerRow = selfButton.ownerRow
+        if ownerRow then
+            self:HideRosterRowTooltip(ownerRow)
+        end
+    end)
+    row.button = actionButton
+
+    self.rosterRows[#self.rosterRows + 1] = row
+    return row
+end
+
+function Roster:BuildGuildBestTooltip(mapID, dataHandle)
+    if not mapID or not (C_ChallengeMode and C_ChallengeMode.GetMapUIInfo) then
+        return
+    end
+
+    local dungeonName = C_ChallengeMode.GetMapUIInfo(mapID)
+    if not dungeonName then
+        return
+    end
+
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine(string.format(L["ROSTER_ROW_TOOLTIP_GUILD_BEST_FMT"], dungeonName), 1, 0.82, 0, true)
+
+    local entries = {}
+    local seen = {}
+
+    if dataHandle then
+        local bestKeysDB = dataHandle:GetBestKeysDB()
+        if bestKeysDB then
+            for playerName, data in pairs(bestKeysDB) do
+                local info = data[mapID]
+                if info and info.level and info.level > 0 then
+                    local shortName = playerName:match("([^-]+)") or playerName
+                    seen[shortName] = true
+                    entries[#entries + 1] = {
+                        name = shortName,
+                        level = info.level,
+                        inTime = info.inTime,
+                    }
+                end
+            end
+        end
+    end
+
+    local guildLeaders = C_ChallengeMode.GetGuildLeaders and C_ChallengeMode.GetGuildLeaders() or nil
+    if guildLeaders then
+        for i = 1, #guildLeaders do
+            local attempt = guildLeaders[i]
+            if attempt.mapChallengeModeID == mapID and attempt.keystoneLevel > 0 and not seen[attempt.name] then
+                seen[attempt.name] = true
+                entries[#entries + 1] = {
+                    name = attempt.name,
+                    level = attempt.keystoneLevel,
+                }
+            end
+        end
+    end
+
+    table.sort(entries, function(a, b)
+        if a.level == b.level then
+            return a.name < b.name
+        end
+        return a.level > b.level
+    end)
+
+    for i = 1, #entries do
+        local entry = entries[i]
+        local colorCode = dataHandle and dataHandle:GetKeyColor(entry.level) or "|cffffffff"
+        local r, g, b = 0.8, 0.8, 0.8
+        if entry.inTime then
+            r, g, b = 0.51, 0.78, 0.52
+        end
+        GameTooltip:AddDoubleLine(entry.name, colorCode .. "+" .. entry.level .. "|r", 1, 1, 1, r, g, b)
+    end
+
+    if #entries == 0 then
+        GameTooltip:AddLine(L["ROSTER_ROW_TOOLTIP_NO_DATA"], 0.5, 0.5, 0.5)
+    end
+end
+
+function Roster:ShowRosterRowTooltip(row, anchorButton)
+    if not row then
+        return
+    end
+
+    if row.background then
+        row.background:SetColorTexture(0.24, 0.24, 0.24, 1)
+    end
+
+    GameTooltip:SetOwner(anchorButton, "ANCHOR_TOPLEFT")
+    if row.portalSpellName then
+        GameTooltip:SetText(string.format(L["ROSTER_ROW_TOOLTIP_LEFT_RIGHT_FMT"], row.portalSpellName))
+    else
+        GameTooltip:SetText(L["ROSTER_ROW_TOOLTIP_RIGHT_ONLY"])
+    end
+
+    if row.tooltipMapID then
+        self:BuildGuildBestTooltip(row.tooltipMapID, row.dataHandle)
+    end
+
+    GameTooltip:Show()
+end
+
+function Roster:HideRosterRowTooltip(row)
+    if row and row.background then
+        row.background:SetColorTexture(row.baseColorR or 0.12, row.baseColorG or 0.12, row.baseColorB or 0.12, 1)
+    end
+    GameTooltip:Hide()
+end
+
+function Roster:ConfigureRosterRow(row, member, index, columnLayout, fontSize, dataHandle)
+    if not row or not member then
+        return
+    end
+
+    local classColor = member.classFileName and C_ClassColor.GetClassColor(member.classFileName) or nil
+    local nameText = member.name
+    if classColor then
+        nameText = string.format("|c%s%s|r", classColor:GenerateHexColor(), member.name)
+    end
+
+    local factionColor = "|cffFFFFFF"
+    if member.faction == L["FACTION_ALLIANCE_SHORT"] then
+        factionColor = "|cff0070DD"
+    elseif member.faction == L["FACTION_HORDE_SHORT"] then
+        factionColor = "|cffA335EE"
+    end
+
+    local statusDisplay = member.status
+    if member.status == L["STATUS_AFK"] then
+        statusDisplay = "|cffFFFF00" .. L["STATUS_AFK"] .. "|r"
+    elseif member.status == L["STATUS_DND"] then
+        statusDisplay = "|cffFF0000" .. L["STATUS_DND"] .. "|r"
+    end
+
+    local ratingText = "-"
+    if member.rating > 0 then
+        local colorCode = dataHandle and dataHandle:GetRatingColor(member.rating) or "|cff9d9d9d"
+        ratingText = string.format("%s%d|r", colorCode, member.rating)
+    end
+
+    row.member = member
+    row.fullName = member.fullName
+    row.tooltipMapID = member.keystoneMapID
+    row.dataHandle = dataHandle
+
+    row.columns.name:SetText(nameText)
+    row.columns.faction:SetText(factionColor .. member.faction .. "|r")
+    row.columns.zone:SetText(member.zone)
+    row.columns.status:SetText(statusDisplay)
+    row.columns.ilvl:SetText(member.ilvl > 0 and tostring(member.ilvl) or "-")
+    row.columns.rating:SetText(ratingText)
+    row.columns.keyLevel:SetText(member.keystoneText)
+
+    if member.isInGroup then
+        row.baseColorR, row.baseColorG, row.baseColorB = 0.12, 0.24, 0.24
+    elseif (index % 2 == 0) then
+        row.baseColorR, row.baseColorG, row.baseColorB = 0.17, 0.17, 0.17
+    else
+        row.baseColorR, row.baseColorG, row.baseColorB = 0.12, 0.12, 0.12
+    end
+    row.background:SetColorTexture(row.baseColorR, row.baseColorG, row.baseColorB, 1)
+
+    local button = row.button
+    button.ownerRow = row
+    button:SetAttribute("type1", nil)
+    button:SetAttribute("spell1", nil)
+
+    row.portalSpellName = nil
+    if member.keystoneMapID and dataHandle then
+        local dungeonInfo = dataHandle:GetDungeonByMapID(member.keystoneMapID)
+        if dungeonInfo then
+            local spellName = getSpellName(dungeonInfo.spellID)
+            if spellName and isSpellKnownForPlayer(dungeonInfo.spellID) then
+                row.portalSpellName = spellName
+                button:SetAttribute("type1", "spell")
+                button:SetAttribute("spell1", spellName)
+            end
+        end
+    end
+
+    row:ClearAllPoints()
+    row:SetPoint("TOPLEFT", self.scrollContent, "TOPLEFT", 0, -((index - 1) * ROSTER_ROW_HEIGHT))
+    self:LayoutRowColumns(row, columnLayout, fontSize)
+    row:Show()
+end
+
+function Roster:CollectRosterMembers(dataHandle, keystoneSync)
+    local members = {}
+    local playerRealm = GetRealmName()
+    local playerRealmNormalized = GetNormalizedRealmName()
+    local playerFaction = UnitFactionGroup("player")
+
+    local groupMembers = {}
+    if IsInGroup() then
+        for j = 1, GetNumGroupMembers() do
+            local unit = IsInRaid() and ("raid" .. j) or (j == 1 and "player" or ("party" .. (j - 1)))
+            local groupName = UnitName(unit)
+            if groupName then
+                groupMembers[groupName] = true
+            end
+        end
+    end
+
+    local numMembers = GetNumGuildMembers()
+    for i = 1, numMembers do
+        local name, _, _, _, _, zone, _, _, isOnline, status, classFileName = GetGuildRosterInfo(i)
+        if isOnline then
+            local displayName = name:match("([^-]+)") or name
+            local fullName = name
+            if not string.find(name, "-") then
+                fullName = name .. "-" .. playerRealmNormalized
+            end
+
+            local factionText = "?"
+            if playerFaction == "Alliance" then
+                factionText = L["FACTION_ALLIANCE_SHORT"]
+            elseif playerFaction == "Horde" then
+                factionText = L["FACTION_HORDE_SHORT"]
+            end
+
+            local statusRaw = L["STATUS_ONLINE"]
+            if status == 1 then
+                statusRaw = L["STATUS_AFK"]
+            elseif status == 2 then
+                statusRaw = L["STATUS_DND"]
+            end
+
+            local ilvlNum = 0
+            if dataHandle then
+                local ilvlData = dataHandle:GetIlvlForPlayer(fullName)
+                    or dataHandle:GetIlvlForPlayer(name)
+                    or dataHandle:GetIlvlForPlayer(displayName)
+                    or dataHandle:GetIlvlForPlayer(displayName .. "-" .. playerRealm)
+                if ilvlData then
+                    ilvlNum = ilvlData.ilvl
+                end
+            end
+
+            local ratingNum = 0
+            local keyData = vesperTools.db.global.keystones
+                and (
+                    vesperTools.db.global.keystones[fullName]
+                    or vesperTools.db.global.keystones[name]
+                    or vesperTools.db.global.keystones[displayName]
+                    or vesperTools.db.global.keystones[displayName .. "-" .. playerRealm]
+                )
+            if keyData and keyData.rating then
+                ratingNum = keyData.rating
+            end
+
+            local keystoneText = "-"
+            local keystoneMapID = nil
+            local keyLevel = 0
+            if keystoneSync then
+                keystoneText = keystoneSync:GetKeystoneForPlayer(fullName)
+                    or keystoneSync:GetKeystoneForPlayer(name)
+                    or "-"
+                if keyData then
+                    keystoneMapID = keyData.mapID
+                    keyLevel = keyData.level or 0
+                end
+            end
+
+            members[#members + 1] = {
+                name = displayName,
+                fullName = fullName,
+                classFileName = classFileName,
+                faction = factionText,
+                zone = zone or UNKNOWN,
+                status = statusRaw,
+                ilvl = ilvlNum,
+                rating = ratingNum,
+                keystoneText = keystoneText,
+                keystoneMapID = keystoneMapID,
+                keyLevel = keyLevel,
+                isInGroup = groupMembers[displayName] or false,
+                guildIndex = i,
+            }
+        end
+    end
+
+    table.sort(members, function(a, b)
+        if a.isInGroup ~= b.isInGroup then
+            return a.isInGroup
+        end
+
+        if self.sortColumn then
+            local va, vb = a[self.sortColumn], b[self.sortColumn]
+            if va ~= vb then
+                if self.sortAscending then
+                    return va < vb
+                end
+                return va > vb
+            end
+            if a.name ~= b.name then
+                return a.name < b.name
+            end
+        end
+
+        return a.guildIndex < b.guildIndex
+    end)
+
+    return members
+end
+
+-- Rebuild the visible guild list, including sorting and per-row actions.
+function Roster:UpdateRosterList()
+    if not self.frame or not self.frame:IsShown() then
+        return
+    end
+
+    if CombatGate and CombatGate:IsLockedDown() then
+        self:RequestRosterRefresh()
+        return
+    end
+
+    local rosterFontSize = vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
+    local dataHandle = vesperTools:GetModule("DataHandle", true)
+    local keystoneSync = vesperTools:GetModule("KeystoneSync", true)
+    local members = self:CollectRosterMembers(dataHandle, keystoneSync)
+    local contentHeight = math.max(1, #members * ROSTER_ROW_HEIGHT)
+    local visibleHeight = self.scrollFrame and (self.scrollFrame:GetHeight() or 0) or 0
+    local hasScrollBar = contentHeight > (visibleHeight + 0.5)
+
+    self:UpdateListViewportLayout(hasScrollBar)
+
+    local columnLayout = self:BuildColumnLayout(self:GetListContentWidth())
+    local scrollPosition = self.scrollFrame and (self.scrollFrame:GetVerticalScroll() or 0) or 0
+
+    self.currentColumnLayout = columnLayout
+    self:UpdateHeaderLayout(columnLayout, rosterFontSize)
+
+    for index = 1, #members do
+        local row = self.rosterRows[index] or self:AcquireRosterRow()
+        self:ConfigureRosterRow(row, members[index], index, columnLayout, rosterFontSize, dataHandle)
+    end
+
+    self:HideRosterRows(#members + 1)
+
+    self.scrollContent:SetWidth(columnLayout.totalWidth)
+    self.scrollContent:SetHeight(math.max(visibleHeight, contentHeight))
+    self.scrollFrame.contentHeight = contentHeight
+
+    local maxScroll = hasScrollBar and math.max(0, contentHeight - visibleHeight) or 0
+    self.scrollFrame:SetVerticalScroll(math.max(0, math.min(maxScroll, scrollPosition)))
+end
+
+-- Create the roster frame lazily, then refresh its contents on every open.
+function Roster:ShowRoster()
+    self:CreateWindow()
+    self.pendingRosterRefresh = false
+    self:ApplyRosterStyling()
+    if self.scrollFrame then
+        self.scrollFrame:SetVerticalScroll(0)
+    end
+    WindowLifecycle:Show(self.frame)
+    self:RequestRosterRefresh()
 end
 
 function Roster:HandleCloseRequest()
@@ -371,19 +1113,14 @@ function Roster:HandleCloseRequest()
         return
     end
 
-    if self.portalButtons then
-        for _, btn in ipairs(self.portalButtons) do
-            btn:Hide()
-            btn:SetParent(nil)
-        end
-        self.portalButtons = nil
+    if CombatGate then
+        CombatGate:CancelOwner(self)
     end
 
-    self.frame:Hide()
-    self.frame = nil
-    self.scroll = nil
-    self.contentFrame = nil
-    self.titleText = nil
+    self.pendingRosterRefresh = false
+    self:HideRosterRows(1)
+    GameTooltip:Hide()
+    WindowLifecycle:Hide(self.frame)
 
     if self.dungeonPanel then
         self.dungeonPanel:Hide()
@@ -401,470 +1138,5 @@ function Roster:Toggle()
         self:HandleCloseRequest()
     else
         self:ShowRoster()
-    end
-end
-
--- Helper: vertically center text inside AceGUI Label/InteractiveLabel
-local function CenterLabelV(widget)
-    if widget.label then
-        widget.label:SetJustifyV("MIDDLE")
-        widget.label:ClearAllPoints()
-        widget.label:SetPoint("TOPLEFT", widget.frame, "TOPLEFT", 0, 0)
-        widget.label:SetPoint("BOTTOMRIGHT", widget.frame, "BOTTOMRIGHT", 0, 0)
-    end
-end
-
--- Apply the currently selected addon font to an AceGUI widget.
--- Falls back to applying the font directly on the underlying label.
-local function ApplyWidgetFont(widget, size, flags)
-    if not widget then
-        return
-    end
-
-    local path = vesperTools:GetConfiguredFontPath()
-    local resolvedSize = tonumber(size) or 12
-    local resolvedFlags = type(flags) == "string" and flags or ""
-
-    if type(widget.SetFont) == "function" then
-        local ok = pcall(widget.SetFont, widget, path, resolvedSize, resolvedFlags)
-        if ok then
-            return
-        end
-    end
-
-    if widget.label then
-        vesperTools:ApplyConfiguredFont(widget.label, resolvedSize, resolvedFlags)
-    end
-end
-
--- Sort arrow indicators (WoW built-in arrow textures)
-local ARROW_UP = " |TInterface\\Buttons\\Arrow-Up-Up:12:12|t"
-local ARROW_DOWN = " |TInterface\\Buttons\\Arrow-Down-Up:12:12|t"
-
--- Column definitions: key, label, width, sort type
-local COLUMNS = {
-    { key = "name",    label = L["ROSTER_COLUMN_NAME"], width = 0.15, sort = "string" },
-    { key = "faction", label = L["ROSTER_COLUMN_FACTION"], width = 0.05, sort = "string" },
-    { key = "zone",    label = L["ROSTER_COLUMN_ZONE"], width = 0.20, sort = "string" },
-    { key = "status",  label = L["ROSTER_COLUMN_STATUS"], width = 0.10, sort = "string" },
-    { key = "ilvl",    label = L["ROSTER_COLUMN_ILVL"], width = 0.10, sort = "number" },
-    { key = "rating",  label = L["ROSTER_COLUMN_RATING"], width = 0.1, sort = "number" },
-    { key = "keyLevel", label = L["ROSTER_COLUMN_KEY"], width = 0.2, sort = "number" },
-}
-
--- Rebuild the visible guild list, including sorting and per-row actions.
-function Roster:UpdateRosterList()
-    if not self.frame then return end
-
-    -- Base row/header typography controlled from config per-frame tab.
-    local rosterFontSize = vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
-
-    -- Clean up any existing portal buttons
-    if self.portalButtons then
-        for _, btn in ipairs(self.portalButtons) do
-            btn:Hide()
-            btn:SetParent(nil)
-        end
-    end
-    self.portalButtons = {}
-
-    self.scroll:ReleaseChildren() -- Clear existing list
-
-    -- Header row with clickable sort labels
-    local headerGroup = AceGUI:Create("SimpleGroup")
-    headerGroup:SetLayout("Flow")
-    headerGroup:SetFullWidth(true)
-
-    for _, col in ipairs(COLUMNS) do
-        local arrow = ""
-        if self.sortColumn == col.key then
-            arrow = self.sortAscending and ARROW_UP or ARROW_DOWN
-        end
-
-        local header = AceGUI:Create("InteractiveLabel")
-        header:SetText(col.label .. arrow)
-        header:SetRelativeWidth(col.width)
-        ApplyWidgetFont(header, rosterFontSize, "")
-        CenterLabelV(header)
-
-        header:SetCallback("OnClick", function()
-            if self.sortColumn == col.key then
-                self.sortAscending = not self.sortAscending
-            else
-                self.sortColumn = col.key
-                -- Strings feel more natural ascending by default; numbers default descending.
-                self.sortAscending = (col.sort == "string")
-            end
-            self:UpdateRosterList()
-        end)
-
-        header:SetCallback("OnEnter", function(widget)
-            GameTooltip:SetOwner(widget.frame, "ANCHOR_TOPLEFT")
-            GameTooltip:SetText(string.format(L["ROSTER_SORT_BY_FMT"], col.label))
-            GameTooltip:Show()
-        end)
-        header:SetCallback("OnLeave", function() GameTooltip:Hide() end)
-
-        headerGroup:AddChild(header)
-    end
-
-    -- Header background (no hover highlight)
-    local headerFrame = headerGroup.frame
-    if not headerFrame.vesperBg then
-        headerFrame.vesperBg = headerFrame:CreateTexture(nil, "BACKGROUND")
-        headerFrame.vesperBg:SetAllPoints()
-    end
-    headerFrame.vesperBg:SetColorTexture(0.1, 0.1, 0.1, 1)
-    headerFrame:SetScript("OnEnter", nil)
-    headerFrame:SetScript("OnLeave", nil)
-
-    self.scroll:AddChild(headerGroup)
-
-    local line = AceGUI:Create("Heading")
-    line:SetFullWidth(true)
-    self.scroll:AddChild(line)
-
-    -- Cache lookups before the loop
-    local DataHandle = vesperTools:GetModule("DataHandle", true)
-    local KeystoneSync = vesperTools:GetModule("KeystoneSync", true)
-    local playerRealm = GetRealmName()
-    local playerRealmNormalized = GetNormalizedRealmName()
-    local playerFaction = UnitFactionGroup("player")
-
-    -- Build group member lookup table for O(1) checks
-    local groupMembers = {}
-    if IsInGroup() then
-        for j = 1, GetNumGroupMembers() do
-            local unit = IsInRaid() and ("raid" .. j) or (j == 1 and "player" or ("party" .. (j - 1)))
-            local gName = UnitName(unit)
-            if gName then groupMembers[gName] = true end
-        end
-    end
-
-    -- Collect all online member data for sorting
-    local members = {}
-    local numMembers = GetNumGuildMembers()
-    for i = 1, numMembers do
-        local name, _, _, _, _, zone, _, _, isOnline, status, classFileName = GetGuildRosterInfo(i)
-
-        if isOnline then
-            -- Normalize "Name-Realm" variants so lookups match across different data producers.
-            local displayName = name:match("([^-]+)") or name
-            local fullName = name
-            if not string.find(name, "-") then
-                fullName = name .. "-" .. playerRealmNormalized
-            end
-
-            -- Faction
-            local factionText = "?"
-            if playerFaction == "Alliance" then factionText = L["FACTION_ALLIANCE_SHORT"]
-            elseif playerFaction == "Horde" then factionText = L["FACTION_HORDE_SHORT"] end
-
-            -- Status
-            local statusRaw = L["STATUS_ONLINE"]
-            if status == 1 then statusRaw = L["STATUS_AFK"]
-            elseif status == 2 then statusRaw = L["STATUS_DND"] end
-
-            -- iLvl
-            local ilvlNum = 0
-            if DataHandle then
-                -- Try multiple key formats because senders may include/exclude realm suffix.
-                local ilvlData = DataHandle:GetIlvlForPlayer(fullName)
-                    or DataHandle:GetIlvlForPlayer(name)
-                    or DataHandle:GetIlvlForPlayer(displayName)
-                    or DataHandle:GetIlvlForPlayer(displayName .. "-" .. playerRealm)
-                if ilvlData then ilvlNum = ilvlData.ilvl end
-            end
-
-            -- Rating
-            local ratingNum = 0
-            local keyData = vesperTools.db.global.keystones
-                and (
-                    -- Same multi-key fallback strategy as ilvl for cross-realm consistency.
-                    vesperTools.db.global.keystones[fullName]
-                    or vesperTools.db.global.keystones[name]
-                    or vesperTools.db.global.keystones[displayName]
-                    or vesperTools.db.global.keystones[displayName .. "-" .. playerRealm]
-                )
-            if keyData and keyData.rating then
-                ratingNum = keyData.rating
-            end
-
-            -- Keystone
-            local keystoneText = "-"
-            local keystoneMapID = nil
-            local keyLevel = 0
-            if KeystoneSync then
-                keystoneText = KeystoneSync:GetKeystoneForPlayer(fullName)
-                    or KeystoneSync:GetKeystoneForPlayer(name)
-                    or "-"
-                if keyData then
-                    keystoneMapID = keyData.mapID
-                    keyLevel = keyData.level or 0
-                end
-            end
-
-            table.insert(members, {
-                name = displayName,
-                fullName = fullName,
-                classFileName = classFileName,
-                faction = factionText,
-                zone = zone or UNKNOWN,
-                status = statusRaw,
-                ilvl = ilvlNum,
-                rating = ratingNum,
-                keystoneText = keystoneText,
-                keystoneMapID = keystoneMapID,
-                keyLevel = keyLevel,
-                isInGroup = groupMembers[displayName] or false,
-                guildIndex = i,
-            })
-        end
-    end
-
-    -- Sort members
-    table.sort(members, function(a, b)
-        if a.isInGroup ~= b.isInGroup then
-            return a.isInGroup
-        end
-
-        if self.sortColumn then
-            local va, vb = a[self.sortColumn], b[self.sortColumn]
-            -- Stable-ish tie-break by name to avoid row jitter between refreshes.
-            if va ~= vb then
-                if self.sortAscending then
-                    return va < vb
-                else
-                    return va > vb
-                end
-            end
-            if a.name ~= b.name then
-                return a.name < b.name
-            end
-        end
-
-        return a.guildIndex < b.guildIndex
-    end)
-
-    -- Render sorted rows
-    for i, m in ipairs(members) do
-        local row = AceGUI:Create("SimpleGroup")
-        row:SetLayout("Flow")
-        row:SetFullWidth(true)
-
-        -- Name (class colored)
-        local classColor = C_ClassColor.GetClassColor(m.classFileName)
-        local nameText = m.name
-        if classColor then
-            nameText = string.format("|c%s%s|r", classColor:GenerateHexColor(), m.name)
-        end
-
-        local nameLabel = AceGUI:Create("Label")
-        nameLabel:SetText(nameText)
-        nameLabel:SetRelativeWidth(0.15)
-        ApplyWidgetFont(nameLabel, rosterFontSize, "")
-        CenterLabelV(nameLabel)
-        row:AddChild(nameLabel)
-
-        -- Faction
-        local factionColor = "|cffFFFFFF"
-        if m.faction == L["FACTION_ALLIANCE_SHORT"] then factionColor = "|cff0070DD"
-        elseif m.faction == L["FACTION_HORDE_SHORT"] then factionColor = "|cffA335EE" end
-
-        local factionLabel = AceGUI:Create("Label")
-        factionLabel:SetText(factionColor .. m.faction .. "|r")
-        factionLabel:SetRelativeWidth(0.05)
-        ApplyWidgetFont(factionLabel, rosterFontSize, "")
-        CenterLabelV(factionLabel)
-        row:AddChild(factionLabel)
-
-        -- Zone
-        local zoneLabel = AceGUI:Create("Label")
-        zoneLabel:SetText(m.zone)
-        zoneLabel:SetRelativeWidth(0.20)
-        ApplyWidgetFont(zoneLabel, rosterFontSize, "")
-        CenterLabelV(zoneLabel)
-        row:AddChild(zoneLabel)
-
-        -- Status
-        local statusDisplay = m.status
-        if m.status == L["STATUS_AFK"] then
-            statusDisplay = "|cffFFFF00" .. L["STATUS_AFK"] .. "|r"
-        elseif m.status == L["STATUS_DND"] then
-            statusDisplay = "|cffFF0000" .. L["STATUS_DND"] .. "|r"
-        end
-
-        local statusLabel = AceGUI:Create("Label")
-        statusLabel:SetText(statusDisplay)
-        statusLabel:SetRelativeWidth(0.10)
-        ApplyWidgetFont(statusLabel, rosterFontSize, "")
-        CenterLabelV(statusLabel)
-        row:AddChild(statusLabel)
-
-        -- iLvl
-        local ilvlLabel = AceGUI:Create("Label")
-        ilvlLabel:SetText(m.ilvl > 0 and tostring(m.ilvl) or "-")
-        ilvlLabel:SetRelativeWidth(0.10)
-        ApplyWidgetFont(ilvlLabel, rosterFontSize, "")
-        CenterLabelV(ilvlLabel)
-        row:AddChild(ilvlLabel)
-
-        -- Rating
-        local ratingText = "-"
-        if m.rating > 0 then
-            local colorCode = DataHandle and DataHandle:GetRatingColor(m.rating) or "|cff9d9d9d"
-            ratingText = string.format("%s%d|r", colorCode, m.rating)
-        end
-        local ratingLabel = AceGUI:Create("Label")
-        ratingLabel:SetText(ratingText)
-        ratingLabel:SetRelativeWidth(0.1)
-        ApplyWidgetFont(ratingLabel, rosterFontSize, "")
-        CenterLabelV(ratingLabel)
-        row:AddChild(ratingLabel)
-
-        -- Keystone
-        local keyLabel = AceGUI:Create("Label")
-        keyLabel:SetText(m.keystoneText)
-        keyLabel:SetRelativeWidth(0.2)
-        ApplyWidgetFont(keyLabel, rosterFontSize, "")
-        CenterLabelV(keyLabel)
-        row:AddChild(keyLabel)
-
-        -- Row background (must be before rowBtn so closures can capture these locals)
-        local rowFrame = row.frame
-        if not rowFrame.vesperBg then
-            rowFrame.vesperBg = rowFrame:CreateTexture(nil, "BACKGROUND")
-            rowFrame.vesperBg:SetAllPoints()
-        end
-
-        local baseColorR, baseColorG, baseColorB
-        if m.isInGroup then
-            -- Slightly different tint for current party members to improve scanability.
-            baseColorR, baseColorG, baseColorB = 0.12, 0.24, 0.24
-        elseif (i % 2 == 0) then
-            baseColorR, baseColorG, baseColorB = 0.17, 0.17, 0.17
-        else
-            baseColorR, baseColorG, baseColorB = 0.12, 0.12, 0.12
-        end
-
-        rowFrame.vesperBg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
-
-        -- Row overlay button: left-click = portal cast, right-click = context menu
-        local rowBtn = CreateFrame("Button", nil, row.frame, "InsecureActionButtonTemplate")
-        rowBtn:SetPoint("TOPLEFT", row.frame, "TOPLEFT")
-        rowBtn:SetPoint("BOTTOMRIGHT", row.frame, "BOTTOMRIGHT")
-        rowBtn:SetFrameLevel(row.frame:GetFrameLevel() + 1)
-        rowBtn:RegisterForClicks("AnyUp", "AnyDown")
-
-        -- Left-click cast path uses secure button attributes (spell assignment at build time).
-        local portalSpellName = nil
-        if m.keystoneMapID and DataHandle then
-            local dungInfo = DataHandle:GetDungeonByMapID(m.keystoneMapID)
-            if dungInfo then
-                local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
-                local spellName = spellInfo and spellInfo.name
-                local hasPortal = isSpellKnownForPlayer(dungInfo.spellID)
-                if spellName and hasPortal then
-                    portalSpellName = spellName
-                    rowBtn:SetAttribute("type1", "spell")
-                    rowBtn:SetAttribute("spell1", spellName)
-                end
-            end
-        end
-
-        -- Use HookScript so secure left-click casting remains intact while adding right-click behavior.
-        local rosterModule = self
-        local memberFullName = m.fullName
-        rowBtn:HookScript("OnClick", function(selfButton, button, down)
-            if button == "RightButton" and not down then
-                rosterModule:OpenRosterContextMenu(selfButton, memberFullName)
-            end
-        end)
-
-        -- Tooltip with best keys for this dungeon
-        local tooltipMapID = m.keystoneMapID
-        rowBtn:SetScript("OnEnter", function(rowButton)
-            -- Highlight row background
-            if rowFrame.vesperBg then
-                rowFrame.vesperBg:SetColorTexture(0.24, 0.24, 0.24, 1)
-            end
-            GameTooltip:SetOwner(rowButton, "ANCHOR_TOPLEFT")
-            if portalSpellName then
-                GameTooltip:SetText(string.format(L["ROSTER_ROW_TOOLTIP_LEFT_RIGHT_FMT"], portalSpellName))
-            else
-                GameTooltip:SetText(L["ROSTER_ROW_TOOLTIP_RIGHT_ONLY"])
-            end
-
-            if tooltipMapID then
-                local dungName = C_ChallengeMode.GetMapUIInfo(tooltipMapID)
-                if dungName then
-                    GameTooltip:AddLine(" ")
-                    GameTooltip:AddLine(string.format(L["ROSTER_ROW_TOOLTIP_GUILD_BEST_FMT"], dungName), 1, 0.82, 0, true)
-
-                    local entries = {}
-                    local seen = {}
-
-                    -- Primary source: addon-synced per-player best keys.
-                    if DataHandle then
-                        local bestKeysDB = DataHandle:GetBestKeysDB()
-                        if bestKeysDB then
-                            for playerName, data in pairs(bestKeysDB) do
-                                local info = data[tooltipMapID]
-                                if info and info.level and info.level > 0 then
-                                    local shortName = playerName:match("([^-]+)") or playerName
-                                    seen[shortName] = true
-                                    table.insert(entries, {
-                                        name = shortName,
-                                        level = info.level,
-                                        inTime = info.inTime
-                                    })
-                                end
-                            end
-                        end
-                    end
-
-                    -- Secondary source: Blizzard guild leaderboard entries.
-                    local guildLeaders = C_ChallengeMode.GetGuildLeaders()
-                    if guildLeaders then
-                        for _, attempt in ipairs(guildLeaders) do
-                            if attempt.mapChallengeModeID == tooltipMapID and attempt.keystoneLevel > 0 then
-                                if not seen[attempt.name] then
-                                    seen[attempt.name] = true
-                                    table.insert(entries, { name = attempt.name, level = attempt.keystoneLevel })
-                                end
-                            end
-                        end
-                    end
-
-                    table.sort(entries, function(a, b)
-                        -- Highest key first, then lexical name for deterministic ordering.
-                        if a.level == b.level then return a.name < b.name end
-                        return a.level > b.level
-                    end)
-                    for _, e in ipairs(entries) do
-                        local colorCode = DataHandle and DataHandle:GetKeyColor(e.level) or "|cffffffff"
-                        local r, g, b = 0.8, 0.8, 0.8
-                        if e.inTime then r, g, b = 0.51, 0.78, 0.52 end
-                        GameTooltip:AddDoubleLine(e.name, colorCode .. "+" .. e.level .. "|r", 1, 1, 1, r, g, b)
-                    end
-                    if #entries == 0 then
-                        GameTooltip:AddLine(L["ROSTER_ROW_TOOLTIP_NO_DATA"], 0.5, 0.5, 0.5)
-                    end
-                end
-            end
-
-            GameTooltip:Show()
-        end)
-        rowBtn:SetScript("OnLeave", function()
-            -- Restore row background
-            if rowFrame.vesperBg then
-                rowFrame.vesperBg:SetColorTexture(baseColorR, baseColorG, baseColorB, 1)
-            end
-            GameTooltip:Hide()
-        end)
-
-        table.insert(self.portalButtons, rowBtn)
-
-        self.scroll:AddChild(row)
     end
 end

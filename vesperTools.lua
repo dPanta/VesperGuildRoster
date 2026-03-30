@@ -1,5 +1,6 @@
 local addonName, addonTable = ...
 local localeDefaults = addonTable.LocaleDefaults or {}
+local AddonServices = addonTable.AddonServices
 
 -- Core addon entry point.
 -- Responsibilities:
@@ -25,7 +26,7 @@ if not LibStub or not LibStub("AceAddon-3.0", true) then
 end
 
 -- Create the singleton addon object shared by every module file.
-vesperTools = LibStub("AceAddon-3.0"):NewAddon(addonName, "AceConsole-3.0", "AceEvent-3.0")
+vesperTools = LibStub("AceAddon-3.0"):NewAddon(addonName, "AceEvent-3.0")
 
 local AceLocale = LibStub("AceLocale-3.0", true)
 if AceLocale then
@@ -33,6 +34,14 @@ if AceLocale then
 end
 addonTable.L = L
 vesperTools.L = L
+
+function vesperTools:Print(...)
+    return AddonServices:Print(self, ...)
+end
+
+function vesperTools:RegisterChatCommand(command, func)
+    return AddonServices:RegisterChatCommand(self, command, func)
+end
 
 -- Current and legacy DB names are kept side-by-side for transparent migration.
 local CURRENT_MAIN_DB_NAME = "vesperToolsDB"
@@ -81,6 +90,7 @@ local DEFAULT_BANK_QUALITY_GLOW_INTENSITY = 0.65
 local MAX_UTILITY_TOY_WHITELIST = 15
 local MAX_BAGS_CURRENCY_BAR_ENTRIES = 12
 local MODERN_CLOSE_BUTTON_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\CloseModern-128"
+local MIDNIGHT_LURE_PIN_TEXTURE = 4620680
 local ESCAPE_BINDING_BUTTON_NAME = "vesperToolsEscapeBindingButton"
 local GOLD_BAR_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_Coin_01"
 local ROUNDED_WINDOW_CORNER_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\RoundedCornerFill-8"
@@ -1308,6 +1318,19 @@ function vesperTools:ApplyRoundedWindowBackdrop(frame, options)
     bottomRightBorder:SetTexCoord(1, 0, 1, 0)
 end
 
+local function getPlayerClassAccentColor()
+    local _, englishClass = UnitClass("player")
+    local classColor = englishClass and C_ClassColor.GetClassColor(englishClass) or nil
+    if classColor then
+        return classColor.r, classColor.g, classColor.b
+    end
+
+    return 0.26, 0.58, 0.92
+end
+
+local suppressTexture
+local suppressButtonTextures
+
 function vesperTools:CreateModernCloseButton(parent, onClick, options)
     if not parent then
         return nil
@@ -1345,6 +1368,14 @@ function vesperTools:CreateModernCloseButton(parent, onClick, options)
     local iconTexture = resolvedOptions.iconTexture or MODERN_CLOSE_BUTTON_TEXTURE
     local clicks = type(resolvedOptions.clicks) == "table" and resolvedOptions.clicks or { "LeftButtonUp" }
     local iconInset = tonumber(resolvedOptions.iconInset)
+    local useClassColor = resolvedOptions.useClassColor and true or false
+    local iconColor = type(resolvedOptions.iconColor) == "table" and resolvedOptions.iconColor or nil
+    local iconColorR = iconColor and (tonumber(iconColor.r) or tonumber(iconColor[1])) or 1
+    local iconColorG = iconColor and (tonumber(iconColor.g) or tonumber(iconColor[2])) or 1
+    local iconColorB = iconColor and (tonumber(iconColor.b) or tonumber(iconColor[3])) or 1
+    if useClassColor then
+        iconColorR, iconColorG, iconColorB = getPlayerClassAccentColor()
+    end
     local iconSize
     if iconInset then
         iconSize = math.max(8, size - (math.floor(iconInset + 0.5) * 2))
@@ -1379,7 +1410,7 @@ function vesperTools:CreateModernCloseButton(parent, onClick, options)
     icon:SetPoint("CENTER", iconOffsetX, iconOffsetY)
     icon:SetSize(iconSize, iconSize)
     icon:SetTexture(iconTexture)
-    icon:SetVertexColor(1, 1, 1, iconAlpha)
+    icon:SetVertexColor(iconColorR, iconColorG, iconColorB, iconAlpha)
     button.vgIconTexture = icon
 
     button:SetScript("OnEnter", function(selfButton)
@@ -1387,14 +1418,19 @@ function vesperTools:CreateModernCloseButton(parent, onClick, options)
             return
         end
         selfButton.vgHoverTexture:Show()
-        selfButton.vgIconTexture:SetVertexColor(1, 1, 1, iconHoverAlpha)
+        selfButton.vgIconTexture:SetVertexColor(iconColorR, iconColorG, iconColorB, iconHoverAlpha)
     end)
     button:SetScript("OnLeave", function(selfButton)
         selfButton.vgHoverTexture:Hide()
         selfButton.vgPressedTexture:Hide()
         selfButton.vgIconTexture:ClearAllPoints()
         selfButton.vgIconTexture:SetPoint("CENTER", iconOffsetX, iconOffsetY)
-        selfButton.vgIconTexture:SetVertexColor(1, 1, 1, selfButton:IsEnabled() and iconAlpha or iconAlpha * 0.55)
+        selfButton.vgIconTexture:SetVertexColor(
+            iconColorR,
+            iconColorG,
+            iconColorB,
+            selfButton:IsEnabled() and iconAlpha or iconAlpha * 0.55
+        )
     end)
     button:SetScript("OnMouseDown", function(selfButton, mouseButton)
         if mouseButton ~= "LeftButton" or not selfButton:IsEnabled() then
@@ -1417,6 +1453,500 @@ function vesperTools:CreateModernCloseButton(parent, onClick, options)
     return button
 end
 
+function vesperTools:ApplyModernTextButtonStyle(button, options)
+    if not button then
+        return nil
+    end
+
+    local resolvedOptions = type(options) == "table" and options or {}
+    local width = math.max(24, math.floor((tonumber(resolvedOptions.width) or button:GetWidth() or 64) + 0.5))
+    local height = math.max(14, math.floor((tonumber(resolvedOptions.height) or button:GetHeight() or 20) + 0.5))
+    local backgroundAlpha = tonumber(resolvedOptions.backgroundAlpha)
+    if backgroundAlpha == nil then
+        backgroundAlpha = 0.88
+    end
+    local borderAlpha = tonumber(resolvedOptions.borderAlpha)
+    if borderAlpha == nil then
+        borderAlpha = 0.16
+    end
+    local hoverAlpha = tonumber(resolvedOptions.hoverAlpha)
+    if hoverAlpha == nil then
+        hoverAlpha = 0.08
+    end
+    local pressedAlpha = tonumber(resolvedOptions.pressedAlpha)
+    if pressedAlpha == nil then
+        pressedAlpha = 0.14
+    end
+    local disabledAlpha = tonumber(resolvedOptions.disabledAlpha)
+    if disabledAlpha == nil then
+        disabledAlpha = 0.55
+    end
+
+    local backgroundColor = type(resolvedOptions.backgroundColor) == "table" and resolvedOptions.backgroundColor or nil
+    local backgroundColorR = backgroundColor and (tonumber(backgroundColor.r) or tonumber(backgroundColor[1])) or 0.08
+    local backgroundColorG = backgroundColor and (tonumber(backgroundColor.g) or tonumber(backgroundColor[2])) or 0.08
+    local backgroundColorB = backgroundColor and (tonumber(backgroundColor.b) or tonumber(backgroundColor[3])) or 0.10
+    local borderColor = type(resolvedOptions.borderColor) == "table" and resolvedOptions.borderColor or nil
+    local borderColorR = borderColor and (tonumber(borderColor.r) or tonumber(borderColor[1])) or 1
+    local borderColorG = borderColor and (tonumber(borderColor.g) or tonumber(borderColor[2])) or 1
+    local borderColorB = borderColor and (tonumber(borderColor.b) or tonumber(borderColor[3])) or 1
+    local textColor = type(resolvedOptions.textColor) == "table" and resolvedOptions.textColor or nil
+    local textColorR = textColor and (tonumber(textColor.r) or tonumber(textColor[1])) or 1
+    local textColorG = textColor and (tonumber(textColor.g) or tonumber(textColor[2])) or 1
+    local textColorB = textColor and (tonumber(textColor.b) or tonumber(textColor[3])) or 1
+    local textAlpha = tonumber(resolvedOptions.textAlpha)
+    if textAlpha == nil then
+        textAlpha = 0.96
+    end
+    local text = resolvedOptions.text
+    local fontSize = math.max(8, math.floor((tonumber(resolvedOptions.fontSize) or 11) + 0.5))
+    local fontFlags = resolvedOptions.fontFlags or ""
+    local textOffsetX = math.floor((tonumber(resolvedOptions.textOffsetX) or 0) + 0.5)
+    local textOffsetY = math.floor((tonumber(resolvedOptions.textOffsetY) or 0) + 0.5)
+
+    button:SetSize(width, height)
+    suppressButtonTextures(button)
+
+    local styleFrame = button.vgModernTextStyleFrame
+    if not styleFrame then
+        styleFrame = CreateFrame("Frame", nil, button, "BackdropTemplate")
+        styleFrame:SetAllPoints(button)
+        styleFrame:EnableMouse(false)
+        styleFrame:SetFrameLevel(math.max((button:GetFrameLevel() or 0) + 1, 1))
+        styleFrame:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+
+        local hover = styleFrame:CreateTexture(nil, "ARTWORK")
+        hover:SetAllPoints()
+        hover:SetColorTexture(1, 1, 1, hoverAlpha)
+        hover:Hide()
+        styleFrame.vgHoverTexture = hover
+
+        local pressed = styleFrame:CreateTexture(nil, "ARTWORK")
+        pressed:SetAllPoints()
+        pressed:SetColorTexture(1, 1, 1, pressedAlpha)
+        pressed:Hide()
+        styleFrame.vgPressedTexture = pressed
+
+        local label = styleFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        label:SetPoint("CENTER", styleFrame, "CENTER", textOffsetX, textOffsetY)
+        label:SetJustifyH("CENTER")
+        label:SetJustifyV("MIDDLE")
+        label:SetWordWrap(false)
+        styleFrame.vgLabel = label
+
+        local function refreshState(selfButton)
+            local enabled = not selfButton.IsEnabled or selfButton:IsEnabled()
+            styleFrame:SetAlpha(enabled and 1 or disabledAlpha)
+            styleFrame.vgLabel:SetAlpha(enabled and textAlpha or (textAlpha * disabledAlpha))
+        end
+
+        button:HookScript("OnEnter", function(selfButton)
+            if selfButton.IsEnabled and not selfButton:IsEnabled() then
+                return
+            end
+            styleFrame.vgHoverTexture:Show()
+        end)
+        button:HookScript("OnLeave", function(selfButton)
+            styleFrame.vgHoverTexture:Hide()
+            styleFrame.vgPressedTexture:Hide()
+            refreshState(selfButton)
+        end)
+        button:HookScript("OnMouseDown", function(selfButton, mouseButton)
+            if mouseButton ~= "LeftButton" then
+                return
+            end
+            if selfButton.IsEnabled and not selfButton:IsEnabled() then
+                return
+            end
+            styleFrame.vgPressedTexture:Show()
+        end)
+        button:HookScript("OnMouseUp", function(selfButton)
+            styleFrame.vgPressedTexture:Hide()
+            refreshState(selfButton)
+        end)
+        button:HookScript("OnEnable", refreshState)
+        button:HookScript("OnDisable", refreshState)
+
+        button.vgModernTextStyleFrame = styleFrame
+        button.vgModernTextStyleRefresh = refreshState
+        button.vgModernTextLabel = label
+    end
+
+    styleFrame:SetBackdropColor(backgroundColorR, backgroundColorG, backgroundColorB, backgroundAlpha)
+    styleFrame:SetBackdropBorderColor(borderColorR, borderColorG, borderColorB, borderAlpha)
+    styleFrame.vgHoverTexture:SetColorTexture(1, 1, 1, hoverAlpha)
+    styleFrame.vgPressedTexture:SetColorTexture(1, 1, 1, pressedAlpha)
+    styleFrame.vgLabel:ClearAllPoints()
+    styleFrame.vgLabel:SetPoint("CENTER", styleFrame, "CENTER", textOffsetX, textOffsetY)
+    styleFrame.vgLabel:SetTextColor(textColorR, textColorG, textColorB, textAlpha)
+    if text ~= nil then
+        styleFrame.vgLabel:SetText(text)
+    end
+    self:ApplyConfiguredFont(styleFrame.vgLabel, fontSize, fontFlags)
+
+    if button.vgModernTextStyleRefresh then
+        button.vgModernTextStyleRefresh(button)
+    end
+
+    return styleFrame
+end
+
+suppressTexture = function(texture)
+    if not texture then
+        return
+    end
+
+    texture:SetAlpha(0)
+    if texture.Hide then
+        texture:Hide()
+    end
+end
+
+suppressButtonTextures = function(button)
+    if not button or button.vgModernTexturesSuppressed then
+        return
+    end
+
+    if button.GetNormalTexture then
+        suppressTexture(button:GetNormalTexture())
+    end
+    if button.GetPushedTexture then
+        suppressTexture(button:GetPushedTexture())
+    end
+    if button.GetHighlightTexture then
+        suppressTexture(button:GetHighlightTexture())
+    end
+    if button.GetDisabledTexture then
+        suppressTexture(button:GetDisabledTexture())
+    end
+
+    local regions = { button:GetRegions() }
+    for i = 1, #regions do
+        local region = regions[i]
+        if region and region.GetObjectType and region:GetObjectType() == "Texture" then
+            suppressTexture(region)
+        end
+    end
+
+    button.vgModernTexturesSuppressed = true
+end
+function vesperTools:ApplyModernIconButtonStyle(button, options)
+    if not button then
+        return nil
+    end
+
+    local resolvedOptions = type(options) == "table" and options or {}
+    local width = math.max(10, math.floor((tonumber(resolvedOptions.width) or tonumber(resolvedOptions.size) or button:GetWidth() or 18) + 0.5))
+    local height = math.max(10, math.floor((tonumber(resolvedOptions.height) or tonumber(resolvedOptions.size) or button:GetHeight() or 18) + 0.5))
+    local backgroundAlpha = tonumber(resolvedOptions.backgroundAlpha)
+    if backgroundAlpha == nil then
+        backgroundAlpha = 0.05
+    end
+    local borderAlpha = tonumber(resolvedOptions.borderAlpha)
+    if borderAlpha == nil then
+        borderAlpha = 0.1
+    end
+    local hoverAlpha = tonumber(resolvedOptions.hoverAlpha)
+    if hoverAlpha == nil then
+        hoverAlpha = 0.12
+    end
+    local pressedAlpha = tonumber(resolvedOptions.pressedAlpha)
+    if pressedAlpha == nil then
+        pressedAlpha = 0.18
+    end
+    local disabledAlpha = tonumber(resolvedOptions.disabledAlpha)
+    if disabledAlpha == nil then
+        disabledAlpha = 0.55
+    end
+    local backgroundColor = type(resolvedOptions.backgroundColor) == "table" and resolvedOptions.backgroundColor or nil
+    local backgroundColorR = backgroundColor and (tonumber(backgroundColor.r) or tonumber(backgroundColor[1])) or 1
+    local backgroundColorG = backgroundColor and (tonumber(backgroundColor.g) or tonumber(backgroundColor[2])) or 1
+    local backgroundColorB = backgroundColor and (tonumber(backgroundColor.b) or tonumber(backgroundColor[3])) or 1
+    local borderColor = type(resolvedOptions.borderColor) == "table" and resolvedOptions.borderColor or nil
+    local borderColorR = borderColor and (tonumber(borderColor.r) or tonumber(borderColor[1])) or 1
+    local borderColorG = borderColor and (tonumber(borderColor.g) or tonumber(borderColor[2])) or 1
+    local borderColorB = borderColor and (tonumber(borderColor.b) or tonumber(borderColor[3])) or 1
+    local iconTexture = resolvedOptions.iconTexture or MODERN_CLOSE_BUTTON_TEXTURE
+    local iconAlpha = tonumber(resolvedOptions.iconAlpha)
+    if iconAlpha == nil then
+        iconAlpha = 0.92
+    end
+    local iconHoverAlpha = tonumber(resolvedOptions.iconHoverAlpha)
+    if iconHoverAlpha == nil then
+        iconHoverAlpha = 1
+    end
+    local iconScale = tonumber(resolvedOptions.iconScale) or 0.58
+    local iconInset = tonumber(resolvedOptions.iconInset)
+    local iconWidth = math.max(8, math.floor((iconInset and (width - (math.floor(iconInset + 0.5) * 2)) or (width * iconScale)) + 0.5))
+    local iconHeight = math.max(8, math.floor((iconInset and (height - (math.floor(iconInset + 0.5) * 2)) or (height * iconScale)) + 0.5))
+    local iconOffsetX = math.floor((tonumber(resolvedOptions.iconOffsetX) or 0) + 0.5)
+    local iconOffsetY = math.floor((tonumber(resolvedOptions.iconOffsetY) or 0) + 0.5)
+    local iconColor = type(resolvedOptions.iconColor) == "table" and resolvedOptions.iconColor or nil
+    local iconColorR = iconColor and (tonumber(iconColor.r) or tonumber(iconColor[1])) or 1
+    local iconColorG = iconColor and (tonumber(iconColor.g) or tonumber(iconColor[2])) or 1
+    local iconColorB = iconColor and (tonumber(iconColor.b) or tonumber(iconColor[3])) or 1
+
+    button:SetSize(width, height)
+    suppressButtonTextures(button)
+
+    local styleFrame = button.vgModernStyleFrame
+    if not styleFrame then
+        styleFrame = CreateFrame("Frame", nil, button, "BackdropTemplate")
+        styleFrame:SetAllPoints(button)
+        styleFrame:EnableMouse(false)
+        styleFrame:SetFrameLevel(math.max((button:GetFrameLevel() or 0) + 1, 1))
+        styleFrame:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+
+        local hover = styleFrame:CreateTexture(nil, "ARTWORK")
+        hover:SetAllPoints()
+        hover:SetColorTexture(1, 1, 1, hoverAlpha)
+        hover:Hide()
+        styleFrame.vgHoverTexture = hover
+
+        local pressed = styleFrame:CreateTexture(nil, "ARTWORK")
+        pressed:SetAllPoints()
+        pressed:SetColorTexture(1, 1, 1, pressedAlpha)
+        pressed:Hide()
+        styleFrame.vgPressedTexture = pressed
+
+        local icon = styleFrame:CreateTexture(nil, "OVERLAY")
+        icon:SetTexture(iconTexture)
+        icon:SetVertexColor(iconColorR, iconColorG, iconColorB, iconAlpha)
+        styleFrame.vgIconTexture = icon
+
+        local function refreshState(selfButton)
+            local enabled = not selfButton.IsEnabled or selfButton:IsEnabled()
+            styleFrame:SetAlpha(enabled and 1 or disabledAlpha)
+            styleFrame.vgIconTexture:SetVertexColor(
+                iconColorR,
+                iconColorG,
+                iconColorB,
+                enabled and iconAlpha or (iconAlpha * disabledAlpha)
+            )
+        end
+
+        button:HookScript("OnEnter", function(selfButton)
+            if selfButton.IsEnabled and not selfButton:IsEnabled() then
+                return
+            end
+            styleFrame.vgHoverTexture:Show()
+            styleFrame.vgIconTexture:SetVertexColor(iconColorR, iconColorG, iconColorB, iconHoverAlpha)
+        end)
+        button:HookScript("OnLeave", function(selfButton)
+            styleFrame.vgHoverTexture:Hide()
+            styleFrame.vgPressedTexture:Hide()
+            styleFrame.vgIconTexture:ClearAllPoints()
+            styleFrame.vgIconTexture:SetPoint("CENTER", iconOffsetX, iconOffsetY)
+            refreshState(selfButton)
+        end)
+        button:HookScript("OnMouseDown", function(selfButton, mouseButton)
+            if mouseButton ~= "LeftButton" then
+                return
+            end
+            if selfButton.IsEnabled and not selfButton:IsEnabled() then
+                return
+            end
+            styleFrame.vgPressedTexture:Show()
+            styleFrame.vgIconTexture:ClearAllPoints()
+            styleFrame.vgIconTexture:SetPoint("CENTER", iconOffsetX, iconOffsetY - 1)
+        end)
+        button:HookScript("OnMouseUp", function(selfButton)
+            styleFrame.vgPressedTexture:Hide()
+            styleFrame.vgIconTexture:ClearAllPoints()
+            styleFrame.vgIconTexture:SetPoint("CENTER", iconOffsetX, iconOffsetY)
+            refreshState(selfButton)
+        end)
+        button:HookScript("OnEnable", refreshState)
+        button:HookScript("OnDisable", refreshState)
+
+        button.vgModernStyleFrame = styleFrame
+        button.vgModernStyleRefresh = refreshState
+    end
+
+    styleFrame:SetBackdropColor(backgroundColorR, backgroundColorG, backgroundColorB, backgroundAlpha)
+    styleFrame:SetBackdropBorderColor(borderColorR, borderColorG, borderColorB, borderAlpha)
+    styleFrame.vgHoverTexture:SetColorTexture(1, 1, 1, hoverAlpha)
+    styleFrame.vgPressedTexture:SetColorTexture(1, 1, 1, pressedAlpha)
+    styleFrame.vgIconTexture:SetTexture(iconTexture)
+    styleFrame.vgIconTexture:SetSize(iconWidth, iconHeight)
+    styleFrame.vgIconTexture:ClearAllPoints()
+    styleFrame.vgIconTexture:SetPoint("CENTER", iconOffsetX, iconOffsetY)
+    styleFrame.vgIconTexture:SetVertexColor(iconColorR, iconColorG, iconColorB, iconAlpha)
+
+    if button.vgModernStyleRefresh then
+        button.vgModernStyleRefresh(button)
+    end
+
+    return styleFrame
+end
+
+function vesperTools:ApplyModernScrollBar(scrollFrame, options)
+    if not scrollFrame then
+        return nil
+    end
+
+    local scrollBar = scrollFrame.ScrollBar
+    if not scrollBar and scrollFrame.GetName and scrollFrame:GetName() then
+        scrollBar = _G[scrollFrame:GetName() .. "ScrollBar"]
+    end
+    if not scrollBar then
+        return nil
+    end
+
+    local resolvedOptions = type(options) == "table" and options or {}
+    local barWidth = math.max(12, math.floor((tonumber(resolvedOptions.barWidth) or 18) + 0.5))
+    local buttonSize = math.max(12, math.floor((tonumber(resolvedOptions.buttonSize) or 18) + 0.5))
+    local trackInset = math.max(1, math.floor((tonumber(resolvedOptions.trackInset) or 3) + 0.5))
+    local trackPadding = math.max(2, math.floor((tonumber(resolvedOptions.trackPadding) or 4) + 0.5))
+    local thumbAlpha = tonumber(resolvedOptions.thumbAlpha)
+    if thumbAlpha == nil then
+        thumbAlpha = 0.9
+    end
+    local trackAlpha = tonumber(resolvedOptions.trackAlpha)
+    if trackAlpha == nil then
+        trackAlpha = 0.28
+    end
+    local trackBorderAlpha = tonumber(resolvedOptions.trackBorderAlpha)
+    if trackBorderAlpha == nil then
+        trackBorderAlpha = 0.04
+    end
+    local trackColor = type(resolvedOptions.trackColor) == "table" and resolvedOptions.trackColor or nil
+    local trackColorR = trackColor and (tonumber(trackColor.r) or tonumber(trackColor[1])) or 0.05
+    local trackColorG = trackColor and (tonumber(trackColor.g) or tonumber(trackColor[2])) or 0.05
+    local trackColorB = trackColor and (tonumber(trackColor.b) or tonumber(trackColor[3])) or 0.07
+    local trackBorderColor = type(resolvedOptions.trackBorderColor) == "table" and resolvedOptions.trackBorderColor or nil
+    local trackBorderColorR = trackBorderColor and (tonumber(trackBorderColor.r) or tonumber(trackBorderColor[1])) or 1
+    local trackBorderColorG = trackBorderColor and (tonumber(trackBorderColor.g) or tonumber(trackBorderColor[2])) or 1
+    local trackBorderColorB = trackBorderColor and (tonumber(trackBorderColor.b) or tonumber(trackBorderColor[3])) or 1
+
+    local accentColor = type(resolvedOptions.accentColor) == "table" and resolvedOptions.accentColor or nil
+    local accentR = accentColor and (tonumber(accentColor.r) or tonumber(accentColor[1])) or nil
+    local accentG = accentColor and (tonumber(accentColor.g) or tonumber(accentColor[2])) or nil
+    local accentB = accentColor and (tonumber(accentColor.b) or tonumber(accentColor[3])) or nil
+    if not accentR or not accentG or not accentB then
+        accentR, accentG, accentB = getPlayerClassAccentColor()
+    end
+
+    scrollBar:SetWidth(barWidth)
+
+    local thumbTexture = scrollBar.ThumbTexture or (scrollBar.GetThumbTexture and scrollBar:GetThumbTexture()) or nil
+
+    local regions = { scrollBar:GetRegions() }
+    for i = 1, #regions do
+        local region = regions[i]
+        if region and region ~= thumbTexture and region.GetObjectType and region:GetObjectType() == "Texture" then
+            suppressTexture(region)
+        end
+    end
+
+    if scrollBar.Track and scrollBar.Track.SetAlpha then
+        scrollBar.Track:SetAlpha(0)
+    end
+    if scrollBar.Back and scrollBar.Back.Hide then
+        scrollBar.Back:Hide()
+    end
+
+    local scrollUpButton = scrollBar.ScrollUpButton
+    if not scrollUpButton and scrollBar.GetName and scrollBar:GetName() then
+        scrollUpButton = _G[scrollBar:GetName() .. "ScrollUpButton"]
+    end
+    local scrollDownButton = scrollBar.ScrollDownButton
+    if not scrollDownButton and scrollBar.GetName and scrollBar:GetName() then
+        scrollDownButton = _G[scrollBar:GetName() .. "ScrollDownButton"]
+    end
+
+    if scrollUpButton then
+        scrollUpButton:SetSize(buttonSize, buttonSize)
+        self:ApplyModernIconButtonStyle(scrollUpButton, {
+            size = buttonSize,
+            iconTexture = "Interface\\Buttons\\Arrow-Up-Up",
+            iconScale = 0.62,
+            backgroundColor = { 0.07, 0.07, 0.09 },
+            backgroundAlpha = 0.92,
+            borderColor = { 1, 1, 1 },
+            borderAlpha = 0.04,
+            hoverAlpha = 0.06,
+            pressedAlpha = 0.1,
+        })
+    end
+
+    if scrollDownButton then
+        scrollDownButton:SetSize(buttonSize, buttonSize)
+        self:ApplyModernIconButtonStyle(scrollDownButton, {
+            size = buttonSize,
+            iconTexture = "Interface\\Buttons\\Arrow-Down-Up",
+            iconScale = 0.62,
+            backgroundColor = { 0.07, 0.07, 0.09 },
+            backgroundAlpha = 0.92,
+            borderColor = { 1, 1, 1 },
+            borderAlpha = 0.04,
+            hoverAlpha = 0.06,
+            pressedAlpha = 0.1,
+        })
+    end
+
+    local trackFrame = scrollBar.vgModernTrackFrame
+    if not trackFrame then
+        trackFrame = CreateFrame("Frame", nil, scrollBar, "BackdropTemplate")
+        trackFrame:EnableMouse(false)
+        trackFrame:SetBackdrop({
+            bgFile = "Interface\\Buttons\\WHITE8x8",
+            edgeFile = "Interface\\Buttons\\WHITE8x8",
+            edgeSize = 1,
+        })
+        scrollBar.vgModernTrackFrame = trackFrame
+    end
+
+    trackFrame:ClearAllPoints()
+    if scrollUpButton and scrollDownButton then
+        trackFrame:SetPoint("TOPLEFT", scrollUpButton, "BOTTOMLEFT", trackInset, -trackPadding)
+        trackFrame:SetPoint("TOPRIGHT", scrollUpButton, "BOTTOMRIGHT", -trackInset, -trackPadding)
+        trackFrame:SetPoint("BOTTOMLEFT", scrollDownButton, "TOPLEFT", trackInset, trackPadding)
+        trackFrame:SetPoint("BOTTOMRIGHT", scrollDownButton, "TOPRIGHT", -trackInset, trackPadding)
+    else
+        trackFrame:SetPoint("TOPLEFT", scrollBar, "TOPLEFT", trackInset, -trackInset)
+        trackFrame:SetPoint("TOPRIGHT", scrollBar, "TOPRIGHT", -trackInset, -trackInset)
+        trackFrame:SetPoint("BOTTOMLEFT", scrollBar, "BOTTOMLEFT", trackInset, trackInset)
+        trackFrame:SetPoint("BOTTOMRIGHT", scrollBar, "BOTTOMRIGHT", -trackInset, trackInset)
+    end
+    trackFrame:SetBackdropColor(trackColorR, trackColorG, trackColorB, trackAlpha)
+    trackFrame:SetBackdropBorderColor(trackBorderColorR, trackBorderColorG, trackBorderColorB, trackBorderAlpha)
+
+    if thumbTexture then
+        thumbTexture:SetTexture("Interface\\Buttons\\WHITE8x8")
+        thumbTexture:SetVertexColor(accentR, accentG, accentB, thumbAlpha)
+        thumbTexture:SetWidth(math.max(6, barWidth - (trackInset * 2) - 2))
+        thumbTexture:SetTexCoord(0, 1, 0, 1)
+    end
+
+    return scrollBar
+end
+
+function vesperTools:SetModernScrollBarVisibility(scrollFrame, isVisible)
+    if not scrollFrame then
+        return nil
+    end
+
+    local scrollBar = scrollFrame.ScrollBar
+    if not scrollBar and scrollFrame.GetName and scrollFrame:GetName() then
+        scrollBar = _G[scrollFrame:GetName() .. "ScrollBar"]
+    end
+    if not scrollBar then
+        return nil
+    end
+
+    scrollBar:SetShown(isVisible and true or false)
+    return scrollBar
+end
+
 -- Return ordered canonical hearthstone IDs.
 function vesperTools:GetHearthstoneCatalog()
     return HEARTHSTONE_CATALOG
@@ -1437,6 +1967,10 @@ function vesperTools:GetRandomDiscoHearthstoneOption()
         icon = RANDOM_DISCO_ICON_TEXTURE,
         isRandomDisco = true,
     }
+end
+
+function vesperTools:GetMidnightLureMapPinTexture()
+    return MIDNIGHT_LURE_PIN_TEXTURE
 end
 
 function vesperTools:GetToyWhitelistLimit()
