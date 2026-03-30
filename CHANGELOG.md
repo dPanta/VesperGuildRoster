@@ -1,3 +1,12 @@
+## 3.2.1 - 2026-03-31
+
+### Fixed
+- Fixed the Midnight lure world-map pins so clicking the knife markers now correctly places Blizzard's built-in user waypoint and enables the navigation arrow.
+- Fixed the Midnight lure pin integration so opening the world map or navigating between parent and child maps no longer trips the `Blizzard_MapCanvas` assertion caused by pre-attached pin mouse scripts.
+
+### Notes
+- This hotfix is focused on stabilizing the new Midnight lure map markers after the larger `3.2.0` feature release.
+
 ## 3.2.0 - 2026-03-30
 
 ### Changed

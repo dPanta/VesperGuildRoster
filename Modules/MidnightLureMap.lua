@@ -13,6 +13,10 @@ local function createWaypointPoint(uiMapID, x, y)
         return UiMapPoint.CreateFromCoordinates(uiMapID, x, y)
     end
 
+    if UiMapPoint and UiMapPoint.CreateFromVector2D and CreateVector2D then
+        return UiMapPoint.CreateFromVector2D(uiMapID, CreateVector2D(x, y))
+    end
+
     if CreateVector2D then
         return {
             uiMapID = uiMapID,
@@ -26,12 +30,22 @@ end
 local MidnightLurePinMixin = {}
 
 function MidnightLurePinMixin:OnLoad()
+    if self.vgMidnightLureInitialized then
+        return
+    end
+
+    self.vgMidnightLureInitialized = true
     self:UseFrameLevelType("PIN_FRAME_LEVEL_AREA_POI")
     self:SetScalingLimits(1, 1.0, 1.18)
     self:SetSize(PIN_SIZE, PIN_SIZE)
     self:EnableMouse(true)
-    self:RegisterForClicks("LeftButtonUp")
     self:SetHitRectInsets(-3, -3, -3, -3)
+    if self.SetMouseClickEnabled then
+        self:SetMouseClickEnabled(true)
+    end
+    if self.SetMouseMotionEnabled then
+        self:SetMouseMotionEnabled(true)
+    end
 
     vesperTools:ApplyModernIconButtonStyle(self, {
         size = PIN_SIZE,
@@ -45,24 +59,28 @@ function MidnightLurePinMixin:OnLoad()
         pressedAlpha = 0.14,
         iconAlpha = 0.96,
     })
-
-    self:SetScript("OnEnter", function(pin)
-        GameTooltip:SetOwner(pin, "ANCHOR_RIGHT")
-        GameTooltip:AddLine(pin.data and (pin.data.zoneName or UNKNOWN) or UNKNOWN, 1, 1, 1)
-        GameTooltip:AddLine(L["MIDNIGHT_LURE_SITE"], 0.95, 0.82, 0.45, true)
-        GameTooltip:AddLine(L["MIDNIGHT_LURE_CLICK_SET_WAYPOINT"], 0.76, 0.76, 0.76, true)
-        GameTooltip:Show()
-    end)
-    self:SetScript("OnLeave", GameTooltip_Hide)
-    self:SetScript("OnClick", function(pin)
-        pin:HandleClick()
-    end)
 end
 
 function MidnightLurePinMixin:OnAcquired(data)
     self.data = data
     self:SetPosition(data.x, data.y)
     self:SetShown(true)
+end
+
+function MidnightLurePinMixin:OnMouseEnter()
+    GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+    GameTooltip:AddLine(self.data and (self.data.zoneName or UNKNOWN) or UNKNOWN, 1, 1, 1)
+    GameTooltip:AddLine(L["MIDNIGHT_LURE_SITE"], 0.95, 0.82, 0.45, true)
+    GameTooltip:AddLine(L["MIDNIGHT_LURE_CLICK_SET_WAYPOINT"], 0.76, 0.76, 0.76, true)
+    GameTooltip:Show()
+end
+
+function MidnightLurePinMixin:OnMouseLeave()
+    GameTooltip_Hide()
+end
+
+function MidnightLurePinMixin:OnClick(mouseButton)
+    self:TryHandlePointer(mouseButton)
 end
 
 function MidnightLurePinMixin:HandleClick()
@@ -75,23 +93,37 @@ function MidnightLurePinMixin:HandleClick()
         return
     end
 
-    if C_Map.CanSetUserWaypointOnMap and not C_Map.CanSetUserWaypointOnMap(data.uiMapID) then
-        vesperTools:Print(L["MIDNIGHT_LURE_WAYPOINT_UNAVAILABLE"])
-        return
-    end
-
     local point = createWaypointPoint(data.uiMapID, data.x, data.y)
     if not point then
         return
     end
 
-    C_Map.SetUserWaypoint(point)
-    if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
-        C_SuperTrack.SetSuperTrackedUserWaypoint(true)
+    local didSetWaypoint = pcall(C_Map.SetUserWaypoint, point)
+    if didSetWaypoint then
+        if C_SuperTrack and C_SuperTrack.SetSuperTrackedUserWaypoint then
+            pcall(C_SuperTrack.SetSuperTrackedUserWaypoint, true)
+        end
+        return
     end
+
+    vesperTools:Print(L["MIDNIGHT_LURE_WAYPOINT_UNAVAILABLE"])
 end
 
-local MidnightLurePinProvider = {}
+function MidnightLurePinMixin:TryHandlePointer(mouseButton)
+    if mouseButton and mouseButton ~= "LeftButton" then
+        return
+    end
+
+    local now = GetTimePreciseSec and GetTimePreciseSec() or GetTime()
+    if self.lastHandleClickAt and (now - self.lastHandleClickAt) <= 0.15 then
+        return
+    end
+
+    self.lastHandleClickAt = now
+    self:HandleClick()
+end
+
+local MidnightLurePinProvider
 
 local function removeAllPinData(self)
     local mapCanvas = self.GetMap and self:GetMap() or nil
@@ -121,17 +153,6 @@ local function refreshAllPinData(self)
     for i = 1, #pins do
         mapCanvas:AcquirePin(PIN_TEMPLATE_NAME, pins[i])
     end
-end
-
-local function ensurePinProviderMixin()
-    if MidnightLurePinProvider.vgIsMixed then
-        return
-    end
-
-    Mixin(MidnightLurePinProvider, MapCanvasDataProviderMixin)
-    MidnightLurePinProvider.RemoveAllData = removeAllPinData
-    MidnightLurePinProvider.RefreshAllData = refreshAllPinData
-    MidnightLurePinProvider.vgIsMixed = true
 end
 
 function MidnightLureMap:OnInitialize()
@@ -172,7 +193,11 @@ function MidnightLureMap:TryInitializeWorldMapPins()
         return
     end
 
-    ensurePinProviderMixin()
+    if not MidnightLurePinProvider then
+        MidnightLurePinProvider = CreateFromMixins(MapCanvasDataProviderMixin)
+        MidnightLurePinProvider.RemoveAllData = removeAllPinData
+        MidnightLurePinProvider.RefreshAllData = refreshAllPinData
+    end
 
     local resetFunc = function(_, pin)
         pin.data = nil
@@ -183,7 +208,14 @@ function MidnightLureMap:TryInitializeWorldMapPins()
     local createFunc = function()
         local pin = CreateFrame("Button", nil, canvas, "BackdropTemplate")
         Mixin(pin, MapCanvasPinMixin, MidnightLurePinMixin)
-        pin:OnLoad()
+        pin:EnableMouse(true)
+        if pin.SetMouseClickEnabled then
+            pin:SetMouseClickEnabled(true)
+        end
+        if pin.SetMouseMotionEnabled then
+            pin:SetMouseMotionEnabled(true)
+        end
+        pin:SetHitRectInsets(-3, -3, -3, -3)
         return pin
     end
 
