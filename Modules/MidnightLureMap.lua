@@ -27,7 +27,7 @@ local function createWaypointPoint(uiMapID, x, y)
     return nil
 end
 
-local MidnightLurePinMixin = {}
+local MidnightLurePinMixin = CreateFromMixins(MapCanvasPinMixin)
 
 function MidnightLurePinMixin:OnLoad()
     if self.vgMidnightLureInitialized then
@@ -47,27 +47,67 @@ function MidnightLurePinMixin:OnLoad()
         self:SetMouseMotionEnabled(true)
     end
 
-    vesperTools:ApplyModernIconButtonStyle(self, {
-        size = PIN_SIZE,
-        iconTexture = vesperTools:GetMidnightLureMapPinTexture(),
-        iconScale = 0.72,
-        backgroundColor = { 0.10, 0.07, 0.04 },
-        backgroundAlpha = 0.94,
-        borderColor = { 0.95, 0.78, 0.34 },
-        borderAlpha = 0.38,
-        hoverAlpha = 0.08,
-        pressedAlpha = 0.14,
-        iconAlpha = 0.96,
-    })
+    local background = self.vgBackground
+    if not background then
+        background = self:CreateTexture(nil, "BACKGROUND")
+        background:SetPoint("TOPLEFT", self, "TOPLEFT", -2, 2)
+        background:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", 2, -2)
+        background:SetColorTexture(0.10, 0.07, 0.04, 0.92)
+        self.vgBackground = background
+    end
+
+    local icon = self.vgIcon
+    if not icon then
+        icon = self:CreateTexture(nil, "ARTWORK")
+        icon:SetPoint("TOPLEFT", self, "TOPLEFT", 1, -1)
+        icon:SetPoint("BOTTOMRIGHT", self, "BOTTOMRIGHT", -1, 1)
+        icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+        icon:SetAlpha(0.96)
+        self.vgIcon = icon
+    end
+    icon:SetTexture(vesperTools:GetMidnightLureMapPinTexture())
+
+    local highlight = self.vgHighlight
+    if not highlight then
+        highlight = self:CreateTexture(nil, "OVERLAY")
+        highlight:SetAllPoints(self)
+        highlight:SetColorTexture(1, 1, 1, 0.08)
+        highlight:Hide()
+        self.vgHighlight = highlight
+    end
+
+    self:SetScript("OnEnter", function(pin)
+        pin:OnMouseEnter()
+    end)
+    self:SetScript("OnLeave", function(pin)
+        pin:OnMouseLeave()
+    end)
+    self:SetScript("OnMouseUp", function(pin, mouseButton)
+        pin:TryHandlePointer(mouseButton)
+    end)
 end
 
 function MidnightLurePinMixin:OnAcquired(data)
     self.data = data
     self:SetPosition(data.x, data.y)
+    if self.vgIcon then
+        self.vgIcon:SetTexture(vesperTools:GetMidnightLureMapPinTexture())
+        self.vgIcon:SetAlpha(0.96)
+    end
+    if self.vgHighlight then
+        self.vgHighlight:Hide()
+    end
     self:SetShown(true)
 end
 
 function MidnightLurePinMixin:OnMouseEnter()
+    if self.vgHighlight then
+        self.vgHighlight:Show()
+    end
+    if self.vgIcon then
+        self.vgIcon:SetAlpha(1)
+    end
+
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
     GameTooltip:AddLine(self.data and (self.data.zoneName or UNKNOWN) or UNKNOWN, 1, 1, 1)
     GameTooltip:AddLine(L["MIDNIGHT_LURE_SITE"], 0.95, 0.82, 0.45, true)
@@ -76,6 +116,12 @@ function MidnightLurePinMixin:OnMouseEnter()
 end
 
 function MidnightLurePinMixin:OnMouseLeave()
+    if self.vgHighlight then
+        self.vgHighlight:Hide()
+    end
+    if self.vgIcon then
+        self.vgIcon:SetAlpha(0.96)
+    end
     GameTooltip_Hide()
 end
 
@@ -157,6 +203,8 @@ end
 
 function MidnightLureMap:OnInitialize()
     self.mapPinsInitialized = false
+    self.worldMapShowHooked = false
+    self.pendingMapPinInitialization = false
 end
 
 function MidnightLureMap:OnEnable()
@@ -164,19 +212,50 @@ function MidnightLureMap:OnEnable()
     self:RegisterEvent("ADDON_LOADED")
 
     if WorldMapFrame then
-        self:TryInitializeWorldMapPins()
+        self:HookWorldMapShow()
+        self:ScheduleWorldMapPinInitialization()
     end
 end
 
 function MidnightLureMap:PLAYER_LOGIN()
     self:UnregisterEvent("PLAYER_LOGIN")
-    self:TryInitializeWorldMapPins()
+    self:HookWorldMapShow()
+    self:ScheduleWorldMapPinInitialization()
 end
 
 function MidnightLureMap:ADDON_LOADED(_, addonName)
     if addonName == "Blizzard_WorldMap" then
-        self:TryInitializeWorldMapPins()
+        self:HookWorldMapShow()
+        self:ScheduleWorldMapPinInitialization()
     end
+end
+
+function MidnightLureMap:ScheduleWorldMapPinInitialization()
+    if self.mapPinsInitialized or self.pendingMapPinInitialization or not WorldMapFrame or not WorldMapFrame:IsShown() then
+        return
+    end
+
+    self.pendingMapPinInitialization = true
+    C_Timer.After(0, function()
+        self.pendingMapPinInitialization = false
+
+        if not self:IsEnabled() or not WorldMapFrame or not WorldMapFrame:IsShown() then
+            return
+        end
+
+        self:TryInitializeWorldMapPins()
+    end)
+end
+
+function MidnightLureMap:HookWorldMapShow()
+    if self.worldMapShowHooked or not WorldMapFrame then
+        return
+    end
+
+    WorldMapFrame:HookScript("OnShow", function()
+        self:ScheduleWorldMapPinInitialization()
+    end)
+    self.worldMapShowHooked = true
 end
 
 function MidnightLureMap:TryInitializeWorldMapPins()
@@ -193,6 +272,11 @@ function MidnightLureMap:TryInitializeWorldMapPins()
         return
     end
 
+    local pinPools = WorldMapFrame.pinPools
+    if type(pinPools) ~= "table" then
+        return
+    end
+
     if not MidnightLurePinProvider then
         MidnightLurePinProvider = CreateFromMixins(MapCanvasDataProviderMixin)
         MidnightLurePinProvider.RemoveAllData = removeAllPinData
@@ -206,16 +290,9 @@ function MidnightLureMap:TryInitializeWorldMapPins()
     end
 
     local createFunc = function()
-        local pin = CreateFrame("Button", nil, canvas, "BackdropTemplate")
-        Mixin(pin, MapCanvasPinMixin, MidnightLurePinMixin)
-        pin:EnableMouse(true)
-        if pin.SetMouseClickEnabled then
-            pin:SetMouseClickEnabled(true)
-        end
-        if pin.SetMouseMotionEnabled then
-            pin:SetMouseMotionEnabled(true)
-        end
-        pin:SetHitRectInsets(-3, -3, -3, -3)
+        local pin = CreateFrame("Frame", nil, canvas)
+        Mixin(pin, MidnightLurePinMixin)
+        pin:OnLoad()
         return pin
     end
 
@@ -226,8 +303,7 @@ function MidnightLureMap:TryInitializeWorldMapPins()
         pool = CreateFramePool("FRAME", canvas, nil, resetFunc, false, createFunc)
     end
 
-    WorldMapFrame.pinPools = WorldMapFrame.pinPools or {}
-    WorldMapFrame.pinPools[PIN_TEMPLATE_NAME] = pool
+    pinPools[PIN_TEMPLATE_NAME] = pool
     WorldMapFrame:AddDataProvider(MidnightLurePinProvider)
 
     self.mapPinsInitialized = true

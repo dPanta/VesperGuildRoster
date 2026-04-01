@@ -1,3 +1,12 @@
+## 3.2.2 - 2026-04-01
+
+### Fixed
+- Fixed Midnight lure world-map pin startup so the custom map-pin provider is only attached after the Blizzard world map is actually shown, reducing the `Blizzard_MapCanvas.lua:280` assertion seen during early map initialization and parent-map navigation.
+- Fixed Midnight lure map-pin rendering so the custom pins no longer style Blizzard map-canvas frames with the shared modern button helper, reducing taint leaking into Area POI tooltip widget layout and `Blizzard_UIWidgetTemplateTextWithState`.
+
+### Notes
+- This hotfix is focused on stabilizing the world-map Midnight lure integration after the `3.2.0` map-marker feature release.
+
 ## 3.2.1 - 2026-03-31
 
 ### Fixed
