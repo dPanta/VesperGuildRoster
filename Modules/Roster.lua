@@ -23,12 +23,12 @@ local ARROW_DOWN = " |TInterface\\Buttons\\Arrow-Down-Up:12:12|t"
 -- Column definitions: key, label, width, sort type
 local COLUMNS = {
     { key = "name", label = L["ROSTER_COLUMN_NAME"], width = 0.15, sort = "string" },
-    { key = "faction", label = L["ROSTER_COLUMN_FACTION"], width = 0.05, sort = "string" },
-    { key = "zone", label = L["ROSTER_COLUMN_ZONE"], width = 0.20, sort = "string" },
+    { key = "level", label = L["ROSTER_COLUMN_LEVEL"], width = 0.07, sort = "number" },
+    { key = "zone", label = L["ROSTER_COLUMN_ZONE"], width = 0.18, sort = "string" },
     { key = "status", label = L["ROSTER_COLUMN_STATUS"], width = 0.10, sort = "string" },
     { key = "ilvl", label = L["ROSTER_COLUMN_ILVL"], width = 0.10, sort = "number" },
     { key = "rating", label = L["ROSTER_COLUMN_RATING"], width = 0.10, sort = "number" },
-    { key = "keyLevel", label = L["ROSTER_COLUMN_KEY"], width = 0.20, sort = "number" },
+    { key = "keyLevel", label = L["ROSTER_COLUMN_KEY"], width = 0.18, sort = "number" },
 }
 
 local TOTAL_COLUMN_WEIGHT = 0
@@ -78,6 +78,28 @@ local function getSpellName(spellID)
     end
 
     return nil
+end
+
+local function canRequestJoinGroupForMember(member)
+    if type(member) ~= "table" then
+        return false
+    end
+
+    if member.isInGroup or IsInGroup() or member.guid == UnitGUID("player") then
+        return false
+    end
+
+    if not (member.guid and C_SocialQueue and C_SocialQueue.GetGroupForPlayer and C_SocialQueue.GetGroupInfo) then
+        return false
+    end
+
+    local groupGUID = C_SocialQueue.GetGroupForPlayer(member.guid)
+    if not groupGUID then
+        return false
+    end
+
+    local canJoin = C_SocialQueue.GetGroupInfo(groupGUID)
+    return canJoin and true or false
 end
 
 -- Build one consistent titlebar action button for roster header controls.
@@ -288,8 +310,9 @@ function Roster:GetContextMenuAnchor(anchorButton)
 end
 
 -- Open manual roster right-click menu with stable cross-client fallbacks.
-function Roster:OpenRosterContextMenu(anchorButton, fullName)
-    local resolvedFullName = strtrim(tostring(fullName or ""))
+function Roster:OpenRosterContextMenu(anchorButton, memberOrFullName)
+    local member = type(memberOrFullName) == "table" and memberOrFullName or nil
+    local resolvedFullName = strtrim(tostring((member and member.fullName) or memberOrFullName or ""))
     if resolvedFullName == "" then
         return false
     end
@@ -302,6 +325,16 @@ function Roster:OpenRosterContextMenu(anchorButton, fullName)
         end
     end
 
+    local function requestJoinPlayer()
+        if C_PartyInfo and C_PartyInfo.RequestInviteFromUnit then
+            C_PartyInfo.RequestInviteFromUnit(resolvedFullName)
+        elseif RequestInviteFromUnit then
+            RequestInviteFromUnit(resolvedFullName)
+        else
+            invitePlayer()
+        end
+    end
+
     local function whisperPlayer()
         if ChatFrame_OpenChat then
             ChatFrame_OpenChat("/w " .. resolvedFullName .. " ")
@@ -310,11 +343,15 @@ function Roster:OpenRosterContextMenu(anchorButton, fullName)
         end
     end
 
+    local useRequestJoin = canRequestJoinGroupForMember(member)
+    local primaryActionLabel = useRequestJoin and L["CONTEXT_MENU_REQUEST_JOIN"] or L["CONTEXT_MENU_INVITE"]
+    local primaryActionFunc = useRequestJoin and requestJoinPlayer or invitePlayer
+
     if anchorButton and MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
         local menuAnchor = self:GetContextMenuAnchor(anchorButton)
         GameTooltip:Hide()
         MenuUtil.CreateContextMenu(menuAnchor, function(_, rootDescription)
-            rootDescription:CreateButton(L["CONTEXT_MENU_INVITE"], invitePlayer)
+            rootDescription:CreateButton(primaryActionLabel, primaryActionFunc)
             rootDescription:CreateButton(L["CONTEXT_MENU_WHISPER"], whisperPlayer)
             rootDescription:CreateButton(L["CONTEXT_MENU_CLOSE"], function() end)
         end)
@@ -323,7 +360,7 @@ function Roster:OpenRosterContextMenu(anchorButton, fullName)
 
     if EasyMenu then
         local menu = {
-            { text = L["CONTEXT_MENU_INVITE"], func = invitePlayer, notCheckable = true },
+            { text = primaryActionLabel, func = primaryActionFunc, notCheckable = true },
             { text = L["CONTEXT_MENU_WHISPER"], func = whisperPlayer, notCheckable = true },
             { text = L["CONTEXT_MENU_CLOSE"], func = function() end, notCheckable = true },
         }
@@ -721,7 +758,7 @@ function Roster:AcquireRosterRow()
 
     row.columns = {
         name = createRosterText(row, "GameFontHighlightSmall"),
-        faction = createRosterText(row, "GameFontHighlightSmall"),
+        level = createRosterText(row, "GameFontHighlightSmall"),
         zone = createRosterText(row, "GameFontHighlightSmall"),
         status = createRosterText(row, "GameFontHighlightSmall"),
         ilvl = createRosterText(row, "GameFontHighlightSmall"),
@@ -737,7 +774,7 @@ function Roster:AcquireRosterRow()
     actionButton:HookScript("OnClick", function(selfButton, button, down)
         local ownerRow = selfButton.ownerRow
         if ownerRow and button == "RightButton" and not down then
-            self:OpenRosterContextMenu(selfButton, ownerRow.fullName)
+            self:OpenRosterContextMenu(selfButton, ownerRow.member or ownerRow.fullName)
         end
     end)
     actionButton:SetScript("OnEnter", function(selfButton)
@@ -869,13 +906,6 @@ function Roster:ConfigureRosterRow(row, member, index, columnLayout, fontSize, d
         nameText = string.format("|c%s%s|r", classColor:GenerateHexColor(), member.name)
     end
 
-    local factionColor = "|cffFFFFFF"
-    if member.faction == L["FACTION_ALLIANCE_SHORT"] then
-        factionColor = "|cff0070DD"
-    elseif member.faction == L["FACTION_HORDE_SHORT"] then
-        factionColor = "|cffA335EE"
-    end
-
     local statusDisplay = member.status
     if member.status == L["STATUS_AFK"] then
         statusDisplay = "|cffFFFF00" .. L["STATUS_AFK"] .. "|r"
@@ -895,7 +925,7 @@ function Roster:ConfigureRosterRow(row, member, index, columnLayout, fontSize, d
     row.dataHandle = dataHandle
 
     row.columns.name:SetText(nameText)
-    row.columns.faction:SetText(factionColor .. member.faction .. "|r")
+    row.columns.level:SetText(member.level and member.level > 0 and tostring(member.level) or "-")
     row.columns.zone:SetText(member.zone)
     row.columns.status:SetText(statusDisplay)
     row.columns.ilvl:SetText(member.ilvl > 0 and tostring(member.ilvl) or "-")
@@ -939,7 +969,6 @@ function Roster:CollectRosterMembers(dataHandle, keystoneSync)
     local members = {}
     local playerRealm = GetRealmName()
     local playerRealmNormalized = GetNormalizedRealmName()
-    local playerFaction = UnitFactionGroup("player")
 
     local groupMembers = {}
     if IsInGroup() then
@@ -954,19 +983,12 @@ function Roster:CollectRosterMembers(dataHandle, keystoneSync)
 
     local numMembers = GetNumGuildMembers()
     for i = 1, numMembers do
-        local name, _, _, _, _, zone, _, _, isOnline, status, classFileName = GetGuildRosterInfo(i)
+        local name, _, _, level, _, zone, _, _, isOnline, status, classFileName, _, _, _, _, _, guid = GetGuildRosterInfo(i)
         if isOnline then
             local displayName = name:match("([^-]+)") or name
             local fullName = name
             if not string.find(name, "-") then
                 fullName = name .. "-" .. playerRealmNormalized
-            end
-
-            local factionText = "?"
-            if playerFaction == "Alliance" then
-                factionText = L["FACTION_ALLIANCE_SHORT"]
-            elseif playerFaction == "Horde" then
-                factionText = L["FACTION_HORDE_SHORT"]
             end
 
             local statusRaw = L["STATUS_ONLINE"]
@@ -1016,7 +1038,8 @@ function Roster:CollectRosterMembers(dataHandle, keystoneSync)
                 name = displayName,
                 fullName = fullName,
                 classFileName = classFileName,
-                faction = factionText,
+                guid = guid,
+                level = tonumber(level) or 0,
                 zone = zone or UNKNOWN,
                 status = statusRaw,
                 ilvl = ilvlNum,

@@ -5,7 +5,7 @@ local L = vesperTools.L
 -- BagsStore owns the live carried-bag snapshot for the current character and the
 -- account-wide aggregate index used by the replacement inventory views.
 local ITEM_CLASS = Enum and Enum.ItemClass or {}
-local CURRENT_BAGS_SCHEMA_VERSION = 2
+local CURRENT_BAGS_SCHEMA_VERSION = 3
 local BAG_CATEGORY_DEFS = {
     { key = "quest", labelKey = "BAGS_CATEGORY_QUEST", order = 1 },
     { key = "junk", labelKey = "BAGS_CATEGORY_JUNK", order = 2 },
@@ -185,6 +185,28 @@ local function normalizeExpansionID(expansionID)
     return numericID
 end
 
+local function normalizeRequiredLevel(requiredLevel)
+    local numericLevel = tonumber(requiredLevel)
+    if not numericLevel then
+        return nil
+    end
+
+    numericLevel = math.floor(numericLevel + 0.5)
+    if numericLevel <= 0 then
+        return nil
+    end
+
+    return numericLevel
+end
+
+local function extractRequiredLevel(text)
+    if type(text) ~= "string" or text == "" then
+        return nil
+    end
+
+    return normalizeRequiredLevel(text:match("requires level (%d+)"))
+end
+
 local function getExpansionCategoryKey(expansionID)
     local normalizedID = normalizeExpansionID(expansionID)
     if not normalizedID then
@@ -243,10 +265,52 @@ local function getCurrentExpansionID()
         return currentExpansionID
     end
 
+    if type(GetServerExpansionLevel) == "function" then
+        currentExpansionID = normalizeExpansionID(GetServerExpansionLevel())
+        if currentExpansionID ~= nil then
+            return currentExpansionID
+        end
+    end
+
     if type(GetExpansionLevel) == "function" then
         currentExpansionID = normalizeExpansionID(GetExpansionLevel())
         if currentExpansionID ~= nil then
             return currentExpansionID
+        end
+    end
+
+    return nil
+end
+
+local function getCurrentExpansionMaxLevel()
+    if type(GetMaxLevelForExpansionLevel) == "function" then
+        local currentExpansionID = getCurrentExpansionID()
+        if currentExpansionID ~= nil then
+            local maxLevel = normalizeRequiredLevel(GetMaxLevelForExpansionLevel(currentExpansionID))
+            if maxLevel ~= nil then
+                return maxLevel
+            end
+        end
+    end
+
+    if type(GetMaxLevelForLatestExpansion) == "function" then
+        local maxLevel = normalizeRequiredLevel(GetMaxLevelForLatestExpansion())
+        if maxLevel ~= nil then
+            return maxLevel
+        end
+    end
+
+    if type(GetMaxLevelForPlayerExpansion) == "function" then
+        local maxLevel = normalizeRequiredLevel(GetMaxLevelForPlayerExpansion())
+        if maxLevel ~= nil then
+            return maxLevel
+        end
+    end
+
+    if type(GetMaxPlayerLevel) == "function" then
+        local maxLevel = normalizeRequiredLevel(GetMaxPlayerLevel())
+        if maxLevel ~= nil then
+            return maxLevel
         end
     end
 
@@ -408,7 +472,7 @@ function BagsStore:GetCategoryOrder(categoryKey)
     return CATEGORY_PRIORITY_BY_ID[categoryKey] or 999
 end
 
-function BagsStore:UpdateLegacySeasonalEquipmentFlag(meta)
+function BagsStore:UpdateCurrentScaledLegacyEquipmentFlag(meta)
     if type(meta) ~= "table" then
         return false
     end
@@ -417,14 +481,26 @@ function BagsStore:UpdateLegacySeasonalEquipmentFlag(meta)
     local currentExpansionID = getCurrentExpansionID()
     local classID = meta.classID
     local searchText = meta.searchText or normalizeSearchText(meta.itemDescription or "")
-    local isLegacySeasonalEquipment = expansionID ~= nil
+    local requiredLevel = normalizeRequiredLevel(meta.requiredLevel) or extractRequiredLevel(searchText)
+    local currentExpansionMaxLevel = getCurrentExpansionMaxLevel()
+    local isLegacySeasonalDungeonEquipment = expansionID ~= nil
         and currentExpansionID ~= nil
         and expansionID ~= currentExpansionID
         and (classID == ITEM_CLASS.Weapon or classID == ITEM_CLASS.Armor)
         and textContainsAnyMarker(searchText, LEGACY_SEASONAL_EQUIPMENT_TRACK_MARKERS)
+    local isCurrentLevelLegacyEquipment = expansionID ~= nil
+        and currentExpansionID ~= nil
+        and expansionID ~= currentExpansionID
+        and (classID == ITEM_CLASS.Weapon or classID == ITEM_CLASS.Armor)
+        and requiredLevel ~= nil
+        and currentExpansionMaxLevel ~= nil
+        and requiredLevel >= currentExpansionMaxLevel
+    local isCurrentScaledLegacyEquipment = isLegacySeasonalDungeonEquipment or isCurrentLevelLegacyEquipment
 
-    meta.isLegacySeasonalDungeonEquipment = isLegacySeasonalEquipment and true or nil
-    return isLegacySeasonalEquipment
+    meta.requiredLevel = requiredLevel
+    meta.isLegacySeasonalDungeonEquipment = isLegacySeasonalDungeonEquipment and true or nil
+    meta.isCurrentScaledLegacyEquipment = isCurrentScaledLegacyEquipment and true or nil
+    return isCurrentScaledLegacyEquipment
 end
 
 -- Return the stable GUID-like key used for current-character bag storage.
@@ -613,7 +689,7 @@ function BagsStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
     meta.iconFileID = info and info.iconFileID or iconFileID or meta.iconFileID
 
     local itemInfoRef = hyperlink or itemID
-    local _, _, quality, _, _, _, _, _, _, _, _, resolvedClassID, resolvedSubClassID, _, expansionID, _, isCraftingReagent = getItemInfoRecord(itemInfoRef)
+    local _, _, quality, _, itemMinLevel, _, _, _, _, _, _, resolvedClassID, resolvedSubClassID, _, expansionID, _, isCraftingReagent = getItemInfoRecord(itemInfoRef)
     if resolvedClassID ~= nil then
         meta.classID = resolvedClassID
     end
@@ -623,6 +699,7 @@ function BagsStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
     if quality ~= nil then
         meta.quality = quality
     end
+    meta.requiredLevel = normalizeRequiredLevel(itemMinLevel)
     expansionID = normalizeExpansionID(expansionID)
     if expansionID ~= nil then
         meta.expansionID = expansionID
@@ -669,7 +746,8 @@ function BagsStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
         meta.itemName or buildFallbackItemName(itemID),
         meta.itemDescription or "",
     }, " ")) or meta.searchText
-    self:UpdateLegacySeasonalEquipmentFlag(meta)
+    meta.requiredLevel = extractRequiredLevel(meta.searchText) or meta.requiredLevel
+    self:UpdateCurrentScaledLegacyEquipmentFlag(meta)
 
     meta.lastResolved = time()
     return meta
@@ -679,7 +757,7 @@ function BagsStore:ResolveCategoryKey(meta, info, questInfo)
     local expansionID = meta and normalizeExpansionID(meta.expansionID) or nil
     local currentExpansionID = getCurrentExpansionID()
     if expansionID ~= nil and currentExpansionID ~= nil and expansionID ~= currentExpansionID then
-        if meta and self:UpdateLegacySeasonalEquipmentFlag(meta) then
+        if meta and self:UpdateCurrentScaledLegacyEquipmentFlag(meta) then
             return "equipment"
         end
         return getExpansionCategoryKey(expansionID)
@@ -977,7 +1055,7 @@ function BagsStore:RecategorizeCarriedSnapshot(global, carried)
                     local nextCategoryKey = record.categoryKey
 
                     if meta then
-                        self:UpdateLegacySeasonalEquipmentFlag(meta)
+                        self:UpdateCurrentScaledLegacyEquipmentFlag(meta)
                         nextCategoryKey = self:ResolveCategoryKey(meta, record, record)
                     end
 
@@ -998,6 +1076,26 @@ function BagsStore:RecategorizeCarriedSnapshot(global, carried)
     return changed
 end
 
+function BagsStore:RefreshCurrentScaledLegacyEquipmentData(global)
+    if type(global) ~= "table" then
+        return
+    end
+
+    for _, meta in pairs(global.itemMeta or {}) do
+        if type(meta) == "table" then
+            self:UpdateCurrentScaledLegacyEquipmentFlag(meta)
+        end
+    end
+
+    for _, character in pairs(global.charactersByGUID or {}) do
+        if type(character) == "table" and type(character.carried) == "table" then
+            self:RecategorizeCarriedSnapshot(global, character.carried)
+        end
+    end
+
+    global.accountIndex = self:BuildAccountIndexFromCharacters(global.charactersByGUID)
+end
+
 function BagsStore:RunGlobalMigrations(global, startingVersion)
     if type(global) ~= "table" then
         return false
@@ -1013,21 +1111,9 @@ function BagsStore:RunGlobalMigrations(global, startingVersion)
         return false
     end
 
-    if schemaVersion < 2 then
-        for _, meta in pairs(global.itemMeta or {}) do
-            if type(meta) == "table" then
-                self:UpdateLegacySeasonalEquipmentFlag(meta)
-            end
-        end
-
-        for _, character in pairs(global.charactersByGUID or {}) do
-            if type(character) == "table" and type(character.carried) == "table" then
-                self:RecategorizeCarriedSnapshot(global, character.carried)
-            end
-        end
-
-        global.accountIndex = self:BuildAccountIndexFromCharacters(global.charactersByGUID)
-        schemaVersion = 2
+    if schemaVersion < 3 then
+        self:RefreshCurrentScaledLegacyEquipmentData(global)
+        schemaVersion = 3
     end
 
     global.schemaVersion = schemaVersion
