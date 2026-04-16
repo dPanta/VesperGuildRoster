@@ -69,6 +69,8 @@ local EN_MISSING = {
     BEST_KEYS_DATABASE_TOTAL_FMT = "Total: %d players",
     BEST_KEYS_HEADER_BEST = "Best",
     BEST_KEYS_HEADER_DUNGEON = "Dungeon",
+    BEST_KEYS_HEADER_KEY = "Key",
+    BEST_KEYS_HEADER_NAME = "Name",
     BEST_KEYS_HEADER_TIME = "Time",
     BEST_KEYS_STATUS_OVER = "over",
     BEST_KEYS_STATUS_TIMED = "timed",
@@ -175,6 +177,8 @@ local EN_MISSING = {
     VAULT_ITEM_LEVEL_FMT = "iLvl %d",
     VAULT_SLOT_FMT = "Slot %d",
     VAULT_STATUS_CAPTURED_FMT = "Captured %s",
+    VAULT_WEEKLY_RUNS_HEADER = "Best Mythic+ runs this week",
+    VAULT_WEEKLY_RUNS_NONE = "No Mythic+ runs recorded this week.",
 }
 
 local function applyLocale(locale, translated)

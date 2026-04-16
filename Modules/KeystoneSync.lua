@@ -21,6 +21,28 @@ local DUNGEON_ABBREV = {
     [560] = "MAIS",                 -- Maisara Caverns
 }
 
+local function getOwnedKeystoneMapID()
+    if not C_MythicPlus then
+        return nil
+    end
+
+    if type(C_MythicPlus.GetOwnedKeystoneChallengeMapID) == "function" then
+        local mapID = tonumber(C_MythicPlus.GetOwnedKeystoneChallengeMapID())
+        if mapID and mapID > 0 then
+            return math.floor(mapID + 0.5)
+        end
+    end
+
+    if type(C_MythicPlus.GetOwnedKeystoneMapID) == "function" then
+        local mapID = tonumber(C_MythicPlus.GetOwnedKeystoneMapID())
+        if mapID and mapID > 0 then
+            return math.floor(mapID + 0.5)
+        end
+    end
+
+    return nil
+end
+
 function KeystoneSync:OnEnable()
     -- Register LibKeystone callback for receiving keystone data
     if LibKeystone then
@@ -30,8 +52,13 @@ function KeystoneSync:OnEnable()
         end)
     end
 
+    self:RegisterEvent("PLAYER_ENTERING_WORLD")
+    self:RegisterEvent("BAG_UPDATE_DELAYED")
+    self:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+
     -- Clean up old entries on login
     self:CleanupStaleEntries()
+    self:UpdateCurrentCharacterKeystoneSnapshot()
 end
 
 function KeystoneSync:DebugDumpKeystones()
@@ -125,6 +152,95 @@ function KeystoneSync:StoreKeystone(playerName, mapID, level, rating)
             timestamp = time()
         }
     end
+end
+
+function KeystoneSync:GetAccountKeystoneDB()
+    vesperTools.db.global.accountKeystones = vesperTools.db.global.accountKeystones or {}
+    return vesperTools.db.global.accountKeystones
+end
+
+function KeystoneSync:StoreAccountKeystone(playerName, mapID, level)
+    local normalizedName = vesperTools:NormalizePlayerFullName(playerName)
+    if not normalizedName then
+        return false
+    end
+
+    local db = self:GetAccountKeystoneDB()
+    local numericMapID = tonumber(mapID)
+    local numericLevel = tonumber(level)
+
+    if not numericMapID or numericMapID <= 0 or not numericLevel or numericLevel <= 0 then
+        if db[normalizedName] ~= nil then
+            db[normalizedName] = nil
+            vesperTools:SendMessage("VESPERTOOLS_ACCOUNT_KEYSTONE_UPDATED", normalizedName)
+            return true
+        end
+        return false
+    end
+
+    numericMapID = math.floor(numericMapID + 0.5)
+    numericLevel = math.floor(numericLevel + 0.5)
+
+    local existing = db[normalizedName]
+    if existing
+        and existing.mapID == numericMapID
+        and existing.level == numericLevel
+    then
+        existing.timestamp = time()
+        return false
+    end
+
+    db[normalizedName] = {
+        mapID = numericMapID,
+        level = numericLevel,
+        timestamp = time(),
+    }
+
+    vesperTools:SendMessage("VESPERTOOLS_ACCOUNT_KEYSTONE_UPDATED", normalizedName)
+    return true
+end
+
+function KeystoneSync:GetStoredAccountKeystone(playerName)
+    local normalizedName = vesperTools:NormalizePlayerFullName(playerName)
+    if not normalizedName then
+        return nil
+    end
+
+    local db = self:GetAccountKeystoneDB()
+    return db[normalizedName]
+end
+
+function KeystoneSync:UpdateCurrentCharacterKeystoneSnapshot()
+    local playerName = vesperTools:GetCurrentCharacterFullName()
+    local level = C_MythicPlus and type(C_MythicPlus.GetOwnedKeystoneLevel) == "function"
+        and tonumber(C_MythicPlus.GetOwnedKeystoneLevel())
+        or nil
+    local mapID = getOwnedKeystoneMapID()
+
+    if not level or level <= 0 or not mapID or mapID <= 0 then
+        return self:StoreAccountKeystone(playerName, 0, 0)
+    end
+
+    return self:StoreAccountKeystone(playerName, mapID, level)
+end
+
+function KeystoneSync:PLAYER_ENTERING_WORLD()
+    self:UpdateCurrentCharacterKeystoneSnapshot()
+end
+
+function KeystoneSync:BAG_UPDATE_DELAYED()
+    self:UpdateCurrentCharacterKeystoneSnapshot()
+end
+
+function KeystoneSync:CHALLENGE_MODE_COMPLETED()
+    if C_Timer and C_Timer.After then
+        C_Timer.After(1.0, function()
+            self:UpdateCurrentCharacterKeystoneSnapshot()
+        end)
+        return
+    end
+
+    self:UpdateCurrentCharacterKeystoneSnapshot()
 end
 
 function KeystoneSync:GetKeystoneForPlayer(playerName)

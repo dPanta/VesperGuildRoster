@@ -585,6 +585,91 @@ local function buildPreviewTooltipLines(rewardType, activity, itemLevel, trackTe
     return lines
 end
 
+local function getDungeonRunName(mapChallengeModeID)
+    local mapID = tonumber(mapChallengeModeID)
+    if not mapID or mapID <= 0 then
+        return L["UNKNOWN_DUNGEON"]
+    end
+
+    if C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
+        local dungeonName = C_ChallengeMode.GetMapUIInfo(mapID)
+        if type(dungeonName) == "string" and dungeonName ~= "" then
+            return dungeonName
+        end
+    end
+
+    if C_ChallengeMode and C_ChallengeMode.GetMapInfo then
+        local mapInfo = C_ChallengeMode.GetMapInfo(mapID)
+        if type(mapInfo) == "table" and type(mapInfo.name) == "string" and mapInfo.name ~= "" then
+            return mapInfo.name
+        end
+    end
+
+    local dataHandle = vesperTools:GetModule("DataHandle", true)
+    if dataHandle and type(dataHandle.GetDungeonByMapID) == "function" then
+        local dungeonInfo = dataHandle:GetDungeonByMapID(mapID)
+        if type(dungeonInfo) == "table" and type(dungeonInfo.dungeonName) == "string" and dungeonInfo.dungeonName ~= "" then
+            return dungeonInfo.dungeonName
+        end
+    end
+
+    return L["UNKNOWN_DUNGEON"]
+end
+
+local function formatDungeonRunLevel(level)
+    local numeric = tonumber(level)
+    if not numeric or numeric <= 0 then
+        return nil
+    end
+
+    local rounded = math.floor(numeric + 0.5)
+    local dataHandle = vesperTools:GetModule("DataHandle", true)
+    local colorCode = dataHandle and type(dataHandle.GetKeyColor) == "function"
+        and dataHandle:GetKeyColor(rounded)
+        or "|cffffffff"
+
+    return string.format("%s+%d|r", colorCode, rounded)
+end
+
+local function buildDungeonTooltipLines(snapshot, rewardType, activity)
+    local thresholdType = Enum and Enum.WeeklyRewardChestThresholdType or nil
+    if not thresholdType or rewardType ~= thresholdType.Activities then
+        return nil
+    end
+
+    local runs = type(snapshot) == "table" and type(snapshot.weeklyDungeonRuns) == "table"
+        and snapshot.weeklyDungeonRuns
+        or nil
+    if not runs or #runs == 0 then
+        return {
+            wrapColorCode("ffd100", L["VAULT_WEEKLY_RUNS_NONE"]),
+        }
+    end
+
+    local maxRuns = math.max(0, tonumber(activity and activity.threshold) or 0)
+    if maxRuns <= 0 then
+        maxRuns = #runs
+    end
+
+    local limit = math.min(maxRuns, #runs)
+    local lines = {
+        wrapColorCode("ffd100", L["VAULT_WEEKLY_RUNS_HEADER"]),
+    }
+
+    for index = 1, limit do
+        local run = runs[index]
+        local dungeonName = getDungeonRunName(run and run.mapChallengeModeID)
+        local keyText = formatDungeonRunLevel(run and run.level)
+        if keyText then
+            lines[#lines + 1] = string.format("%s %s", dungeonName, keyText)
+        else
+            lines[#lines + 1] = dungeonName
+        end
+    end
+
+    return lines
+end
+
 local function formatCapturedTimestamp(timestamp)
     local resolved = tonumber(timestamp)
     if not resolved or resolved <= 0 then
@@ -1274,6 +1359,12 @@ function VaultWindow:AcquireActivityRow(section)
                 GameTooltip:AddLine(selfRow.tooltipText, 0.85, 0.85, 0.85, true)
             end
         end
+        if type(selfRow.tooltipExtraLines) == "table" and #selfRow.tooltipExtraLines > 0 then
+            GameTooltip:AddLine(" ")
+            for index = 1, #selfRow.tooltipExtraLines do
+                GameTooltip:AddLine(selfRow.tooltipExtraLines[index], 0.85, 0.85, 0.85, true)
+            end
+        end
         GameTooltip:Show()
     end)
     row:SetScript("OnLeave", function()
@@ -1350,6 +1441,7 @@ function VaultWindow:RefreshActivityRow(row, rewardType, activity, contentWidth)
     row.tooltipLink = (hasActualReward and not isLocked) and actualLink or nil
     row.tooltipTitle = titleText
     row.tooltipLines = (hasActualReward and not isLocked) and nil or buildPreviewTooltipLines(rewardType, activity, itemLevel, trackText, sourceLabel, isLocked)
+    row.tooltipExtraLines = buildDungeonTooltipLines(self.currentSnapshot, rewardType, activity)
     row.tooltipText = nil
     row:Show()
 end

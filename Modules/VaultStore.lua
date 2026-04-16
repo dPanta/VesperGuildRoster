@@ -219,6 +219,104 @@ local function getCurrentWeekStartTime()
     return nil
 end
 
+local function getRunHistory()
+    if not C_MythicPlus or type(C_MythicPlus.GetRunHistory) ~= "function" then
+        return {}
+    end
+
+    local attempts = {
+        { true, true, true },
+        {},
+    }
+
+    for index = 1, #attempts do
+        local ok, runs = pcall(C_MythicPlus.GetRunHistory, unpack(attempts[index]))
+        if ok and type(runs) == "table" then
+            return runs
+        end
+    end
+
+    return {}
+end
+
+local function getRunCompletionTimestamp(completionDate)
+    if type(completionDate) ~= "table" then
+        return nil
+    end
+
+    local year = tonumber(completionDate.year)
+    local month = tonumber(completionDate.month)
+    local day = tonumber(completionDate.day)
+    if year == nil or month == nil or day == nil then
+        return nil
+    end
+
+    local timestamp = time({
+        year = year + 2000,
+        month = month + 1,
+        day = day + 1,
+        hour = 12,
+    })
+
+    local numeric = tonumber(timestamp)
+    if numeric and numeric > 0 then
+        return math.floor(numeric + 0.5)
+    end
+
+    return nil
+end
+
+local function isRunFromCurrentWeek(run, weekStartAt)
+    if type(run) ~= "table" then
+        return false
+    end
+
+    if run.thisWeek ~= nil then
+        return run.thisWeek and true or false
+    end
+
+    local completionTimestamp = getRunCompletionTimestamp(run.completionDate)
+    if completionTimestamp and weekStartAt and weekStartAt > 0 then
+        return completionTimestamp >= weekStartAt
+    end
+
+    return false
+end
+
+local function compareDungeonRuns(left, right)
+    local leftLevel = tonumber(left and left.level) or 0
+    local rightLevel = tonumber(right and right.level) or 0
+    if leftLevel ~= rightLevel then
+        return leftLevel > rightLevel
+    end
+
+    local leftScore = tonumber(left and left.runScore) or 0
+    local rightScore = tonumber(right and right.runScore) or 0
+    if leftScore ~= rightScore then
+        return leftScore > rightScore
+    end
+
+    local leftCompleted = left and left.completed and 1 or 0
+    local rightCompleted = right and right.completed and 1 or 0
+    if leftCompleted ~= rightCompleted then
+        return leftCompleted > rightCompleted
+    end
+
+    local leftDuration = tonumber(left and left.durationSec) or math.huge
+    local rightDuration = tonumber(right and right.durationSec) or math.huge
+    if leftDuration ~= rightDuration then
+        return leftDuration < rightDuration
+    end
+
+    local leftMapID = tonumber(left and left.mapChallengeModeID) or 0
+    local rightMapID = tonumber(right and right.mapChallengeModeID) or 0
+    if leftMapID ~= rightMapID then
+        return leftMapID < rightMapID
+    end
+
+    return false
+end
+
 local function areDelveMapStatesEqual(left, right)
     if type(left) ~= "table" or type(right) ~= "table" then
         return false
@@ -239,6 +337,7 @@ end
 function VaultStore:OnEnable()
     self:RegisterEvent("PLAYER_ENTERING_WORLD")
     self:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
+    self:RegisterEvent("CHALLENGE_MODE_COMPLETED")
     self:RegisterEvent("WEEKLY_REWARDS_UPDATE")
     self:RegisterEvent("WEEKLY_REWARDS_ITEM_CHANGED")
     self:RegisterEvent("BAG_UPDATE_DELAYED")
@@ -336,6 +435,35 @@ function VaultStore:BuildCurrentCharacterDelveMapState(now)
         weeklyMapAcquired = weeklyMapAcquired,
         usedThisWeek = hasPendingBuff or (weeklyMapAcquired and not hasMapItem),
     }
+end
+
+function VaultStore:BuildCurrentCharacterWeeklyDungeonRuns()
+    local runs = getRunHistory()
+    local weekStartAt = getCurrentWeekStartTime()
+    local weeklyRuns = {}
+
+    for index = 1, #runs do
+        local run = runs[index]
+        local mapChallengeModeID = tonumber(run and (run.mapChallengeModeID or run.challengeModeID))
+        local level = tonumber(run and (run.level or run.bestRunLevel))
+        if mapChallengeModeID
+            and mapChallengeModeID > 0
+            and level
+            and level > 0
+            and isRunFromCurrentWeek(run, weekStartAt)
+        then
+            weeklyRuns[#weeklyRuns + 1] = {
+                mapChallengeModeID = math.floor(mapChallengeModeID + 0.5),
+                level = math.floor(level + 0.5),
+                completed = run.completed and true or false,
+                durationSec = tonumber(run.durationSec) or nil,
+                runScore = tonumber(run.runScore or run.mapScore) or 0,
+            }
+        end
+    end
+
+    table.sort(weeklyRuns, compareDungeonRuns)
+    return weeklyRuns
 end
 
 function VaultStore:GetStoredCharacterDelveMapItemCount(characterKey)
@@ -450,6 +578,10 @@ function VaultStore:WEEKLY_REWARDS_ITEM_CHANGED()
     self:QueueCapture(0)
 end
 
+function VaultStore:CHALLENGE_MODE_COMPLETED()
+    self:QueueCapture(1.5)
+end
+
 function VaultStore:BAG_UPDATE_DELAYED()
     self:UpdateCurrentCharacterDelveMapState()
 end
@@ -556,6 +688,7 @@ function VaultStore:CaptureCurrentCharacterSnapshot()
         hasGeneratedRewards = type(C_WeeklyRewards.HasGeneratedRewards) == "function"
             and C_WeeklyRewards.HasGeneratedRewards() and true or false,
         activities = {},
+        weeklyDungeonRuns = self:BuildCurrentCharacterWeeklyDungeonRuns(),
     }
 
     local totalActivityCount = 0

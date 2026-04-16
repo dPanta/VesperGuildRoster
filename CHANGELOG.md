@@ -1,3 +1,17 @@
+## 4.2.0 - 2026-04-16
+
+### Changed
+- Added an account keystone list below the Best Runs panel in the portals window so you can quickly see which alts currently hold a stored key.
+- Added per-character keystone snapshot storage and refresh hooks so the account keystone list stays current from login, bag updates, and Mythic+ completion.
+- Filled missing locale keys across all shipped locales so the newer vault and account-keystone UI strings are available everywhere, preserving existing translations and falling back to English where needed.
+
+### Fixed
+- Great Vault reward-row tooltips now show the current week's Mythic+ runs that count toward each reward slot, including dungeon names and key levels.
+- Vault snapshots now store the current week's Mythic+ dungeon history so those tooltip details are available while reviewing other characters.
+
+### Notes
+- This release is focused on making weekly account planning easier by surfacing both stored keystones and vault-progress context in the addon's existing planning windows.
+
 ## 4.1.0 - 2026-04-12
 
 ### Changed

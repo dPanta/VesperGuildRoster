@@ -5,7 +5,7 @@ local L = vesperTools.L
 -- BagsStore owns the live carried-bag snapshot for the current character and the
 -- account-wide aggregate index used by the replacement inventory views.
 local ITEM_CLASS = Enum and Enum.ItemClass or {}
-local CURRENT_BAGS_SCHEMA_VERSION = 5
+local CURRENT_BAGS_SCHEMA_VERSION = 6
 local BAG_CATEGORY_DEFS = {
     { key = "quest", labelKey = "BAGS_CATEGORY_QUEST", order = 1 },
     { key = "season", labelKey = "BAGS_CATEGORY_SEASON", order = 2 },
@@ -49,6 +49,7 @@ local SEASON_SPECIAL_ITEM_IDS = {
     [233071] = true, -- Delver's Bounty
     [235628] = true, -- Delver's Bounty with upgrade data
     [264414] = true, -- Midnight Delver's Flare Gun
+    [253342] = true, -- Beacon of Hope
 }
 local SEASON_NAME_MARKERS = {
     "mythic keystone",
@@ -1171,6 +1172,11 @@ function BagsStore:RunGlobalMigrations(global, startingVersion)
     if schemaVersion < 5 then
         self:RefreshCurrentScaledLegacyEquipmentData(global)
         schemaVersion = 5
+    end
+
+    if schemaVersion < 6 then
+        self:RefreshCurrentScaledLegacyEquipmentData(global)
+        schemaVersion = 6
     end
 
     global.schemaVersion = schemaVersion

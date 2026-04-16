@@ -193,6 +193,7 @@ end
 
 function Portals:OnEnable()
     self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "OnConfigChanged")
+    self:RegisterMessage("VESPERTOOLS_ACCOUNT_KEYSTONE_UPDATED", "OnAccountKeystoneChanged")
     self:RegisterEvent("BAG_UPDATE_DELAYED")
     self:RegisterEvent("BAG_UPDATE_COOLDOWN")
     self:RegisterEvent("TOYS_UPDATED")
@@ -272,6 +273,9 @@ function Portals:ApplyBackdropOpacity()
     if self.mplusProgFrame then
         self.mplusProgFrame:SetBackdropColor(0.07, 0.07, 0.07, bestKeysOpacity)
     end
+    if self.accountKeystoneFrame then
+        self.accountKeystoneFrame:SetBackdropColor(0.07, 0.07, 0.07, bestKeysOpacity)
+    end
 end
 
 -- React to global config changes.
@@ -286,16 +290,13 @@ function Portals:OnConfigChanged()
     self:RefreshActionCooldowns()
 
     if self.VesperPortalsUI and self.VesperPortalsUI:IsShown() then
-        if self.mplusProgFrame then
-            self.mplusProgFrame:Hide()
-            self.mplusProgFrame:SetParent(nil)
-            self.mplusProgFrame = nil
-        end
+        self:RebuildProgressFrames()
+    end
+end
 
-        local curSeason = C_ChallengeMode.GetMapTable()
-        if curSeason and #curSeason > 0 then
-            self:CreateMPlusProgFrame(curSeason)
-        end
+function Portals:OnAccountKeystoneChanged()
+    if self.VesperPortalsUI and self.VesperPortalsUI:IsShown() then
+        self:RebuildProgressFrames()
     end
 end
 
@@ -1790,6 +1791,192 @@ function Portals:CreateVaultFrame()
     end)
 end
 
+function Portals:DestroyProgressFrames()
+    if self.accountKeystoneFrame then
+        self.accountKeystoneFrame:Hide()
+        self.accountKeystoneFrame:SetParent(nil)
+        self.accountKeystoneFrame = nil
+    end
+
+    if self.mplusProgFrame then
+        self.mplusProgFrame:Hide()
+        self.mplusProgFrame:SetParent(nil)
+        self.mplusProgFrame = nil
+    end
+end
+
+local function getClassColorByID(classID)
+    local numericClassID = tonumber(classID)
+    if not numericClassID then
+        return nil
+    end
+
+    local classFile
+    if C_CreatureInfo and type(C_CreatureInfo.GetClassInfo) == "function" then
+        local classInfo = C_CreatureInfo.GetClassInfo(numericClassID)
+        if type(classInfo) == "table" then
+            classFile = classInfo.classFile or classInfo.classFileName or classInfo.classFilename
+        end
+    end
+
+    if not classFile and type(GetClassInfo) == "function" then
+        local _, englishClass = GetClassInfo(numericClassID)
+        classFile = englishClass
+    end
+
+    if not classFile then
+        return nil
+    end
+
+    return C_ClassColor.GetClassColor(classFile)
+end
+
+function Portals:BuildAccountKeystoneRows()
+    local bagsStore = vesperTools:GetModule("BagsStore", true)
+    local keystoneSync = vesperTools:GetModule("KeystoneSync", true)
+    local dataHandle = vesperTools:GetModule("DataHandle", true)
+    local characters = bagsStore and type(bagsStore.GetDisplayCharacters) == "function"
+        and bagsStore:GetDisplayCharacters()
+        or {}
+
+    if #characters == 0 then
+        characters = {
+            {
+                fullName = vesperTools:GetCurrentCharacterFullName(),
+                isCurrent = true,
+            },
+        }
+    end
+
+    local rows = {}
+    for index = 1, #characters do
+        local character = characters[index]
+        local fullName = character and character.fullName or nil
+        if type(fullName) == "string" and fullName ~= "" then
+            local keyData = keystoneSync and type(keystoneSync.GetStoredAccountKeystone) == "function"
+                and keystoneSync:GetStoredAccountKeystone(fullName)
+                or nil
+
+            if type(keyData) == "table" and tonumber(keyData.level) and tonumber(keyData.mapID) then
+                local level = math.max(0, math.floor((tonumber(keyData.level) or 0) + 0.5))
+                local mapID = math.max(0, math.floor((tonumber(keyData.mapID) or 0) + 0.5))
+                if level > 0 and mapID > 0 then
+                    local displayName = (Ambiguate and Ambiguate(fullName, "guild")) or fullName
+                    local colorCode = dataHandle and type(dataHandle.GetKeyColor) == "function"
+                        and dataHandle:GetKeyColor(level)
+                        or "|cffffffff"
+                    local abbrev = keystoneSync and type(keystoneSync.GetDungeonAbbrev) == "function"
+                        and keystoneSync:GetDungeonAbbrev(mapID)
+                        or L["KEYSTONE_UNKNOWN_ABBREV"]
+
+                    rows[#rows + 1] = {
+                        displayName = displayName,
+                        classID = character.classID,
+                        keyText = string.format("%s%s +%d|r", colorCode, abbrev, level),
+                    }
+                end
+            end
+        end
+    end
+
+    return rows
+end
+
+function Portals:CreateAccountKeystoneFrame()
+    local rows = self:BuildAccountKeystoneRows()
+    if #rows == 0 then
+        return
+    end
+
+    local bestKeysFontSize = vesperTools:GetConfiguredFontSize("bestKeys", 11, 8, 24)
+    local rowHeight = 18
+    local headerHeight = 22
+    local padding = 10
+    local keyColWidth = 80
+    local gap = 10
+    local frameHeight = headerHeight + (#rows * rowHeight) + (padding * 2)
+
+    local measure = UIParent:CreateFontString(nil, "OVERLAY")
+    vesperTools:ApplyConfiguredFont(measure, bestKeysFontSize, "")
+    local maxNameWidth = 0
+    for index = 1, #rows do
+        measure:SetText(rows[index].displayName or "")
+        maxNameWidth = math.max(maxNameWidth, measure:GetStringWidth() or 0)
+    end
+    measure:Hide()
+
+    local frameWidth = math.max(180, math.ceil(maxNameWidth) + keyColWidth + gap + (padding * 2))
+    self.accountKeystoneFrame = CreateFrame("Frame", nil, self.VesperPortalsUI, "BackdropTemplate")
+    self.accountKeystoneFrame:SetSize(frameWidth, frameHeight)
+    if self.mplusProgFrame then
+        self.accountKeystoneFrame:SetPoint("TOPLEFT", self.mplusProgFrame, "BOTTOMLEFT", 0, -10)
+    else
+        self.accountKeystoneFrame:SetPoint("LEFT", self.VesperPortalsUI, "RIGHT", 10, 0)
+    end
+    vesperTools:ApplyAddonWindowLayer(self.accountKeystoneFrame)
+    vesperTools:ApplyRoundedWindowBackdrop(self.accountKeystoneFrame)
+    self.accountKeystoneFrame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("bestKeys"))
+    self.accountKeystoneFrame:SetBackdropBorderColor(self.classColor.r, self.classColor.g, self.classColor.b, 1)
+
+    local keyColRight = -padding
+
+    local nameHeader = self.accountKeystoneFrame:CreateFontString(nil, "OVERLAY")
+    vesperTools:ApplyConfiguredFont(nameHeader, bestKeysFontSize, "")
+    nameHeader:SetPoint("TOPLEFT", padding, -padding)
+    nameHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_NAME"] .. "|r")
+
+    local keyHeader = self.accountKeystoneFrame:CreateFontString(nil, "OVERLAY")
+    vesperTools:ApplyConfiguredFont(keyHeader, bestKeysFontSize, "")
+    keyHeader:SetPoint("TOPRIGHT", keyColRight, -padding)
+    keyHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_KEY"] .. "|r")
+
+    for index = 1, #rows do
+        local rowTop = -(padding + headerHeight + (index - 1) * rowHeight)
+        local rowCenter = rowTop - (rowHeight / 2)
+
+        if index % 2 == 0 then
+            local stripe = self.accountKeystoneFrame:CreateTexture(nil, "BACKGROUND", nil, 1)
+            stripe:SetPoint("TOPLEFT", self.accountKeystoneFrame, "TOPLEFT", 1, rowTop)
+            stripe:SetPoint("TOPRIGHT", self.accountKeystoneFrame, "TOPRIGHT", -1, rowTop)
+            stripe:SetHeight(rowHeight)
+            stripe:SetColorTexture(0.17, 0.17, 0.17, 1)
+        end
+
+        local nameText = self.accountKeystoneFrame:CreateFontString(nil, "OVERLAY")
+        vesperTools:ApplyConfiguredFont(nameText, bestKeysFontSize, "")
+        nameText:SetPoint("LEFT", self.accountKeystoneFrame, "TOPLEFT", padding, rowCenter)
+        nameText:SetJustifyH("LEFT")
+        nameText:SetText(rows[index].displayName or "")
+        local classColor = getClassColorByID(rows[index].classID)
+        if classColor then
+            nameText:SetTextColor(classColor.r, classColor.g, classColor.b)
+        else
+            nameText:SetTextColor(1, 1, 1)
+        end
+
+        local keyText = self.accountKeystoneFrame:CreateFontString(nil, "OVERLAY")
+        vesperTools:ApplyConfiguredFont(keyText, bestKeysFontSize, "")
+        keyText:SetPoint("RIGHT", self.accountKeystoneFrame, "TOPRIGHT", keyColRight, rowCenter)
+        keyText:SetJustifyH("RIGHT")
+        keyText:SetText(rows[index].keyText or "|cff9d9d9d-|r")
+    end
+end
+
+function Portals:RebuildProgressFrames()
+    self:DestroyProgressFrames()
+
+    local keystoneSync = vesperTools:GetModule("KeystoneSync", true)
+    if keystoneSync and type(keystoneSync.UpdateCurrentCharacterKeystoneSnapshot) == "function" then
+        keystoneSync:UpdateCurrentCharacterKeystoneSnapshot()
+    end
+
+    local curSeason = C_ChallengeMode.GetMapTable()
+    if curSeason and #curSeason > 0 then
+        self:CreateMPlusProgFrame(curSeason)
+    end
+    self:CreateAccountKeystoneFrame()
+end
+
 function Portals:CreateMPlusProgFrame(curSeason)
     -- Typography for the Best Keys panel is independently configurable.
     local bestKeysFontSize = vesperTools:GetConfiguredFontSize("bestKeys", 11, 8, 24)
@@ -1817,7 +2004,7 @@ function Portals:CreateMPlusProgFrame(curSeason)
 
     local frameWidth = math.ceil(maxNameWidth) + bestColWidth + timeColWidth + (gap * 2) + (padding * 2)
 
-    self.mplusProgFrame = CreateFrame("Frame", "vesperToolsMPlusProgFrame", self.VesperPortalsUI, "BackdropTemplate")
+    self.mplusProgFrame = CreateFrame("Frame", nil, self.VesperPortalsUI, "BackdropTemplate")
     self.mplusProgFrame:SetSize(frameWidth, frameHeight)
     self.mplusProgFrame:SetPoint("LEFT", self.VesperPortalsUI, "RIGHT", 10, 0)
     vesperTools:ApplyAddonWindowLayer(self.mplusProgFrame)
@@ -1944,16 +2131,8 @@ function Portals:Toggle()
     if self.VesperPortalsUI:IsShown() then
         self:HandleCloseRequest()
     else
-        -- Rebuild each open so current-season best run data is always fresh.
-        if self.mplusProgFrame then
-            self.mplusProgFrame:Hide()
-            self.mplusProgFrame:SetParent(nil)
-            self.mplusProgFrame = nil
-        end
-        local curSeason = C_ChallengeMode.GetMapTable()
-        if curSeason and #curSeason > 0 then
-            self:CreateMPlusProgFrame(curSeason)
-        end
+        -- Rebuild each open so current-season best run and account key data stay fresh.
+        self:RebuildProgressFrames()
         self.VesperPortalsUI:Show()
         self.VesperPortalsUI:Raise()
         self:RefreshActionCooldowns()
