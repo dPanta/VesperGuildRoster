@@ -1,3 +1,12 @@
+## 4.2.1 - 2026-04-16
+
+### Fixed
+- Colored character names in the account keystone panel by class so the new alt-key list is easier to scan at a glance.
+- Added a bags-cache fallback when resolving stored account keystones, so alt keys still appear when the active keystone cache is missing the direct current-name match.
+
+### Notes
+- This hotfix tightens up the new alt-key panel added in `4.2.0` without changing its layout or behavior beyond more reliable character resolution.
+
 ## 4.2.0 - 2026-04-16
 
 ### Changed

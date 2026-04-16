@@ -201,13 +201,51 @@ function KeystoneSync:StoreAccountKeystone(playerName, mapID, level)
 end
 
 function KeystoneSync:GetStoredAccountKeystone(playerName)
+    local db = self:GetAccountKeystoneDB()
     local normalizedName = vesperTools:NormalizePlayerFullName(playerName)
-    if not normalizedName then
+    if normalizedName and db[normalizedName] then
+        return db[normalizedName]
+    end
+
+    local bagsStore = vesperTools:GetModule("BagsStore", true)
+    if not bagsStore or type(bagsStore.ResolveCharacterBagSnapshot) ~= "function" then
         return nil
     end
 
-    local db = self:GetAccountKeystoneDB()
-    return db[normalizedName]
+    local _, snapshot = bagsStore:ResolveCharacterBagSnapshot(playerName)
+    if type(snapshot) ~= "table" then
+        return nil
+    end
+
+    local candidates = {}
+    local seen = {}
+    local function addCandidate(name)
+        local normalizedCandidate = vesperTools:NormalizePlayerFullName(name)
+        if not normalizedCandidate or seen[normalizedCandidate] then
+            return
+        end
+
+        seen[normalizedCandidate] = true
+        candidates[#candidates + 1] = normalizedCandidate
+    end
+
+    addCandidate(snapshot.fullName)
+    if type(snapshot.name) == "string" and snapshot.name ~= "" then
+        local realm = type(snapshot.realm) == "string" and strtrim(snapshot.realm) or ""
+        if realm ~= "" then
+            addCandidate(string.format("%s-%s", snapshot.name, realm))
+        end
+        addCandidate(snapshot.name)
+    end
+
+    for index = 1, #candidates do
+        local stored = db[candidates[index]]
+        if stored then
+            return stored
+        end
+    end
+
+    return nil
 end
 
 function KeystoneSync:UpdateCurrentCharacterKeystoneSnapshot()

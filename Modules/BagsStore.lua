@@ -1336,6 +1336,43 @@ function BagsStore:GetCharacterBagSnapshot(characterKey)
     return global.charactersByGUID[characterKey]
 end
 
+function BagsStore:ResolveCharacterBagSnapshot(characterRef)
+    local global = self:GetGlobalDB()
+    if not global or type(characterRef) ~= "string" or characterRef == "" then
+        return nil, nil
+    end
+
+    local direct = global.charactersByGUID[characterRef]
+    if type(direct) == "table" then
+        return characterRef, direct
+    end
+
+    local normalizedRef = vesperTools:NormalizePlayerFullName(characterRef)
+    if not normalizedRef then
+        return nil, nil
+    end
+
+    for characterKey, snapshot in pairs(global.charactersByGUID) do
+        if type(snapshot) == "table" then
+            local storedFullName = vesperTools:NormalizePlayerFullName(snapshot.fullName)
+            if not storedFullName and type(snapshot.name) == "string" and snapshot.name ~= "" then
+                local realm = type(snapshot.realm) == "string" and strtrim(snapshot.realm) or ""
+                if realm ~= "" then
+                    storedFullName = vesperTools:NormalizePlayerFullName(string.format("%s-%s", snapshot.name, realm))
+                else
+                    storedFullName = vesperTools:NormalizePlayerFullName(snapshot.name)
+                end
+            end
+
+            if storedFullName == normalizedRef then
+                return characterKey, snapshot
+            end
+        end
+    end
+
+    return nil, nil
+end
+
 function BagsStore:GetCharacterItemCount(characterKey, itemID)
     local snapshot = self:GetCharacterBagSnapshot(characterKey)
     if not snapshot or not snapshot.carried or not snapshot.carried.itemTotals then
