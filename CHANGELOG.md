@@ -1,3 +1,18 @@
+## 4.3.0 - 2026-04-20
+
+### Changed
+- Added a global `Apple Fan` style toggle to the configuration window so all vesperTools windows can switch between rounded and classic square corners from one place.
+- Added a custom rainbow bitten-apple icon beside the `Apple Fan` toggle and styled the configuration window border with the player's class color to match the rest of the rounded-window treatment.
+- Added an intentionally over-the-top confetti burst around the configuration window when `Apple Fan` is enabled.
+
+### Fixed
+- Reworked the shared rounded-window backdrop helper so toggling between rounded and square corners preserves the intended dark fills and class-colored borders instead of losing or whitening frame styling.
+- Cleaned up the rounded corner rendering so larger-radius corners stay crisper and avoid the dark pixel gaps, jagged cutouts, and uneven border thickness seen during the earlier corner-art iterations.
+- Fixed the new `Apple Fan` confetti overlay so it uses valid texture sublevels and spreads from the window edge band instead of clipping from outside the panel.
+
+### Notes
+- This minor release is focused on visual polish and playful configuration flair, centered on the new global rounded-corner style toggle and its Apple-themed presentation.
+
 ## 4.2.2 - 2026-04-17
 
 ### Fixed

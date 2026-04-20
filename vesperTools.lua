@@ -93,9 +93,12 @@ local MODERN_CLOSE_BUTTON_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\Clos
 local MIDNIGHT_LURE_PIN_TEXTURE = 4620680
 local ESCAPE_BINDING_BUTTON_NAME = "vesperToolsEscapeBindingButton"
 local GOLD_BAR_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_Coin_01"
-local ROUNDED_WINDOW_CORNER_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\RoundedCornerFill-8"
-local ROUNDED_WINDOW_BORDER_CORNER_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\RoundedCornerBorder-8"
-local ROUNDED_WINDOW_CORNER_SIZE = 6
+local ROUNDED_WINDOW_CORNER_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\RoundedCornerInnerFill-14"
+local ROUNDED_WINDOW_BORDER_CORNER_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\RoundedCornerBorder-14"
+-- Match the native 14x14 corner art so the rounded edge stays cleaner.
+local ROUNDED_WINDOW_CORNER_SIZE = 14
+local ROUNDED_WINDOW_CORNER_STRIP_INSET = 6
+local ROUNDED_WINDOW_BACKDROP_FRAMES = setmetatable({}, { __mode = "k" })
 
 -- Curated font options exposed in configuration UI.
 local FONT_OPTIONS = {
@@ -1200,33 +1203,201 @@ function vesperTools:ApplyRoundedWindowBackdrop(frame, options)
     end
 
     local resolvedOptions = type(options) == "table" and options or {}
+    frame.vesperRoundedCornerOptions = resolvedOptions
+    ROUNDED_WINDOW_BACKDROP_FRAMES[frame] = true
+
+    local bgFile = resolvedOptions.bgFile or "Interface\\Buttons\\WHITE8x8"
+    local edgeFile = resolvedOptions.edgeFile or "Interface\\Buttons\\WHITE8x8"
     local cornerTexture = resolvedOptions.cornerTexture or ROUNDED_WINDOW_CORNER_TEXTURE
     local borderCornerTexture = resolvedOptions.borderCornerTexture or ROUNDED_WINDOW_BORDER_CORNER_TEXTURE
     local cornerSize = math.max(2, math.floor((tonumber(resolvedOptions.cornerSize) or ROUNDED_WINDOW_CORNER_SIZE) + 0.5))
+    local edgeSize = math.max(1, math.floor((tonumber(resolvedOptions.edgeSize) or 1) + 0.5))
+    -- Keep the straight fill and border strips inside the curve so the square native
+    -- backdrop does not peek through behind the rounded corner arc.
+    local stripInset = math.max(
+        edgeSize + 1,
+        math.floor((tonumber(resolvedOptions.stripInset) or ROUNDED_WINDOW_CORNER_STRIP_INSET) + 0.5)
+    )
+    local useRoundedCorners = self:UseRoundedWindowCorners()
+    frame.vesperRoundedCornersEnabled = useRoundedCorners
+    local preservedBackdropColor = frame.vesperRoundedCornerLastBackdropColor
+    local preservedBorderColor = frame.vesperRoundedCornerLastBorderColor
 
+    frame.vesperRoundedCornerApplyingBackdropLayout = true
     frame:SetBackdrop({
-        bgFile = resolvedOptions.bgFile or "Interface\\Buttons\\WHITE8x8",
-        edgeFile = resolvedOptions.edgeFile or "Interface\\Buttons\\WHITE8x8",
-        edgeSize = math.max(1, math.floor((tonumber(resolvedOptions.edgeSize) or 1) + 0.5)),
+        bgFile = bgFile,
+        edgeFile = edgeFile,
+        edgeSize = edgeSize,
     })
+    frame.vesperRoundedCornerApplyingBackdropLayout = false
+
+    if preservedBackdropColor then
+        frame.vesperRoundedCornerLastBackdropColor = {
+            preservedBackdropColor[1],
+            preservedBackdropColor[2],
+            preservedBackdropColor[3],
+            preservedBackdropColor[4],
+        }
+    end
+
+    if preservedBorderColor then
+        frame.vesperRoundedCornerLastBorderColor = {
+            preservedBorderColor[1],
+            preservedBorderColor[2],
+            preservedBorderColor[3],
+            preservedBorderColor[4],
+        }
+    end
+
+    local function applyVertexColor(texture, r, g, b, a)
+        if texture then
+            texture:SetVertexColor(r or 0, g or 0, b or 0, a == nil and 1 or a)
+        end
+    end
+
+    local function configurePixelPerfectTexture(texture)
+        if not texture then
+            return
+        end
+
+        if texture.SetSnapToPixelGrid then
+            texture:SetSnapToPixelGrid(false)
+        end
+
+        if texture.SetTexelSnappingBias then
+            texture:SetTexelSnappingBias(0)
+        end
+    end
+
+    local function suppressNativeBackdrop(self, suppressBackground, suppressBorder)
+        if not self or self.vesperRoundedCornerApplyingNativeSuppression then
+            return
+        end
+
+        self.vesperRoundedCornerApplyingNativeSuppression = true
+        if suppressBackground then
+            self:SetBackdropColor(0, 0, 0, 0)
+        end
+        if suppressBorder then
+            self:SetBackdropBorderColor(0, 0, 0, 0)
+        end
+        self.vesperRoundedCornerApplyingNativeSuppression = false
+    end
+
+    local function captureBackdropColors(self)
+        if not self then
+            return
+        end
+
+        if not self.vesperRoundedCornerLastBackdropColor and type(self.GetBackdropColor) == "function" then
+            local r, g, b, a = self:GetBackdropColor()
+            if r ~= nil then
+                self.vesperRoundedCornerLastBackdropColor = { r or 0, g or 0, b or 0, a == nil and 1 or a }
+            end
+        end
+
+        if not self.vesperRoundedCornerLastBorderColor and type(self.GetBackdropBorderColor) == "function" then
+            local r, g, b, a = self:GetBackdropBorderColor()
+            if r ~= nil then
+                self.vesperRoundedCornerLastBorderColor = { r or 0, g or 0, b or 0, a == nil and 1 or a }
+            end
+        end
+    end
+
+    local function restoreNativeBackdrop(self)
+        if not self then
+            return
+        end
+
+        self.vesperRoundedCornerApplyingNativeSuppression = true
+
+        if self.vesperRoundedCornerLastBackdropColor then
+            local color = self.vesperRoundedCornerLastBackdropColor
+            self:SetBackdropColor(color[1], color[2], color[3], color[4])
+        end
+
+        if self.vesperRoundedCornerLastBorderColor then
+            local color = self.vesperRoundedCornerLastBorderColor
+            self:SetBackdropBorderColor(color[1], color[2], color[3], color[4])
+        end
+
+        self.vesperRoundedCornerApplyingNativeSuppression = false
+    end
+
+    local function setRoundedVisualsShown(backgroundTextures, roundedOverlay, isShown)
+        local backgroundTexturesList = {
+            backgroundTextures and backgroundTextures.vertical or nil,
+            backgroundTextures and backgroundTextures.horizontal or nil,
+            backgroundTextures and backgroundTextures.corners and backgroundTextures.corners.TOPLEFT or nil,
+            backgroundTextures and backgroundTextures.corners and backgroundTextures.corners.TOPRIGHT or nil,
+            backgroundTextures and backgroundTextures.corners and backgroundTextures.corners.BOTTOMLEFT or nil,
+            backgroundTextures and backgroundTextures.corners and backgroundTextures.corners.BOTTOMRIGHT or nil,
+        }
+
+        for i = 1, #backgroundTexturesList do
+            local texture = backgroundTexturesList[i]
+            if texture then
+                if isShown then
+                    texture:Show()
+                else
+                    texture:Hide()
+                end
+            end
+        end
+
+        if roundedOverlay then
+            if isShown then
+                roundedOverlay:Show()
+            else
+                roundedOverlay:Hide()
+            end
+        end
+    end
+
+    local background = frame.vesperRoundedCornerBackground
+    if not background then
+        background = {
+            vertical = frame:CreateTexture(nil, "BACKGROUND", nil, 0),
+            horizontal = frame:CreateTexture(nil, "BACKGROUND", nil, 0),
+            corners = {},
+        }
+        frame.vesperRoundedCornerBackground = background
+
+        local anchors = { "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT" }
+        for i = 1, #anchors do
+            local corner = frame:CreateTexture(nil, "BACKGROUND", nil, 1)
+            configurePixelPerfectTexture(corner)
+            background.corners[anchors[i]] = corner
+        end
+    end
+
+    configurePixelPerfectTexture(background.vertical)
+    configurePixelPerfectTexture(background.horizontal)
+    background.vertical:SetTexture(bgFile)
+    background.horizontal:SetTexture(bgFile)
 
     local overlay = frame.vesperRoundedCornerOverlay
     if not overlay then
         overlay = CreateFrame("Frame", nil, frame)
         overlay:SetAllPoints(frame)
         overlay:EnableMouse(false)
-        overlay.corners = {}
+        overlay.borderEdges = {}
         overlay.borderCorners = {}
         frame.vesperRoundedCornerOverlay = overlay
 
+        overlay.borderEdges.TOP = overlay:CreateTexture(nil, "OVERLAY", nil, 5)
+        overlay.borderEdges.BOTTOM = overlay:CreateTexture(nil, "OVERLAY", nil, 5)
+        overlay.borderEdges.LEFT = overlay:CreateTexture(nil, "OVERLAY", nil, 5)
+        overlay.borderEdges.RIGHT = overlay:CreateTexture(nil, "OVERLAY", nil, 5)
+        configurePixelPerfectTexture(overlay.borderEdges.TOP)
+        configurePixelPerfectTexture(overlay.borderEdges.BOTTOM)
+        configurePixelPerfectTexture(overlay.borderEdges.LEFT)
+        configurePixelPerfectTexture(overlay.borderEdges.RIGHT)
+
         local anchors = { "TOPLEFT", "TOPRIGHT", "BOTTOMLEFT", "BOTTOMRIGHT" }
         for i = 1, #anchors do
-            local corner = overlay:CreateTexture(nil, "OVERLAY", nil, 6)
-            corner:SetTexture(cornerTexture)
-            overlay.corners[anchors[i]] = corner
-
             local borderCorner = overlay:CreateTexture(nil, "OVERLAY", nil, 7)
-            borderCorner:SetTexture(borderCornerTexture)
+            configurePixelPerfectTexture(borderCorner)
             overlay.borderCorners[anchors[i]] = borderCorner
         end
 
@@ -1242,18 +1413,50 @@ function vesperTools:ApplyRoundedWindowBackdrop(frame, options)
             end
 
             hooksecurefunc(frame, "SetBackdropColor", function(self, r, g, b, a)
-                local roundedOverlay = self.vesperRoundedCornerOverlay
-                if not roundedOverlay or not roundedOverlay.corners then
+                if self.vesperRoundedCornerApplyingNativeSuppression or self.vesperRoundedCornerApplyingBackdropLayout then
                     return
                 end
 
-                syncRoundedOverlay(self)
+                self.vesperRoundedCornerLastBackdropColor = {
+                    r or 0,
+                    g or 0,
+                    b or 0,
+                    a == nil and 1 or a,
+                }
 
-                for _, texture in pairs(roundedOverlay.corners) do
-                    texture:SetVertexColor(r or 0, g or 0, b or 0, a == nil and 1 or a)
+                if not self.vesperRoundedCornersEnabled then
+                    return
                 end
+
+                local roundedBackground = self.vesperRoundedCornerBackground
+                if not roundedBackground then
+                    return
+                end
+
+                applyVertexColor(roundedBackground.vertical, r, g, b, a)
+                applyVertexColor(roundedBackground.horizontal, r, g, b, a)
+                for _, texture in pairs(roundedBackground.corners) do
+                    applyVertexColor(texture, r, g, b, a)
+                end
+
+                suppressNativeBackdrop(self, true, false)
             end)
             hooksecurefunc(frame, "SetBackdropBorderColor", function(self, r, g, b, a)
+                if self.vesperRoundedCornerApplyingNativeSuppression or self.vesperRoundedCornerApplyingBackdropLayout then
+                    return
+                end
+
+                self.vesperRoundedCornerLastBorderColor = {
+                    r or 0,
+                    g or 0,
+                    b or 0,
+                    a == nil and 1 or a,
+                }
+
+                if not self.vesperRoundedCornersEnabled then
+                    return
+                end
+
                 local roundedOverlay = self.vesperRoundedCornerOverlay
                 if not roundedOverlay or not roundedOverlay.borderCorners then
                     return
@@ -1261,9 +1464,14 @@ function vesperTools:ApplyRoundedWindowBackdrop(frame, options)
 
                 syncRoundedOverlay(self)
 
-                for _, texture in pairs(roundedOverlay.borderCorners) do
-                    texture:SetVertexColor(r or 0, g or 0, b or 0, a == nil and 1 or a)
+                for _, texture in pairs(roundedOverlay.borderEdges) do
+                    applyVertexColor(texture, r, g, b, a)
                 end
+                for _, texture in pairs(roundedOverlay.borderCorners) do
+                    applyVertexColor(texture, r, g, b, a)
+                end
+
+                suppressNativeBackdrop(self, false, true)
             end)
             hooksecurefunc(frame, "SetFrameLevel", syncRoundedOverlay)
             hooksecurefunc(frame, "SetFrameStrata", syncRoundedOverlay)
@@ -1271,53 +1479,129 @@ function vesperTools:ApplyRoundedWindowBackdrop(frame, options)
         end
     end
 
+    captureBackdropColors(frame)
+
+    for _, texture in pairs(background.corners) do
+        texture:SetTexture(cornerTexture)
+    end
+    for _, texture in pairs(overlay.borderEdges) do
+        texture:SetTexture(edgeFile)
+    end
+    for _, texture in pairs(overlay.borderCorners) do
+        texture:SetTexture(borderCornerTexture)
+    end
+
     overlay:SetAllPoints(frame)
     overlay:SetFrameStrata(frame:GetFrameStrata())
     overlay:SetFrameLevel(math.max((frame:GetFrameLevel() or 0) + 40, 1))
 
-    local topLeft = overlay.corners.TOPLEFT
+    background.vertical:ClearAllPoints()
+    background.vertical:SetPoint("TOPLEFT", frame, "TOPLEFT", stripInset, 0)
+    background.vertical:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", -stripInset, 0)
+
+    background.horizontal:ClearAllPoints()
+    background.horizontal:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, -stripInset)
+    background.horizontal:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, stripInset)
+
+    local topLeft = background.corners.TOPLEFT
     topLeft:ClearAllPoints()
     topLeft:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     topLeft:SetSize(cornerSize, cornerSize)
     topLeft:SetTexCoord(0, 1, 0, 1)
+
+    local topRight = background.corners.TOPRIGHT
+    topRight:ClearAllPoints()
+    topRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
+    topRight:SetSize(cornerSize, cornerSize)
+    topRight:SetTexCoord(1, 0, 0, 1)
+
+    local bottomLeft = background.corners.BOTTOMLEFT
+    bottomLeft:ClearAllPoints()
+    bottomLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
+    bottomLeft:SetSize(cornerSize, cornerSize)
+    bottomLeft:SetTexCoord(0, 1, 1, 0)
+
+    local bottomRight = background.corners.BOTTOMRIGHT
+    bottomRight:ClearAllPoints()
+    bottomRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
+    bottomRight:SetSize(cornerSize, cornerSize)
+    bottomRight:SetTexCoord(1, 0, 1, 0)
+    local borderTop = overlay.borderEdges.TOP
+    borderTop:ClearAllPoints()
+    borderTop:SetPoint("TOPLEFT", overlay, "TOPLEFT", stripInset, 0)
+    borderTop:SetPoint("TOPRIGHT", overlay, "TOPRIGHT", -stripInset, 0)
+    borderTop:SetHeight(edgeSize)
+
+    local borderBottom = overlay.borderEdges.BOTTOM
+    borderBottom:ClearAllPoints()
+    borderBottom:SetPoint("BOTTOMLEFT", overlay, "BOTTOMLEFT", stripInset, 0)
+    borderBottom:SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT", -stripInset, 0)
+    borderBottom:SetHeight(edgeSize)
+
+    local borderLeft = overlay.borderEdges.LEFT
+    borderLeft:ClearAllPoints()
+    borderLeft:SetPoint("TOPLEFT", overlay, "TOPLEFT", 0, -stripInset)
+    borderLeft:SetPoint("BOTTOMLEFT", overlay, "BOTTOMLEFT", 0, stripInset)
+    borderLeft:SetWidth(edgeSize)
+
+    local borderRight = overlay.borderEdges.RIGHT
+    borderRight:ClearAllPoints()
+    borderRight:SetPoint("TOPRIGHT", overlay, "TOPRIGHT", 0, -stripInset)
+    borderRight:SetPoint("BOTTOMRIGHT", overlay, "BOTTOMRIGHT", 0, stripInset)
+    borderRight:SetWidth(edgeSize)
+
     local topLeftBorder = overlay.borderCorners.TOPLEFT
     topLeftBorder:ClearAllPoints()
     topLeftBorder:SetPoint("TOPLEFT", frame, "TOPLEFT", 0, 0)
     topLeftBorder:SetSize(cornerSize, cornerSize)
     topLeftBorder:SetTexCoord(0, 1, 0, 1)
 
-    local topRight = overlay.corners.TOPRIGHT
-    topRight:ClearAllPoints()
-    topRight:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
-    topRight:SetSize(cornerSize, cornerSize)
-    topRight:SetTexCoord(1, 0, 0, 1)
     local topRightBorder = overlay.borderCorners.TOPRIGHT
     topRightBorder:ClearAllPoints()
     topRightBorder:SetPoint("TOPRIGHT", frame, "TOPRIGHT", 0, 0)
     topRightBorder:SetSize(cornerSize, cornerSize)
     topRightBorder:SetTexCoord(1, 0, 0, 1)
 
-    local bottomLeft = overlay.corners.BOTTOMLEFT
-    bottomLeft:ClearAllPoints()
-    bottomLeft:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
-    bottomLeft:SetSize(cornerSize, cornerSize)
-    bottomLeft:SetTexCoord(0, 1, 1, 0)
     local bottomLeftBorder = overlay.borderCorners.BOTTOMLEFT
     bottomLeftBorder:ClearAllPoints()
     bottomLeftBorder:SetPoint("BOTTOMLEFT", frame, "BOTTOMLEFT", 0, 0)
     bottomLeftBorder:SetSize(cornerSize, cornerSize)
     bottomLeftBorder:SetTexCoord(0, 1, 1, 0)
 
-    local bottomRight = overlay.corners.BOTTOMRIGHT
-    bottomRight:ClearAllPoints()
-    bottomRight:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
-    bottomRight:SetSize(cornerSize, cornerSize)
-    bottomRight:SetTexCoord(1, 0, 1, 0)
     local bottomRightBorder = overlay.borderCorners.BOTTOMRIGHT
     bottomRightBorder:ClearAllPoints()
     bottomRightBorder:SetPoint("BOTTOMRIGHT", frame, "BOTTOMRIGHT", 0, 0)
     bottomRightBorder:SetSize(cornerSize, cornerSize)
     bottomRightBorder:SetTexCoord(1, 0, 1, 0)
+
+    if not useRoundedCorners then
+        setRoundedVisualsShown(background, overlay, false)
+        restoreNativeBackdrop(frame)
+        return
+    end
+
+    setRoundedVisualsShown(background, overlay, true)
+
+    if frame.vesperRoundedCornerLastBackdropColor then
+        local color = frame.vesperRoundedCornerLastBackdropColor
+        applyVertexColor(background.vertical, color[1], color[2], color[3], color[4])
+        applyVertexColor(background.horizontal, color[1], color[2], color[3], color[4])
+        for _, texture in pairs(background.corners) do
+            applyVertexColor(texture, color[1], color[2], color[3], color[4])
+        end
+    end
+
+    if frame.vesperRoundedCornerLastBorderColor then
+        local color = frame.vesperRoundedCornerLastBorderColor
+        for _, texture in pairs(overlay.borderEdges) do
+            applyVertexColor(texture, color[1], color[2], color[3], color[4])
+        end
+        for _, texture in pairs(overlay.borderCorners) do
+            applyVertexColor(texture, color[1], color[2], color[3], color[4])
+        end
+    end
+
+    suppressNativeBackdrop(frame, true, true)
 end
 
 local function getPlayerClassAccentColor()
@@ -2514,6 +2798,28 @@ function vesperTools:GetConfiguredFontSize(frameKey, defaultSize, minSize, maxSi
     return value
 end
 
+function vesperTools:UseRoundedWindowCorners()
+    local profile = self.db and self.db.profile
+    local style = profile and profile.style or nil
+    if not style then
+        return true
+    end
+
+    if style.appleFanboy == nil then
+        style.appleFanboy = true
+    end
+
+    return style.appleFanboy and true or false
+end
+
+function vesperTools:RefreshRoundedWindowBackdropFrames()
+    for frame in pairs(ROUNDED_WINDOW_BACKDROP_FRAMES) do
+        if frame and frame.vesperRoundedCornerOptions then
+            self:ApplyRoundedWindowBackdrop(frame, frame.vesperRoundedCornerOptions)
+        end
+    end
+end
+
 -- Open custom configuration window if module is loaded.
 function vesperTools:OpenConfig()
     local Configuration = self:GetModule("Configuration", true)
@@ -2570,6 +2876,7 @@ function vesperTools:OnInitialize()
                     portals = 12,
                     bestKeys = 11,
                 },
+                appleFanboy = true,
                 backgroundOpacity = {
                     roster = 0.95,
                     portals = 0.95,

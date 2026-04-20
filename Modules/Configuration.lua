@@ -17,6 +17,17 @@ local TOY_MENU_ROW_HEIGHT = 22
 local TOY_MENU_MAX_VISIBLE_ROWS = 10
 local CURRENCY_MENU_ROW_HEIGHT = 22
 local CURRENCY_MENU_MAX_VISIBLE_ROWS = 10
+local APPLE_FAN_ICON_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\AppleFan-64"
+local APPLE_FAN_CONFETTI_PADDING = 260
+local APPLE_FAN_CONFETTI_PIECE_COUNT = 28 * 50
+local APPLE_FAN_CONFETTI_COLORS = {
+    { 1.00, 0.23, 0.19 },
+    { 1.00, 0.58, 0.00 },
+    { 1.00, 0.80, 0.00 },
+    { 0.20, 0.78, 0.35 },
+    { 0.04, 0.52, 1.00 },
+    { 0.75, 0.35, 0.95 },
+}
 
 -- Clamp a number to the inclusive [min, max] interval.
 local function clamp(value, minValue, maxValue)
@@ -35,6 +46,15 @@ local function roundToStep(value, step)
         return value
     end
     return math.floor((value / step) + 0.5) * step
+end
+
+local function randomFloat(minValue, maxValue)
+    local lowerBound = tonumber(minValue) or 0
+    local upperBound = tonumber(maxValue) or lowerBound
+    if upperBound < lowerBound then
+        lowerBound, upperBound = upperBound, lowerBound
+    end
+    return lowerBound + ((upperBound - lowerBound) * math.random())
 end
 
 -- Safely assign text to a FontString even when no font has been initialized yet.
@@ -163,6 +183,11 @@ local function ensureProfile()
     profile.style = profile.style or {}
     profile.style.fontPath = vesperTools:GetConfiguredFontPath()
     profile.style.fontName = vesperTools:GetConfiguredFontKey()
+    if profile.style.appleFanboy == nil then
+        profile.style.appleFanboy = true
+    else
+        profile.style.appleFanboy = profile.style.appleFanboy and true or false
+    end
 
     profile.style.backgroundOpacity = profile.style.backgroundOpacity or {}
     if profile.style.backgroundOpacity.roster == nil then
@@ -233,6 +258,10 @@ function Configuration:OnInitialize()
     self.contextMenuAnchor = nil
     self.fontDropdown = nil
     self.fontDropdownText = nil
+    self.appleFanboyCheckbox = nil
+    self.appleFanConfettiOverlay = nil
+    self.appleFanConfettiPieces = nil
+    self.appleFanConfettiBurstToken = 0
     self.fontMenuFrame = nil
     self.rosterOnlineBlacklistDropdown = nil
     self.rosterOnlineBlacklistDropdownText = nil
@@ -275,6 +304,196 @@ end
 -- Broadcast a single "config changed" message consumed by UI modules.
 function Configuration:NotifyConfigChanged()
     vesperTools:SendMessage("VESPERTOOLS_CONFIG_CHANGED")
+end
+
+function Configuration:EnsureAppleFanConfetti()
+    local panel = self.panel
+    if not panel then
+        return nil
+    end
+
+    if self.appleFanConfettiOverlay then
+        self.appleFanConfettiOverlay:SetFrameStrata(panel:GetFrameStrata())
+        self.appleFanConfettiOverlay:SetFrameLevel(math.max((panel:GetFrameLevel() or 0) + 90, 1))
+        return self.appleFanConfettiOverlay
+    end
+
+    local overlay = CreateFrame("Frame", nil, panel)
+    overlay:SetPoint("TOPLEFT", panel, "TOPLEFT", -APPLE_FAN_CONFETTI_PADDING, APPLE_FAN_CONFETTI_PADDING)
+    overlay:SetPoint("BOTTOMRIGHT", panel, "BOTTOMRIGHT", APPLE_FAN_CONFETTI_PADDING, -APPLE_FAN_CONFETTI_PADDING)
+    overlay:EnableMouse(false)
+    overlay:SetFrameStrata(panel:GetFrameStrata())
+    overlay:SetFrameLevel(math.max((panel:GetFrameLevel() or 0) + 90, 1))
+    overlay:Hide()
+
+    self.appleFanConfettiOverlay = overlay
+    self.appleFanConfettiPieces = {}
+
+    local function cleanupConfettiPiece(animationGroup)
+        local texture = animationGroup and animationGroup.owner or nil
+        if not texture then
+            return
+        end
+
+        texture:SetAlpha(0)
+        texture:Hide()
+    end
+
+    for i = 1, APPLE_FAN_CONFETTI_PIECE_COUNT do
+        local piece = overlay:CreateTexture(nil, "OVERLAY", nil, 7)
+        piece:SetTexture("Interface\\Buttons\\WHITE8x8")
+        piece:SetAlpha(0)
+        piece:Hide()
+
+        local animationGroup = piece:CreateAnimationGroup()
+        animationGroup.owner = piece
+
+        local translation = animationGroup:CreateAnimation("Translation")
+        translation:SetOrder(1)
+        translation:SetSmoothing("OUT")
+
+        local rotation = animationGroup:CreateAnimation("Rotation")
+        rotation:SetOrder(1)
+        rotation:SetSmoothing("OUT")
+        if rotation.SetOrigin then
+            rotation:SetOrigin("CENTER", 0, 0)
+        end
+
+        local fade = animationGroup:CreateAnimation("Alpha")
+        fade:SetOrder(1)
+        fade:SetFromAlpha(1)
+        fade:SetToAlpha(0)
+        fade:SetSmoothing("OUT")
+
+        animationGroup.translation = translation
+        animationGroup.rotation = rotation
+        animationGroup.fade = fade
+        animationGroup:SetScript("OnFinished", cleanupConfettiPiece)
+        animationGroup:SetScript("OnStop", cleanupConfettiPiece)
+
+        piece.animationGroup = animationGroup
+        self.appleFanConfettiPieces[i] = piece
+    end
+
+    return overlay
+end
+
+function Configuration:StopAppleFanConfettiBurst(invalidateTimers)
+    if invalidateTimers ~= false then
+        self.appleFanConfettiBurstToken = (self.appleFanConfettiBurstToken or 0) + 1
+    end
+
+    if self.appleFanConfettiPieces then
+        for i = 1, #self.appleFanConfettiPieces do
+            local piece = self.appleFanConfettiPieces[i]
+            if piece and piece.animationGroup then
+                piece.animationGroup:Stop()
+            elseif piece then
+                piece:SetAlpha(0)
+                piece:Hide()
+            end
+        end
+    end
+
+    if self.appleFanConfettiOverlay then
+        self.appleFanConfettiOverlay:Hide()
+    end
+end
+
+function Configuration:PlayAppleFanConfettiBurst()
+    local panel = self.panel
+    if not (panel and panel:IsShown()) then
+        return
+    end
+
+    local overlay = self:EnsureAppleFanConfetti()
+    if not overlay then
+        return
+    end
+
+    self:StopAppleFanConfettiBurst(false)
+
+    local burstToken = (self.appleFanConfettiBurstToken or 0) + 1
+    self.appleFanConfettiBurstToken = burstToken
+
+    overlay:SetFrameStrata(panel:GetFrameStrata())
+    overlay:SetFrameLevel(math.max((panel:GetFrameLevel() or 0) + 90, 1))
+    overlay:Show()
+
+    local panelWidth = math.max(tonumber(panel:GetWidth()) or WINDOW_WIDTH, 120)
+    local panelHeight = math.max(tonumber(panel:GetHeight()) or WINDOW_HEIGHT, 120)
+    local edgeBand = math.max(28, math.floor((math.min(panelWidth, panelHeight) * 0.12) + 0.5))
+    local edgeInset = 14
+    local longestDuration = 0
+
+    for i = 1, #(self.appleFanConfettiPieces or {}) do
+        local piece = self.appleFanConfettiPieces[i]
+        local animationGroup = piece and piece.animationGroup or nil
+        if piece and animationGroup then
+            local startX = 0
+            local startY = 0
+            local translateX = 0
+            local translateY = 0
+            local sideRoll = math.random()
+
+            if sideRoll < 0.25 then
+                startX = randomFloat(edgeInset, panelWidth - edgeInset)
+                startY = randomFloat(panelHeight - edgeBand, panelHeight - edgeInset)
+                translateX = randomFloat(-260, 260)
+                translateY = randomFloat(130, 300)
+            elseif sideRoll < 0.5 then
+                startX = randomFloat(edgeInset, panelWidth - edgeInset)
+                startY = randomFloat(edgeInset, edgeBand)
+                translateX = randomFloat(-260, 260)
+                translateY = -randomFloat(110, 250)
+            elseif sideRoll < 0.75 then
+                startX = randomFloat(edgeInset, edgeBand)
+                startY = randomFloat(edgeInset, panelHeight - edgeInset)
+                translateX = -randomFloat(130, 300)
+                translateY = randomFloat(-260, 260)
+            else
+                startX = randomFloat(panelWidth - edgeBand, panelWidth - edgeInset)
+                startY = randomFloat(edgeInset, panelHeight - edgeInset)
+                translateX = randomFloat(130, 300)
+                translateY = randomFloat(-260, 260)
+            end
+
+            local duration = randomFloat(1.55, 2.35)
+            longestDuration = math.max(longestDuration, duration)
+
+            local pieceWidth = math.max(3, math.floor(randomFloat(3, 8) + 0.5))
+            local pieceHeight = math.max(5, math.floor(randomFloat(5, 13) + 0.5))
+            if math.random() < 0.3 then
+                pieceHeight = pieceWidth
+            end
+
+            local color = APPLE_FAN_CONFETTI_COLORS[math.random(1, #APPLE_FAN_CONFETTI_COLORS)]
+
+            piece:ClearAllPoints()
+            piece:SetPoint("CENTER", panel, "BOTTOMLEFT", startX, startY)
+            piece:SetSize(pieceWidth, pieceHeight)
+            piece:SetColorTexture(color[1], color[2], color[3], 1)
+            piece:SetAlpha(1)
+            piece:Show()
+
+            animationGroup.translation:SetOffset(translateX, translateY)
+            animationGroup.translation:SetDuration(duration)
+            animationGroup.rotation:SetDegrees(randomFloat(-320, 320))
+            animationGroup.rotation:SetDuration(duration)
+            animationGroup.fade:SetFromAlpha(1)
+            animationGroup.fade:SetToAlpha(0)
+            animationGroup.fade:SetDuration(duration)
+            animationGroup:Play()
+        end
+    end
+
+    if C_Timer and type(C_Timer.After) == "function" then
+        C_Timer.After(longestDuration + 0.12, function()
+            if self.appleFanConfettiBurstToken == burstToken and self.appleFanConfettiOverlay then
+                self.appleFanConfettiOverlay:Hide()
+            end
+        end)
+    end
 end
 
 function Configuration:RefreshPanelFonts()
@@ -526,15 +745,32 @@ function Configuration:UpdatePercentSliderLabel(slider)
 end
 
 -- Create a reusable checkbox with an inline text label.
-function Configuration:CreateCheckButton(name, parent, labelText, anchor, yOffset)
+function Configuration:CreateCheckButton(name, parent, labelText, anchor, yOffset, options)
+    local resolvedOptions = type(options) == "table" and options or {}
     local checkbox = CreateFrame("CheckButton", name, parent, "UICheckButtonTemplate")
     checkbox:SetSize(24, 24)
     checkbox:SetPoint("TOPLEFT", anchor, "BOTTOMLEFT", -4, yOffset)
 
     local text = checkbox.text or _G[name .. "Text"]
+    local iconTexture = resolvedOptions.iconTexture
+    local iconSize = math.max(10, math.floor((tonumber(resolvedOptions.iconSize) or 14) + 0.5))
+    local iconSpacing = math.floor((tonumber(resolvedOptions.iconSpacing) or 4) + 0.5)
     if text then
         text:ClearAllPoints()
-        text:SetPoint("LEFT", checkbox, "RIGHT", 4, 1)
+        if iconTexture then
+            local icon = checkbox.iconTexture or checkbox:CreateTexture(nil, "ARTWORK")
+            icon:SetPoint("LEFT", checkbox, "RIGHT", 4, 0)
+            icon:SetSize(iconSize, iconSize)
+            icon:SetTexture(iconTexture)
+            icon:Show()
+            checkbox.iconTexture = icon
+            text:SetPoint("LEFT", icon, "RIGHT", iconSpacing, 1)
+        else
+            if checkbox.iconTexture then
+                checkbox.iconTexture:Hide()
+            end
+            text:SetPoint("LEFT", checkbox, "RIGHT", 4, 1)
+        end
         setFontStringTextSafe(text, labelText, 12, "", GameFontNormal)
     end
 
@@ -1990,6 +2226,12 @@ function Configuration:BuildPanel()
         return
     end
 
+    local _, englishClass = UnitClass("player")
+    local classColor = englishClass and C_ClassColor.GetClassColor(englishClass) or nil
+    local configBorderR = classColor and classColor.r or 0.2
+    local configBorderG = classColor and classColor.g or 0.2
+    local configBorderB = classColor and classColor.b or 0.24
+
     local panel = CreateFrame("Frame", "vesperToolsConfigWindow", UIParent, "BackdropTemplate")
     panel:SetSize(WINDOW_WIDTH, WINDOW_HEIGHT)
     panel:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
@@ -1999,7 +2241,7 @@ function Configuration:BuildPanel()
     panel:SetClampedToScreen(true)
     vesperTools:ApplyRoundedWindowBackdrop(panel)
     panel:SetBackdropColor(0.05, 0.05, 0.06, 0.95)
-    panel:SetBackdropBorderColor(0.2, 0.2, 0.24, 1)
+    panel:SetBackdropBorderColor(configBorderR, configBorderG, configBorderB, 1)
     panel:Hide()
 
     local function closePanel()
@@ -2070,13 +2312,25 @@ function Configuration:BuildPanel()
         end
     )
     local fontText = fontDropdown.Text
+    local appleFanboyCheckbox = self:CreateCheckButton(
+        "vesperToolsConfigAppleFanboyCheckbox",
+        panel,
+        "Apple Fan",
+        fontDropdown,
+        -6,
+        {
+            iconTexture = APPLE_FAN_ICON_TEXTURE,
+            iconSize = 18,
+            iconSpacing = 4,
+        }
+    )
 
     -- Tab row: each frame now has its own settings pane.
-    local rosterTabButton = self:CreateTabButton(panel, "roster", L["CONFIG_TAB_ROSTER"], fontDropdown, 0, -20, 84)
-    self:CreateTabButton(panel, "portals", L["CONFIG_TAB_PORTALS"], fontDropdown, 86, -20, 84)
-    self:CreateTabButton(panel, "bestKeys", L["CONFIG_TAB_BEST_KEYS"], fontDropdown, 172, -20, 84)
-    self:CreateTabButton(panel, "bags", L["CONFIG_TAB_BAGS"], fontDropdown, 258, -20, 84)
-    local bankTabButton = self:CreateTabButton(panel, "bank", L["CONFIG_TAB_BANK"], fontDropdown, 344, -20, 84)
+    local rosterTabButton = self:CreateTabButton(panel, "roster", L["CONFIG_TAB_ROSTER"], fontDropdown, 0, -34, 84)
+    self:CreateTabButton(panel, "portals", L["CONFIG_TAB_PORTALS"], fontDropdown, 86, -34, 84)
+    self:CreateTabButton(panel, "bestKeys", L["CONFIG_TAB_BEST_KEYS"], fontDropdown, 172, -34, 84)
+    self:CreateTabButton(panel, "bags", L["CONFIG_TAB_BAGS"], fontDropdown, 258, -34, 84)
+    local bankTabButton = self:CreateTabButton(panel, "bank", L["CONFIG_TAB_BANK"], fontDropdown, 344, -34, 84)
 
     local contentRoot = CreateFrame("Frame", nil, panel)
     contentRoot:SetPoint("TOPLEFT", rosterTabButton, "BOTTOMLEFT", 0, -10)
@@ -2498,6 +2752,29 @@ function Configuration:BuildPanel()
         end)
     end
 
+    local function bindStyleCheckBox(checkbox, fieldKey)
+        checkbox:SetScript("OnClick", function(changedCheckbox)
+            local profile = ensureProfile()
+            if not profile then
+                return
+            end
+
+            local enabled = changedCheckbox:GetChecked() and true or false
+            profile.style[fieldKey] = enabled
+            vesperTools:RefreshRoundedWindowBackdropFrames()
+            if not self._isRefreshing then
+                self:NotifyConfigChanged()
+            end
+            if fieldKey == "appleFanboy" then
+                if enabled then
+                    self:PlayAppleFanConfettiBurst()
+                else
+                    self:StopAppleFanConfettiBurst()
+                end
+            end
+        end)
+    end
+
     -- Live-write top utility button size used by hearthstone/toy controls.
     local function bindUtilityButtonSizeSlider(slider)
         slider:SetScript("OnValueChanged", function(changedSlider, value)
@@ -2624,6 +2901,7 @@ function Configuration:BuildPanel()
     bindOpacitySlider(portalsOpacitySlider, "portals")
     bindOpacitySlider(bestKeysOpacitySlider, "bestKeys")
 
+    bindStyleCheckBox(appleFanboyCheckbox, "appleFanboy")
     bindFontSizeSlider(rosterFontSizeSlider, "roster")
     bindFontSizeSlider(portalsFontSizeSlider, "portals")
     bindFontSizeSlider(bestKeysFontSizeSlider, "bestKeys")
@@ -2662,11 +2940,13 @@ function Configuration:BuildPanel()
         if self.bagsCurrencyMenuFrame then
             self.bagsCurrencyMenuFrame:Hide()
         end
+        self:StopAppleFanConfettiBurst()
     end)
 
     self.panel = panel
     self.fontDropdown = fontDropdown
     self.fontDropdownText = fontText
+    self.appleFanboyCheckbox = appleFanboyCheckbox
     self.rosterOnlineBlacklistDropdown = rosterOnlineBlacklistDropdown
     self.rosterOnlineBlacklistDropdownText = rosterOnlineBlacklistText
     self.rosterOnlineBlacklistHint = rosterOnlineBlacklistHint
@@ -2722,6 +3002,7 @@ function Configuration:RefreshControls()
     local rosterValue = clamp(tonumber(profile.style.backgroundOpacity.roster) or 0.95, 0.10, 1.00)
     local portalsValue = clamp(tonumber(profile.style.backgroundOpacity.portals) or 0.95, 0.10, 1.00)
     local bestKeysValue = clamp(tonumber(profile.style.backgroundOpacity.bestKeys) or 0.95, 0.10, 1.00)
+    local appleFanboy = profile.style.appleFanboy and true or false
     local rosterFontSize = clamp(tonumber(profile.style.fontSize.roster) or 12, 8, 24)
     local portalsFontSize = clamp(tonumber(profile.style.fontSize.portals) or 12, 8, 24)
     local bestKeysFontSize = clamp(tonumber(profile.style.fontSize.bestKeys) or 11, 8, 24)
@@ -2771,6 +3052,9 @@ function Configuration:RefreshControls()
     if self.fontSizeSliders.bestKeys then
         self.fontSizeSliders.bestKeys:SetValue(bestKeysFontSize)
         self:UpdateFontSizeSliderLabel(self.fontSizeSliders.bestKeys)
+    end
+    if self.appleFanboyCheckbox then
+        self.appleFanboyCheckbox:SetChecked(appleFanboy)
     end
     if self.utilityButtonSizeSlider then
         self.utilityButtonSizeSlider:SetValue(utilityButtonSize)

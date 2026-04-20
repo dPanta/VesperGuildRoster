@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <mask id="apple-body-mask" x="0" y="0" width="64" height="64" maskUnits="userSpaceOnUse">
+      <rect width="64" height="64" fill="#000"/>
+      <g fill="#fff">
+        <path d="M32 18
+                 C27 12, 19 12, 14.5 17
+                 C9.5 22.5, 8.5 31.5, 11.5 39.5
+                 C14.5 47.5, 20 53.5, 27.5 56
+                 C30.5 57, 33.5 57, 36.5 56
+                 C44 53.5, 49.5 47.5, 52.5 39.5
+                 C55.5 31.5, 54.5 22.5, 49.5 17
+                 C45 12, 37 12, 32 18 Z"/>
+      </g>
+      <g fill="#000">
+        <ellipse cx="32" cy="19" rx="6.75" ry="4.75"/>
+        <circle cx="53" cy="31" r="9.75"/>
+      </g>
+    </mask>
+  </defs>
+
+  <g mask="url(#apple-body-mask)">
+    <rect x="0" y="0" width="64" height="9.2" fill="#ff3b30"/>
+    <rect x="0" y="9.2" width="64" height="9.2" fill="#ff9500"/>
+    <rect x="0" y="18.4" width="64" height="9.2" fill="#ffcc00"/>
+    <rect x="0" y="27.6" width="64" height="9.2" fill="#34c759"/>
+    <rect x="0" y="36.8" width="64" height="9.2" fill="#0a84ff"/>
+    <rect x="0" y="46" width="64" height="18" fill="#bf5af2"/>
+
+    <ellipse cx="23" cy="25" rx="11" ry="8" fill="#fff" opacity="0.16" transform="rotate(-22 23 25)"/>
+    <rect x="0" y="31" width="64" height="33" fill="#000" opacity="0.09"/>
+  </g>
+
+  <rect x="30.5" y="6.5" width="4" height="13" rx="2" fill="#6f4723" transform="rotate(-18 32.5 13)"/>
+  <ellipse cx="41.5" cy="12.5" rx="9.5" ry="5.5" fill="#63da72" transform="rotate(-26 41.5 12.5)"/>
+  <ellipse cx="39.5" cy="11.5" rx="4.25" ry="2" fill="#c6ffd0" opacity="0.4" transform="rotate(-26 39.5 11.5)"/>
+</svg>
