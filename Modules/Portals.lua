@@ -1909,7 +1909,7 @@ function Portals:CreateAccountKeystoneFrame()
     self.accountKeystoneFrame = CreateFrame("Frame", nil, self.VesperPortalsUI, "BackdropTemplate")
     self.accountKeystoneFrame:SetSize(frameWidth, frameHeight)
     if self.mplusProgFrame then
-        self.accountKeystoneFrame:SetPoint("TOPLEFT", self.mplusProgFrame, "BOTTOMLEFT", 0, -10)
+        self.accountKeystoneFrame:SetPoint("TOP", self.mplusProgFrame, "BOTTOM", 0, -10)
     else
         self.accountKeystoneFrame:SetPoint("LEFT", self.VesperPortalsUI, "RIGHT", 10, 0)
     end

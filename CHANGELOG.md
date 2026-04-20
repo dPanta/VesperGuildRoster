@@ -1,3 +1,17 @@
+## 4.4.0 - 2026-04-20
+
+### Changed
+- Moved the roster window close button to the left side of the titlebar while `Apple Fan` is enabled, keeping the normal right-side layout when the style toggle is off.
+- Realigned the alt-character keys frame so it is horizontally centered beneath the Best Runs frame instead of inheriting the left edge alignment.
+- Turned the `Apple Fan` confetti burst into a much more excessive spread, with many more pieces, wider travel, and longer visible motion.
+
+### Fixed
+- Fixed the roster window titlebar layout so its square top strip no longer peeks through the rounded upper corners as tiny dark triangles while `Apple Fan` mode is active.
+- Fixed the `Apple Fan` confetti burst so pieces spawn from an inner edge band and spread more naturally instead of appearing as cramped straight lines from outside the configuration window.
+
+### Notes
+- This minor release is a follow-up polish pass on the `4.3.0` Apple Fan presentation, focused on layout cleanup and pushing the visual joke further.
+
 ## 4.3.0 - 2026-04-20
 
 ### Changed

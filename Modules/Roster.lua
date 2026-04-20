@@ -153,7 +153,10 @@ end
 function Roster:OnInitialize()
     self.frame = nil
     self.contentFrame = nil
+    self.titleBar = nil
     self.titleText = nil
+    self.closeButton = nil
+    self.syncButton = nil
     self.headerFrame = nil
     self.headerButtons = {}
     self.scrollFrame = nil
@@ -194,12 +197,45 @@ function Roster:RestoreWindowReferences(frame)
 
     self.frame = frame
     self.contentFrame = frame.vgContentFrame or self.contentFrame
+    self.titleBar = frame.vgTitleBar or self.titleBar
     self.titleText = frame.vgTitleText or self.titleText
+    self.closeButton = frame.vgCloseButton or self.closeButton
+    self.syncButton = frame.vgSyncButton or self.syncButton
     self.headerFrame = frame.vgHeaderFrame or self.headerFrame
     self.headerButtons = frame.vgHeaderButtons or self.headerButtons
     self.scrollFrame = frame.vgScrollFrame or self.scrollFrame
     self.scrollContent = frame.vgScrollContent or self.scrollContent
     self.rosterRows = frame.vgRosterRows or self.rosterRows
+end
+
+function Roster:ApplyTitlebarLayout()
+    local frame = self.frame
+    local titleBar = self.titleBar
+    local titleText = self.titleText
+    local closeButton = self.closeButton
+    local syncButton = self.syncButton
+    if not (frame and titleBar and titleText and closeButton and syncButton) then
+        return
+    end
+
+    titleBar:ClearAllPoints()
+    closeButton:ClearAllPoints()
+    syncButton:ClearAllPoints()
+    titleText:ClearAllPoints()
+
+    if vesperTools:UseRoundedWindowCorners() then
+        titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -1)
+        titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -1)
+        closeButton:SetPoint("LEFT", titleBar, "LEFT", 6, 0)
+        syncButton:SetPoint("RIGHT", titleBar, "RIGHT", -6, 0)
+        titleText:SetPoint("LEFT", closeButton, "RIGHT", 8, 0)
+    else
+        titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
+        titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -1)
+        closeButton:SetPoint("RIGHT", titleBar, "RIGHT", -6, 0)
+        syncButton:SetPoint("RIGHT", closeButton, "LEFT", -HEADER_ACTION_BUTTON_GAP, 0)
+        titleText:SetPoint("LEFT", titleBar, "LEFT", 10, 0)
+    end
 end
 
 function Roster:ApplyRosterStyling()
@@ -209,6 +245,7 @@ function Roster:ApplyRosterStyling()
 
     local baseFontSize = vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
     self.frame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("roster"))
+    self:ApplyTitlebarLayout()
 
     if self.titleText then
         self.titleText:SetText(GetGuildInfo("player") or L["ROSTER_TITLE_FALLBACK"])
@@ -626,6 +663,7 @@ function Roster:CreateWindow()
     title:SetText(GetGuildInfo("player") or L["ROSTER_TITLE_FALLBACK"])
     vesperTools:ApplyConfiguredFont(title, vesperTools:GetConfiguredFontSize("roster", 12, 8, 24) + 4, "")
     self.titleText = title
+    self.titleBar = titlebar
 
     -- Make draggable via titlebar
     titlebar:EnableMouse(true)
@@ -656,6 +694,7 @@ function Roster:CreateWindow()
         pressedAlpha = 0.18,
     })
     closeBtn:SetPoint("RIGHT", -6, 0)
+    self.closeButton = closeBtn
 
     local resizeBtn = CreateFrame("Button", nil, frame)
     resizeBtn:SetSize(16, 16)
@@ -687,6 +726,7 @@ function Roster:CreateWindow()
         end
         self:RequestRosterRefresh()
     end)
+    self.syncButton = syncBtn
 
     local confBtn = createHeaderActionButton(titlebar, syncBtn, 56, L["ROSTER_BUTTON_CONFIG"], function(_, mouseButton)
         if mouseButton == "LeftButton" then
@@ -799,7 +839,10 @@ function Roster:CreateWindow()
     self.rosterScrollBarVisible = nil
 
     frame.vgContentFrame = contentFrame
+    frame.vgTitleBar = titlebar
     frame.vgTitleText = title
+    frame.vgCloseButton = closeBtn
+    frame.vgSyncButton = syncBtn
     frame.vgHeaderFrame = headerFrame
     frame.vgHeaderButtons = self.headerButtons
     frame.vgScrollFrame = scrollFrame
