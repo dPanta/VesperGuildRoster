@@ -311,7 +311,7 @@ function BagsWindow:GetItemInteraction()
         end,
         overlayPassThroughButtons = function(window)
             if window:HasAnyWritableBankLive() then
-                return { "LeftButton" }
+                return { "LeftButton", "RightButton" }
             end
 
             return nil
@@ -3564,7 +3564,8 @@ function BagsWindow:FindDepositTargetSlot(sourceBagID, sourceSlotID, targetBagID
         return nil, nil
     end
 
-    local maxStackCount = tonumber(select(8, GetItemInfo(sourceInfo.hyperlink or sourceInfo.itemID))) or 1
+    local sourceStackCount = GetItemInfo and select(8, GetItemInfo(sourceInfo.hyperlink or sourceInfo.itemID)) or nil
+    local maxStackCount = tonumber(sourceStackCount) or 1
     local emptyBagID, emptySlotID = nil, nil
 
     for i = 1, #targetBagIDs do
@@ -3682,7 +3683,7 @@ function BagsWindow:HandleItemClick(button, mouseButton)
         return
     end
 
-    if mouseButton == "LeftButton" and self:HasAnyWritableBankLive() then
+    if (mouseButton == "LeftButton" or mouseButton == "RightButton") and self:HasAnyWritableBankLive() then
         local hyperlink = button and button.hyperlink
         if type(hyperlink) == "string" and hyperlink ~= "" and HandleModifiedItemClick and HandleModifiedItemClick(hyperlink) then
             return

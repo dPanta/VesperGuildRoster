@@ -1,3 +1,13 @@
+## 4.6.1 - 2026-04-27
+
+### Fixed
+- Routed right-click bank deposits from the replacement bags window through the active vesperTools bank view, so Warbound items now go to the Warband bank when that view is open instead of falling through to the character bank.
+- Let the native live-container item overlay pass right-clicks through during writable bank sessions so vesperTools can choose the correct character or Warband destination.
+- Fixed a stack-size lookup error in the manual bank deposit slot search that could throw when depositing certain items.
+
+### Notes
+- This hotfix follows up on `4.6.0` by tightening the replacement-bag bank deposit path after restoring native right-click item behavior.
+
 ## 4.6.0 - 2026-04-27
 
 ### Changed
