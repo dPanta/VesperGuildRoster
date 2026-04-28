@@ -1,3 +1,22 @@
+## 5.0.0 - 2026-04-28
+
+### Changed
+- Bumped the supported retail interface to `120005` so the TOC matches the live `12.0.5` client and dropped the older dual-interface tag.
+- Reworked the mage portal and teleport quick-cast buttons so left-click now casts the currently selected travel spell directly through a secure action button, while right-click opens the picker menu.
+- Added a persistent per-character selection for the mage portal and teleport quick-cast buttons, with the picker menu marking the active choice with a `*` prefix and the button icon, name, and cooldown sourcing from that selection.
+- Migrated the mage travel spellbook scan off the removed `GetNumSpellTabs`, `GetSpellTabInfo`, `GetSpellBookItemInfo`, and `BOOKTYPE_SPELL` paths to the modern `C_SpellBook` skill-line API and `C_Spell.GetSpellInfo` lookups.
+- Routed the launcher search talent-loadout activation through a new helper that prefers `C_ClassTalents.SwitchToLoadoutByIndex`, falls back to `ClassTalentHelper.SwitchToLoadoutByIndex`, and finally calls `C_ClassTalents.LoadConfig` with auto-apply, so loadout selection actually loads the talents instead of only marking them active.
+
+### Fixed
+- Fixed the bank window so opening it now defaults to the currently logged-in character's bank view whenever that live bank is available, instead of restoring the last manually viewed character or the warband view.
+- Fixed the bags-to-bank bridge view resolution so the current character's bank consistently wins over the previous interaction type, instead of only winning when the open interaction was a normal banker.
+- Hardened the portal-window cooldown lookup with a `pcall` around `C_Spell.GetSpellCooldownDuration` so utility buttons no longer break if the new retail signature errors on certain spells.
+- Deferred mage travel button refreshes scheduled during combat through the existing pending-utility-refresh flag so secure-action attribute updates do not trigger taint while in combat lockdown.
+- Added the new `MAGE_TRAVEL_TOOLTIP` locale string to `enUS` and supplemental fallbacks so the rebuilt mage travel buttons show their `Left-click: Cast / Right-click: Choose` hint correctly.
+
+### Notes
+- This major release brings vesperTools current with the `12.0.5` retail client: secure left-click casting for mage travel buttons, the modern spellbook and talent-loadout APIs, and bank views that reliably anchor on the active character.
+
 ## 4.6.1 - 2026-04-27
 
 ### Fixed

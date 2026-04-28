@@ -136,6 +136,7 @@ local EN_MISSING = {
     LEFT_CLICK_OPEN_PORTAL = "Left-click: Open portal flyout",
     LEFT_CLICK_OPEN_TELEPORT = "Left-click: Open teleport flyout",
     LIBKEYSTONE_NOT_LOADED = "LibKeystone is not loaded!",
+    MAGE_TRAVEL_TOOLTIP = "Left-click: Cast\nRight-click: Choose",
     MINIMAP_TOOLTIP_GUILD_ONLINE_FMT = "Guild Online: %d",
     MINIMAP_TOOLTIP_MEMBER_FMT = "%s (Lv %d)",
     MIDNIGHT_LURE_CLICK_SET_WAYPOINT = "Click to set waypoint",

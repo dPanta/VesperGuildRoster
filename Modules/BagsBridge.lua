@@ -593,6 +593,8 @@ function BagsBridge:IsAnyWritableBankLive()
 end
 
 -- Decide which live bank view should open first for the current interaction type.
+-- A bank open should favor the currently logged-in character whenever that live
+-- character bank is available, even if the previous manual view was warband.
 function BagsBridge:ResolvePreferredBankViewKey()
     local store = self:GetLiveBankStore()
     if not store then
@@ -603,20 +605,16 @@ function BagsBridge:ResolvePreferredBankViewKey()
     local warbandIsLive = type(store.IsWarbandBankLive) == "function" and store:IsWarbandBankLive() or false
     local interactionType = self.activeBankInteractionType
 
+    if characterIsLive then
+        return "character"
+    end
+
     if Enum and Enum.PlayerInteractionType and interactionType == Enum.PlayerInteractionType.AccountBanker and warbandIsLive then
         return "warband"
     end
 
-    if Enum and Enum.PlayerInteractionType and interactionType == Enum.PlayerInteractionType.Banker and characterIsLive then
-        return "character"
-    end
-
     if warbandIsLive and not characterIsLive then
         return "warband"
-    end
-
-    if characterIsLive then
-        return "character"
     end
 
     if warbandIsLive then

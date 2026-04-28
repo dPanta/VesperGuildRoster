@@ -197,6 +197,7 @@ local defaults = {
     LEFT_CLICK_OPEN_TELEPORT = "Left-click: Open teleport flyout",
     LIBKEYSTONE_NOT_LOADED = "LibKeystone is not loaded!",
     MAGE_PORTALS = "Mage Portals",
+    MAGE_TRAVEL_TOOLTIP = "Left-click: Cast\nRight-click: Choose",
     MAGE_TELEPORTS = "Mage Teleports",
     MINIMAP_TOOLTIP_GUILD_ONLINE_FMT = "Guild Online: %d",
     MINIMAP_TOOLTIP_MEMBER_FMT = "%s (Lv %d)",

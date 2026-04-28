@@ -142,6 +142,34 @@ local function formatCooldownRemaining(seconds)
     return string.format("%.1f", remaining)
 end
 
+local function getMageTravelSelectionKey(kind)
+    return kind == "portal" and "_selectedMagePortalSpellID" or "_selectedMageTeleportSpellID"
+end
+
+local function findMageTravelSpell(spells, spellID)
+    local numericSpellID = tonumber(spellID)
+    if not numericSpellID or type(spells) ~= "table" then
+        return nil
+    end
+
+    for i = 1, #spells do
+        local entry = spells[i]
+        if entry and tonumber(entry.spellID) == numericSpellID then
+            return entry
+        end
+    end
+
+    return nil
+end
+
+local function getSpellBookBank()
+    return Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
+end
+
+local function getSpellBookSpellType()
+    return Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell or nil
+end
+
 -- Lifecycle and event wiring.
 function Portals:OnInitialize()
     -- Tracks deferred secure-button updates blocked by combat lockdown.
@@ -329,21 +357,30 @@ function Portals:GetKnownMageTravelSpells(kind)
     end
 
     -- Spellbook scan fallback picks up travel spells not yet in the local curated list.
-    if GetNumSpellTabs and GetSpellTabInfo and GetSpellBookItemInfo then
-        local spellBookType = BOOKTYPE_SPELL or "spell"
-        local numTabs = GetNumSpellTabs()
-        for tab = 1, numTabs do
-            local _, _, offset, numSlots = GetSpellTabInfo(tab)
-            if offset and numSlots then
-                for slot = (offset + 1), (offset + numSlots) do
-                    local itemType, spellID = GetSpellBookItemInfo(slot, spellBookType)
-                    if itemType == "SPELL" and spellID and not seen[spellID] then
-                        local spellName = GetSpellBookItemName and GetSpellBookItemName(slot, spellBookType)
-                        if type(spellName) == "string" and spellName ~= "" then
-                            local lowerName = string.lower(spellName)
-                            if string.find(lowerName, token, 1, true) then
-                                tryAddSpell(spellID, spellName)
-                            end
+    if C_SpellBook
+        and C_SpellBook.GetNumSpellBookSkillLines
+        and C_SpellBook.GetSpellBookSkillLineInfo
+        and C_SpellBook.GetSpellBookItemInfo
+    then
+        local bank = getSpellBookBank()
+        local spellType = getSpellBookSpellType()
+        local numLines = tonumber(C_SpellBook.GetNumSpellBookSkillLines()) or 0
+
+        for lineIndex = 1, numLines do
+            local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(lineIndex)
+            local offset = lineInfo and lineInfo.itemIndexOffset or 0
+            local numSlots = lineInfo and lineInfo.numSpellBookItems or 0
+            for slot = (offset + 1), (offset + numSlots) do
+                local itemInfo = C_SpellBook.GetSpellBookItemInfo(slot, bank)
+                local itemType = itemInfo and itemInfo.itemType or nil
+                local spellID = itemInfo and (itemInfo.spellID or itemInfo.actionID) or nil
+                if spellID and not seen[spellID] and (spellType == nil or itemType == spellType) then
+                    local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+                    local spellName = spellInfo and spellInfo.name
+                    if type(spellName) == "string" and spellName ~= "" then
+                        local lowerName = string.lower(spellName)
+                        if string.find(lowerName, token, 1, true) then
+                            tryAddSpell(spellID, spellName)
                         end
                     end
                 end
@@ -373,21 +410,18 @@ function Portals:OpenMageTravelMenu(button, kind)
     end
 
     local menuTitle = (kind == "portal") and L["MAGE_PORTALS"] or L["MAGE_TELEPORTS"]
+    local selectionKey = getMageTravelSelectionKey(kind)
+    local selectedSpellID = self[selectionKey]
     if MenuUtil and type(MenuUtil.CreateContextMenu) == "function" then
         MenuUtil.CreateContextMenu(button, function(_, rootDescription)
             rootDescription:CreateTitle(menuTitle)
             for i = 1, #spells do
                 local entry = spells[i]
                 local icon = entry.icon or FALLBACK_ICON_TEXTURE
-                local rowLabel = string.format("|T%s:16:16:0:0|t %s", icon, entry.name)
+                local selectedPrefix = tonumber(entry.spellID) == tonumber(selectedSpellID) and "* " or ""
+                local rowLabel = string.format("%s|T%s:16:16:0:0|t %s", selectedPrefix, icon, entry.name)
                 rootDescription:CreateButton(rowLabel, function()
-                    if C_Spell and C_Spell.CastSpell then
-                        C_Spell.CastSpell(entry.spellID)
-                    elseif CastSpellByID then
-                        CastSpellByID(entry.spellID)
-                    elseif CastSpell then
-                        CastSpell(entry.name)
-                    end
+                    self:SelectMageTravelSpell(kind, entry.spellID)
                 end)
             end
         end)
@@ -400,14 +434,7 @@ function Portals:OpenMageTravelMenu(button, kind)
     local nextIndex = ((tonumber(self[cycleIndexKey]) or 0) % #spells) + 1
     self[cycleIndexKey] = nextIndex
     local selectedSpell = spells[nextIndex]
-
-    if C_Spell and C_Spell.CastSpell then
-        C_Spell.CastSpell(selectedSpell.spellID)
-    elseif CastSpellByID then
-        CastSpellByID(selectedSpell.spellID)
-    elseif CastSpell then
-        CastSpell(selectedSpell.name)
-    end
+    self:SelectMageTravelSpell(kind, selectedSpell and selectedSpell.spellID)
 end
 
 -- Return top-utility buttons in their visual order for horizontal layout.
@@ -670,7 +697,10 @@ function Portals:GetButtonCooldownInfo(button)
     if sourceType == "spell" then
         -- Mainline 11.1+: DurationObject API
         if C_Spell and C_Spell.GetSpellCooldownDuration then
-            local dur = C_Spell.GetSpellCooldownDuration(sourceID)
+            local ok, dur = pcall(C_Spell.GetSpellCooldownDuration, sourceID, true)
+            if not ok then
+                dur = nil
+            end
             if dur and not dur:IsZero() then
                 return tonumber(dur:GetStartTime()) or 0,
                     tonumber(dur:GetTotalDuration()) or 0,
@@ -1397,18 +1427,18 @@ function Portals:CreateTopUtilityFrame()
         self:ScheduleToyFlyoutHideCheck()
     end)
 
-    -- Mage-specific utility buttons: travel spell pickers.
+    -- Mage-specific utility buttons: left-click casts selected spell, right-click chooses.
     if self.isMage then
-        self.mageTeleportButton = self:CreateTopUtilityButton(self.topUtilityFrame, "Button")
-        self.mageTeleportButton:SetScript("OnClick", function(button, mouseButton)
-            if mouseButton == "LeftButton" then
+        self.mageTeleportButton = self:CreateTopUtilityButton(self.topUtilityFrame, "SecureActionButtonTemplate")
+        self.mageTeleportButton:HookScript("OnClick", function(button, mouseButton)
+            if mouseButton == "RightButton" then
                 self:OpenMageTravelMenu(button, "teleport")
             end
         end)
 
-        self.magePortalButton = self:CreateTopUtilityButton(self.topUtilityFrame, "Button")
-        self.magePortalButton:SetScript("OnClick", function(button, mouseButton)
-            if mouseButton == "LeftButton" then
+        self.magePortalButton = self:CreateTopUtilityButton(self.topUtilityFrame, "SecureActionButtonTemplate")
+        self.magePortalButton:HookScript("OnClick", function(button, mouseButton)
+            if mouseButton == "RightButton" then
                 self:OpenMageTravelMenu(button, "portal")
             end
         end)
@@ -1426,7 +1456,9 @@ function Portals:ApplyMageTravelButtonState(button, spells, titleText, unavailab
 
     local hasSpells = type(spells) == "table" and #spells > 0
     if hasSpells then
-        local icon = spells[1].icon or FALLBACK_ICON_TEXTURE
+        local selectionKey = button._mageTravelSelectionKey
+        local selectedSpell = findMageTravelSpell(spells, selectionKey and self[selectionKey]) or spells[1]
+        local icon = selectedSpell.icon or FALLBACK_ICON_TEXTURE
         button.icon:SetTexture(icon)
         button.icon:SetDrawLayer("ARTWORK", 1)
         button.icon:SetVertexColor(1, 1, 1, 1)
@@ -1436,10 +1468,17 @@ function Portals:ApplyMageTravelButtonState(button, spells, titleText, unavailab
         button.icon:Show()
         button:EnableMouse(true)
 
+        button:SetAttribute("type1", "spell")
+        button:SetAttribute("spell1", selectedSpell.name)
+        button:SetAttribute("type2", nil)
+        button:SetAttribute("spell2", nil)
+
         button._isAvailable = true
-        button._displayName = titleText
+        button._displayName = selectedSpell.name or titleText
         button._unavailableText = unavailableText
         button._tooltipHint = hintText
+        button._mageTravelSpellID = selectedSpell.spellID
+        self:SetButtonCooldownSource(button, "spell", selectedSpell.spellID)
     else
         button.icon:SetTexture(FALLBACK_ICON_TEXTURE)
         button.icon:SetDrawLayer("ARTWORK", 1)
@@ -1450,11 +1489,31 @@ function Portals:ApplyMageTravelButtonState(button, spells, titleText, unavailab
         button.icon:Show()
         button:EnableMouse(false)
 
+        button:SetAttribute("type1", nil)
+        button:SetAttribute("spell1", nil)
+        button:SetAttribute("type2", nil)
+        button:SetAttribute("spell2", nil)
+
         button._isAvailable = false
         button._displayName = titleText
         button._unavailableText = unavailableText
         button._tooltipHint = hintText
+        button._mageTravelSpellID = nil
+        self:SetButtonCooldownSource(button, nil, nil)
     end
+end
+
+function Portals:SelectMageTravelSpell(kind, spellID)
+    local selectionKey = getMageTravelSelectionKey(kind)
+    self[selectionKey] = tonumber(spellID)
+
+    if InCombatLockdown() then
+        self.pendingUtilityRefresh = true
+        return
+    end
+
+    self:RefreshMageTravelButtons()
+    self:RefreshActionCooldowns()
 end
 
 -- Refresh mage travel buttons from current known spellbook state.
@@ -1466,22 +1525,30 @@ function Portals:RefreshMageTravelButtons()
         return
     end
 
+    if InCombatLockdown() then
+        self.pendingUtilityRefresh = true
+        return
+    end
+
     self.knownMageTeleportSpells = self:GetKnownMageTravelSpells("teleport")
     self.knownMagePortalSpells = self:GetKnownMageTravelSpells("portal")
+
+    self.mageTeleportButton._mageTravelSelectionKey = getMageTravelSelectionKey("teleport")
+    self.magePortalButton._mageTravelSelectionKey = getMageTravelSelectionKey("portal")
 
     self:ApplyMageTravelButtonState(
         self.mageTeleportButton,
         self.knownMageTeleportSpells,
         L["MAGE_TELEPORTS"],
         L["NO_TELEPORT_SPELLS_KNOWN"],
-        L["LEFT_CLICK_OPEN_TELEPORT"]
+        L["MAGE_TRAVEL_TOOLTIP"]
     )
     self:ApplyMageTravelButtonState(
         self.magePortalButton,
         self.knownMagePortalSpells,
         L["MAGE_PORTALS"],
         L["NO_PORTAL_SPELLS_KNOWN"],
-        L["LEFT_CLICK_OPEN_PORTAL"]
+        L["MAGE_TRAVEL_TOOLTIP"]
     )
 end
 

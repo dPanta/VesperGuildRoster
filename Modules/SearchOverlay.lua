@@ -514,6 +514,35 @@ local function openTalentFrame()
     return false
 end
 
+local function switchTalentLoadout(entry)
+    if not entry or InCombatLockdown and InCombatLockdown() then
+        return false
+    end
+
+    if C_ClassTalents and type(C_ClassTalents.SwitchToLoadoutByIndex) == "function" and entry.loadoutIndex then
+        local ok = pcall(C_ClassTalents.SwitchToLoadoutByIndex, entry.loadoutIndex)
+        if ok then
+            return true
+        end
+    end
+
+    if ClassTalentHelper and type(ClassTalentHelper.SwitchToLoadoutByIndex) == "function" and entry.loadoutIndex then
+        local ok = pcall(ClassTalentHelper.SwitchToLoadoutByIndex, entry.loadoutIndex)
+        if ok then
+            return true
+        end
+    end
+
+    if C_ClassTalents and type(C_ClassTalents.LoadConfig) == "function" and entry.loadoutConfigID then
+        local ok = pcall(C_ClassTalents.LoadConfig, entry.loadoutConfigID, true)
+        if ok then
+            return true
+        end
+    end
+
+    return false
+end
+
 local function scrollSettingsCategoryIntoView(category)
     if not SettingsPanel or not category then
         return
@@ -1660,13 +1689,7 @@ function SearchOverlay:ActivateResult(entry)
 
     if entry.kind == "talent" then
         openTalentFrame()
-        if entry.loadoutConfigID and not (InCombatLockdown and InCombatLockdown()) then
-            if ClassTalentHelper and type(ClassTalentHelper.SwitchToLoadoutByIndex) == "function" and entry.loadoutIndex then
-                ClassTalentHelper.SwitchToLoadoutByIndex(entry.loadoutIndex)
-            elseif C_ClassTalents and type(C_ClassTalents.SetActiveConfigID) == "function" then
-                C_ClassTalents.SetActiveConfigID(entry.loadoutConfigID)
-            end
-        end
+        switchTalentLoadout(entry)
         return
     end
 

@@ -324,6 +324,13 @@ function BankWindow:SelectDefaultViewForOpen(preferredViewKey)
 
     self.displayCharacters = displayCharacters
     self.selectedViewType = resolvedViewKey == "warband" and "warband" or "character"
+    if self.selectedViewType == "character"
+        and store
+        and type(store.IsCharacterBankLive) == "function"
+        and store:IsCharacterBankLive()
+    then
+        self.selectedCharacterKey = store.GetCurrentCharacterKey and store:GetCurrentCharacterKey() or self.selectedCharacterKey
+    end
     self:SyncBlizzardBankView(self.selectedViewType)
     if bagsProfile then
         bagsProfile.lastViewedBankView = self.selectedViewType
