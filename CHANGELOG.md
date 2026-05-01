@@ -1,7 +1,15 @@
+## 5.1.1 - 2026-05-01
+
+### Changed
+- Moved the current character's Mythic+ rating to the bottom of the Best Runs panel while keeping it centered and rating-colored.
+
+### Notes
+- This hotfix follows up on `5.1.0` with a small layout adjustment for the new Best Runs rating readout.
+
 ## 5.1.0 - 2026-05-01
 
 ### Changed
-- Added the current character's Mythic+ rating above the Best Runs header, centered in the panel and colored with Blizzard's usual Mythic+ rating rarity color.
+- Added the current character's Mythic+ rating to the Best Runs panel, centered and colored with Blizzard's usual Mythic+ rating rarity color.
 - Updated dungeon metadata lookups to prefer the current character's known portal variant when multiple spell IDs exist for the same challenge map.
 
 ### Fixed

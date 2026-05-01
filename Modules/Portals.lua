@@ -2214,7 +2214,7 @@ function Portals:CreateMPlusProgFrame(curSeason)
 
     local ratingText = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
     vesperTools:ApplyConfiguredFont(ratingText, bestKeysFontSize, "")
-    ratingText:SetPoint("TOP", self.mplusProgFrame, "TOP", 0, -padding)
+    ratingText:SetPoint("BOTTOM", self.mplusProgFrame, "BOTTOM", 0, padding)
     ratingText:SetWidth(frameWidth - (padding * 2))
     ratingText:SetJustifyH("CENTER")
     ratingText:SetText(currentRatingText)
@@ -2222,22 +2222,22 @@ function Portals:CreateMPlusProgFrame(curSeason)
     -- Header
     local nameHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
     vesperTools:ApplyConfiguredFont(nameHeader, bestKeysFontSize, "")
-    nameHeader:SetPoint("TOPLEFT", padding, -(padding + ratingRowHeight))
+    nameHeader:SetPoint("TOPLEFT", padding, -padding)
     nameHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_DUNGEON"] .. "|r")
 
     local keyHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
     vesperTools:ApplyConfiguredFont(keyHeader, bestKeysFontSize, "")
-    keyHeader:SetPoint("TOPRIGHT", bestColRight, -(padding + ratingRowHeight))
+    keyHeader:SetPoint("TOPRIGHT", bestColRight, -padding)
     keyHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_BEST"] .. "|r")
 
     local timeHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
     vesperTools:ApplyConfiguredFont(timeHeader, bestKeysFontSize, "")
-    timeHeader:SetPoint("TOPRIGHT", timeColRight, -(padding + ratingRowHeight))
+    timeHeader:SetPoint("TOPRIGHT", timeColRight, -padding)
     timeHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_TIME"] .. "|r")
 
     -- Rows
     for i, mapID in ipairs(curSeason) do
-        local rowTop = -(padding + ratingRowHeight + headerHeight + (i - 1) * rowHeight)
+        local rowTop = -(padding + headerHeight + (i - 1) * rowHeight)
         local rowCenter = rowTop - (rowHeight / 2)
 
         -- Zebra stripe background
