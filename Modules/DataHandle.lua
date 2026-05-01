@@ -106,12 +106,45 @@ function DataHandle:GetDungeonList()
     return dungList
 end
 
--- Return the primary dungeon record for a mapID.
-function DataHandle:GetDungeonByMapID(mapID)
+function DataHandle:GetDungeonsByMapID(mapID)
     if dungListDB and dungListDB[mapID] then
-        -- Return first configured record as default for consumers expecting one entry.
-        return dungListDB[mapID][1] -- Return first match
+        return dungListDB[mapID]
     end
+
+    return nil
+end
+
+-- Return the configured dungeon record for this character, preferring a known portal variant.
+function DataHandle:GetDungeonByMapID(mapID)
+    local entries = self:GetDungeonsByMapID(mapID)
+    if type(entries) ~= "table" or #entries == 0 then
+        return nil
+    end
+
+    for i = 1, #entries do
+        local dungInfo = entries[i]
+        if dungInfo and vesperTools:IsSpellKnownForPlayer(dungInfo.spellID) then
+            return dungInfo
+        end
+    end
+
+    -- Return first configured record as default for consumers expecting one entry.
+    return entries[1]
+end
+
+function DataHandle:GetKnownDungeonByMapID(mapID)
+    local entries = self:GetDungeonsByMapID(mapID)
+    if type(entries) ~= "table" or #entries == 0 then
+        return nil
+    end
+
+    for i = 1, #entries do
+        local dungInfo = entries[i]
+        if dungInfo and vesperTools:IsSpellKnownForPlayer(dungInfo.spellID) then
+            return dungInfo
+        end
+    end
+
     return nil
 end
 
@@ -129,7 +162,7 @@ function DataHandle:GetMissingDungeonsForMapIDs(mapIDs)
 
     for i = 1, #mapIDs do
         local mapID = tonumber(mapIDs[i])
-        if mapID and not self:GetDungeonByMapID(mapID) then
+        if mapID and not self:GetDungeonsByMapID(mapID) then
             missing[#missing + 1] = mapID
         end
     end

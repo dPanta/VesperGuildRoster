@@ -142,6 +142,17 @@ local function formatCooldownRemaining(seconds)
     return string.format("%.1f", remaining)
 end
 
+local function getPlayerMythicPlusRating()
+    if C_PlayerInfo and type(C_PlayerInfo.GetPlayerMythicPlusRatingSummary) == "function" then
+        local ok, summary = pcall(C_PlayerInfo.GetPlayerMythicPlusRatingSummary, "player")
+        if ok and type(summary) == "table" and type(summary.currentSeasonScore) == "number" then
+            return math.max(0, math.floor(summary.currentSeasonScore + 0.5))
+        end
+    end
+
+    return 0
+end
+
 local function getMageTravelSelectionKey(kind)
     return kind == "portal" and "_selectedMagePortalSpellID" or "_selectedMageTeleportSpellID"
 end
@@ -878,6 +889,20 @@ end
 function Portals:ApplyDungeonPortalButtonState(button)
     if not button then
         return false
+    end
+
+    local mapID = tonumber(button.portalMapID)
+    if mapID then
+        local dataHandle = vesperTools:GetModule("DataHandle", true)
+        local knownDungeon = dataHandle
+            and type(dataHandle.GetKnownDungeonByMapID) == "function"
+            and dataHandle:GetKnownDungeonByMapID(mapID)
+            or nil
+        if knownDungeon and tonumber(knownDungeon.spellID) then
+            button.portalSpellID = knownDungeon.spellID
+            button.portalSpellName = nil
+            button.dungeonName = knownDungeon.dungeonName or button.dungeonName
+        end
     end
 
     local spellID = tonumber(button.portalSpellID)
@@ -1858,6 +1883,7 @@ function Portals:CreatePortalFrame()
 
             -- Tooltip
             btn.dungeonName = dungInfo.dungeonName
+            btn.portalMapID = dungInfo.mapID
             btn.portalSpellID = dungInfo.spellID
             btn.portalSpellName = spellName
             self.portalButtons[#self.portalButtons + 1] = btn
@@ -2143,12 +2169,17 @@ function Portals:CreateMPlusProgFrame(curSeason)
 
     local rowHeight = 18
     local headerHeight = 22
+    local ratingRowHeight = 20
     local padding = 10
     local bestColWidth = 40 -- space for "+XX" text
     local timeColWidth = 55 -- space for "mm:ss" text
     local gap = 10 -- gap between columns
     local numDungeons = #curSeason
-    local frameHeight = headerHeight + (numDungeons * rowHeight) + (padding * 2)
+    local frameHeight = ratingRowHeight + headerHeight + (numDungeons * rowHeight) + (padding * 2)
+    local DataHandle = vesperTools:GetModule("DataHandle", true)
+    local currentRating = getPlayerMythicPlusRating()
+    local currentRatingColor = DataHandle and DataHandle:GetRatingColor(currentRating) or "|cff9d9d9d"
+    local currentRatingText = string.format(L["BEST_KEYS_CURRENT_RATING_FMT"], currentRatingColor .. currentRating .. "|r")
 
     -- Measure widest dungeon name to size frame dynamically
     local measure = UIParent:CreateFontString(nil, "OVERLAY")
@@ -2160,9 +2191,14 @@ function Portals:CreateMPlusProgFrame(curSeason)
         local w = measure:GetStringWidth()
         if w > maxNameWidth then maxNameWidth = w end
     end
+    measure:SetText(currentRatingText)
+    local ratingTextWidth = measure:GetStringWidth()
     measure:Hide()
 
-    local frameWidth = math.ceil(maxNameWidth) + bestColWidth + timeColWidth + (gap * 2) + (padding * 2)
+    local frameWidth = math.max(
+        math.ceil(maxNameWidth) + bestColWidth + timeColWidth + (gap * 2) + (padding * 2),
+        math.ceil(ratingTextWidth) + (padding * 2)
+    )
 
     self.mplusProgFrame = CreateFrame("Frame", nil, self.VesperPortalsUI, "BackdropTemplate")
     self.mplusProgFrame:SetSize(frameWidth, frameHeight)
@@ -2176,25 +2212,32 @@ function Portals:CreateMPlusProgFrame(curSeason)
     local timeColRight = -padding
     local bestColRight = timeColRight - timeColWidth - gap
 
+    local ratingText = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
+    vesperTools:ApplyConfiguredFont(ratingText, bestKeysFontSize, "")
+    ratingText:SetPoint("TOP", self.mplusProgFrame, "TOP", 0, -padding)
+    ratingText:SetWidth(frameWidth - (padding * 2))
+    ratingText:SetJustifyH("CENTER")
+    ratingText:SetText(currentRatingText)
+
     -- Header
     local nameHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
     vesperTools:ApplyConfiguredFont(nameHeader, bestKeysFontSize, "")
-    nameHeader:SetPoint("TOPLEFT", padding, -padding)
+    nameHeader:SetPoint("TOPLEFT", padding, -(padding + ratingRowHeight))
     nameHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_DUNGEON"] .. "|r")
 
     local keyHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
     vesperTools:ApplyConfiguredFont(keyHeader, bestKeysFontSize, "")
-    keyHeader:SetPoint("TOPRIGHT", bestColRight, -padding)
+    keyHeader:SetPoint("TOPRIGHT", bestColRight, -(padding + ratingRowHeight))
     keyHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_BEST"] .. "|r")
 
     local timeHeader = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
     vesperTools:ApplyConfiguredFont(timeHeader, bestKeysFontSize, "")
-    timeHeader:SetPoint("TOPRIGHT", timeColRight, -padding)
+    timeHeader:SetPoint("TOPRIGHT", timeColRight, -(padding + ratingRowHeight))
     timeHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_TIME"] .. "|r")
 
     -- Rows
     for i, mapID in ipairs(curSeason) do
-        local rowTop = -(padding + headerHeight + (i - 1) * rowHeight)
+        local rowTop = -(padding + ratingRowHeight + headerHeight + (i - 1) * rowHeight)
         local rowCenter = rowTop - (rowHeight / 2)
 
         -- Zebra stripe background
@@ -2242,7 +2285,6 @@ function Portals:CreateMPlusProgFrame(curSeason)
         timeText:SetJustifyH("RIGHT")
 
         if bestLevel > 0 then
-            local DataHandle = vesperTools:GetModule("DataHandle", true)
             local color = DataHandle and DataHandle:GetKeyColor(bestLevel) or "|cff9d9d9d"
             levelText:SetText(color .. "+" .. bestLevel .. "|r")
 

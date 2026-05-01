@@ -52,19 +52,127 @@ local function callSpellKnowledgeAPI(apiFunc, spellID)
     return ok and result and true or false
 end
 
+local function getPlayerSpellBookBank()
+    return Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or nil
+end
+
+local function getSpellBookSpellType()
+    return Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell or nil
+end
+
+local function getPlayerSpellBookItemInfo(slotIndex)
+    if not (C_SpellBook and type(C_SpellBook.GetSpellBookItemInfo) == "function") then
+        return nil
+    end
+
+    local bank = getPlayerSpellBookBank()
+    if bank ~= nil then
+        local ok, itemInfo = pcall(C_SpellBook.GetSpellBookItemInfo, slotIndex, bank)
+        if ok and itemInfo then
+            return itemInfo
+        end
+    end
+
+    local ok, itemInfo = pcall(C_SpellBook.GetSpellBookItemInfo, slotIndex)
+    if ok then
+        return itemInfo
+    end
+
+    return nil
+end
+
+local function getSpellOverrideID(spellID)
+    local normalizedSpellID = tonumber(spellID)
+    if not normalizedSpellID or normalizedSpellID <= 0 then
+        return nil
+    end
+
+    if C_SpellBook and type(C_SpellBook.FindSpellOverrideByID) == "function" then
+        local ok, overrideSpellID = pcall(C_SpellBook.FindSpellOverrideByID, normalizedSpellID)
+        overrideSpellID = ok and tonumber(overrideSpellID) or nil
+        if overrideSpellID and overrideSpellID > 0 and overrideSpellID ~= normalizedSpellID then
+            return overrideSpellID
+        end
+    end
+
+    if C_Spell and type(C_Spell.GetOverrideSpell) == "function" then
+        local ok, overrideSpellID = pcall(C_Spell.GetOverrideSpell, normalizedSpellID)
+        overrideSpellID = ok and tonumber(overrideSpellID) or nil
+        if overrideSpellID and overrideSpellID > 0 and overrideSpellID ~= normalizedSpellID then
+            return overrideSpellID
+        end
+    end
+
+    return nil
+end
+
+local function isSpellInPlayerSpellBook(spellID)
+    local normalizedSpellID = tonumber(spellID)
+    if not normalizedSpellID or normalizedSpellID <= 0 then
+        return false
+    end
+    if not (C_SpellBook
+        and type(C_SpellBook.GetNumSpellBookSkillLines) == "function"
+        and type(C_SpellBook.GetSpellBookSkillLineInfo) == "function"
+        and type(C_SpellBook.GetSpellBookItemInfo) == "function")
+    then
+        return false
+    end
+
+    local targetSpellIDs = {
+        [normalizedSpellID] = true,
+    }
+    local overrideSpellID = getSpellOverrideID(normalizedSpellID)
+    if overrideSpellID then
+        targetSpellIDs[overrideSpellID] = true
+    end
+
+    local spellType = getSpellBookSpellType()
+    local ok, numLines = pcall(C_SpellBook.GetNumSpellBookSkillLines)
+    if not ok then
+        return false
+    end
+
+    numLines = tonumber(numLines) or 0
+    for lineIndex = 1, numLines do
+        local lineOk, lineInfo = pcall(C_SpellBook.GetSpellBookSkillLineInfo, lineIndex)
+        if lineOk and lineInfo then
+            local offset = tonumber(lineInfo.itemIndexOffset) or 0
+            local numSlots = tonumber(lineInfo.numSpellBookItems) or 0
+
+            for slot = (offset + 1), (offset + numSlots) do
+                local itemInfo = getPlayerSpellBookItemInfo(slot)
+                local itemType = itemInfo and itemInfo.itemType or nil
+                local itemSpellID = itemInfo and tonumber(itemInfo.spellID or itemInfo.actionID) or nil
+                if itemSpellID and targetSpellIDs[itemSpellID] and (spellType == nil or itemType == spellType) then
+                    return true
+                end
+            end
+        end
+    end
+
+    return false
+end
+
 function vesperTools:GetPlayerSpellKnownState(spellID)
     local normalizedSpellID = tonumber(spellID)
     if not normalizedSpellID or normalizedSpellID <= 0 then
         return false, "invalid"
     end
 
+    local checkedModernAPI = false
     if C_SpellBook then
-        local checkedModernAPI = false
-
         if type(C_SpellBook.IsSpellKnown) == "function" then
             checkedModernAPI = true
             if callSpellKnowledgeAPI(C_SpellBook.IsSpellKnown, normalizedSpellID) then
                 return true, "C_SpellBook.IsSpellKnown"
+            end
+        end
+
+        if type(C_SpellBook.IsSpellKnownOrInSpellBook) == "function" then
+            checkedModernAPI = true
+            if callSpellKnowledgeAPI(C_SpellBook.IsSpellKnownOrInSpellBook, normalizedSpellID) then
+                return true, "C_SpellBook.IsSpellKnownOrInSpellBook"
             end
         end
 
@@ -74,10 +182,14 @@ function vesperTools:GetPlayerSpellKnownState(spellID)
                 return true, "C_SpellBook.IsSpellInSpellBook"
             end
         end
+    end
 
-        if checkedModernAPI then
-            return false, "C_SpellBook"
-        end
+    if isSpellInPlayerSpellBook(normalizedSpellID) then
+        return true, "spellbook scan"
+    end
+
+    if checkedModernAPI then
+        return false, "C_SpellBook"
     end
 
     if callSpellKnowledgeAPI(IsSpellKnownOrOverridesKnown, normalizedSpellID) then

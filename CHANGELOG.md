@@ -1,3 +1,16 @@
+## 5.1.0 - 2026-05-01
+
+### Changed
+- Added the current character's Mythic+ rating above the Best Runs header, centered in the panel and colored with Blizzard's usual Mythic+ rating rarity color.
+- Updated dungeon metadata lookups to prefer the current character's known portal variant when multiple spell IDs exist for the same challenge map.
+
+### Fixed
+- Added a spellbook-scan fallback to the shared current-character spell knowledge check so portal buttons can recover when direct spell-known APIs report unavailable even though the spell is visible in the player's spellbook.
+- Let existing portal buttons switch to a known map variant during availability refreshes, including refreshes from login retries, `SPELLS_CHANGED`, portal-window open, and manual sync.
+
+### Notes
+- This minor release improves confidence in the portal frame by checking the character's actual player spellbook and adds a quick rating readout to the Best Runs panel.
+
 ## 5.0.0 - 2026-04-28
 
 ### Changed

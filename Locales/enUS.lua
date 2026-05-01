@@ -92,6 +92,7 @@ local defaults = {
     BEST_KEYS_DATABASE_HEADER = "=== Best Keys Database ===",
     BEST_KEYS_DATABASE_LINE_FMT = "  %s: +%d (%s, %s)",
     BEST_KEYS_DATABASE_TOTAL_FMT = "Total: %d players",
+    BEST_KEYS_CURRENT_RATING_FMT = "M+ rating: %s",
     BEST_KEYS_HEADER_BEST = "Best",
     BEST_KEYS_HEADER_DUNGEON = "Dungeon",
     BEST_KEYS_HEADER_KEY = "Key",
