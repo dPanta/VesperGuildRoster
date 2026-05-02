@@ -1,3 +1,11 @@
+## 5.1.2 - 2026-05-02
+
+### Fixed
+- Added the Midnight Keystone Hero Skyreach teleport spell ID and kept the older Warlords Challenge Mode Skyreach teleport as a fallback variant.
+
+### Notes
+- This hotfix restores Skyreach portal detection for characters whose spellbook contains the current `Path of the Crowning Pinnacle` unlock.
+
 ## 5.1.1 - 2026-05-01
 
 ### Changed
