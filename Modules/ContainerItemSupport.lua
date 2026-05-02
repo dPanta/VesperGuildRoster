@@ -248,13 +248,6 @@ function vesperTools:CreateContainerItemButton(host, parent, options)
     secureUseButton:SetAttribute("useOnKeyDown", false)
     secureUseButton:SetAttribute("pressAndHoldAction", false)
     secureUseButton:EnableMouse(false)
-    if type(secureUseButton.SetPassThroughButtons) == "function" then
-        if securecallfunction then
-            securecallfunction(secureUseButton.SetPassThroughButtons, secureUseButton, "LeftButton")
-        else
-            secureUseButton:SetPassThroughButtons("LeftButton")
-        end
-    end
     secureUseButton:Hide()
     button.secureUseButton = secureUseButton
 
@@ -583,53 +576,9 @@ function vesperTools:CreateContainerItemController(host, config)
     end
 
     function controller:ConfigureNativeContainerOverlayInput(overlay, button)
-        if not overlay or type(overlay.SetPassThroughButtons) ~= "function" then
-            return true
+        if overlay then
+            overlay.vgPassThroughButtonsSignature = nil
         end
-
-        local desiredSignature = ""
-        local desiredButtons = self:GetOverlayPassThroughButtons(button)
-        if desiredButtons then
-            desiredSignature = table.concat(desiredButtons, ",")
-        end
-
-        local currentSignature = overlay.vgPassThroughButtonsSignature
-        if currentSignature == nil then
-            currentSignature = ""
-        end
-
-        -- Fresh container overlays already behave like the default "no pass-through"
-        -- case, so avoid touching the protected setter unless we actually need to
-        -- transition the overlay input state.
-        if currentSignature == desiredSignature then
-            overlay.vgPassThroughButtonsSignature = desiredSignature
-            return true
-        end
-
-        if type(InCombatLockdown) == "function" and InCombatLockdown() then
-            if host.pendingSecureItemRefresh ~= nil then
-                host.pendingSecureItemRefresh = true
-            end
-            return false
-        end
-
-        if securecallfunction then
-            if desiredButtons then
-                securecallfunction(overlay.SetPassThroughButtons, overlay, unpack(desiredButtons))
-            else
-                securecallfunction(overlay.SetPassThroughButtons, overlay)
-            end
-            overlay.vgPassThroughButtonsSignature = desiredSignature
-            return true
-        end
-
-        if desiredButtons then
-            overlay:SetPassThroughButtons(unpack(desiredButtons))
-        else
-            overlay:SetPassThroughButtons()
-        end
-
-        overlay.vgPassThroughButtonsSignature = desiredSignature
         return true
     end
 

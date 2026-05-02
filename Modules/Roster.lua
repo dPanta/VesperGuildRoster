@@ -692,9 +692,17 @@ function Roster:CreateWindow()
     end)
 
     local syncBtn = createHeaderActionButton(titlebar, closeBtn, 72, L["ROSTER_BUTTON_SYNC"], function()
+        local function rebuildPortalCache()
+            local Portals = vesperTools:GetModule("Portals", true)
+            if Portals and type(Portals.ForceRefreshPortalAvailability) == "function" then
+                Portals:ForceRefreshPortalAvailability({ clearCache = true })
+            end
+        end
+
         local Auto = vesperTools:GetModule("Automation", true)
         if Auto and type(Auto.ManualSync) == "function" then
             Auto:ManualSync()
+            rebuildPortalCache()
         else
             local KeystoneSync = vesperTools:GetModule("KeystoneSync", true)
             if KeystoneSync and type(KeystoneSync.RefreshKeystoneData) == "function" then
@@ -703,10 +711,7 @@ function Roster:CreateWindow()
                 KeystoneSync:RequestGuildKeystones()
             end
 
-            local Portals = vesperTools:GetModule("Portals", true)
-            if Portals and type(Portals.ForceRefreshPortalAvailability) == "function" then
-                Portals:ForceRefreshPortalAvailability()
-            end
+            rebuildPortalCache()
         end
         self:RequestRosterRefresh()
     end)

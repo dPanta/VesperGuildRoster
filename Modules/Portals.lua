@@ -186,10 +186,12 @@ function Portals:OnInitialize()
     -- Tracks deferred secure-button updates blocked by combat lockdown.
     self.pendingUtilityRefresh = false
     self.pendingDungeonPortalRefresh = false
+    self.pendingDungeonPortalCacheRebuild = false
     self.isMage = false
     self.knownMageTeleportSpells = {}
     self.knownMagePortalSpells = {}
     self.portalButtons = {}
+    self.portalButtonPool = {}
     self.toyFlyoutButtons = {}
     self.toyFlyoutColumnBackgrounds = {}
     self.cooldownButtons = {}
@@ -256,7 +258,11 @@ end
 
 -- Combat lockdown can block secure attribute writes; apply queued updates here.
 function Portals:PLAYER_REGEN_ENABLED()
-    if self.pendingDungeonPortalRefresh then
+    if self.pendingDungeonPortalCacheRebuild then
+        self.pendingDungeonPortalCacheRebuild = false
+        self.pendingDungeonPortalRefresh = false
+        self:RebuildDungeonPortalButtons()
+    elseif self.pendingDungeonPortalRefresh then
         self.pendingDungeonPortalRefresh = false
         self:RefreshDungeonPortalButtons()
     end
@@ -886,6 +892,154 @@ function Portals:ScheduleDungeonPortalRefresh(delaySeconds)
     end)
 end
 
+function Portals:ResetDungeonPortalButton(button)
+    if not button then
+        return
+    end
+
+    button.portalMapID = nil
+    button.portalSpellID = nil
+    button.portalSpellName = nil
+    button.dungeonName = nil
+    button:EnableMouse(false)
+    button:SetAttribute("type1", nil)
+    button:SetAttribute("spell1", nil)
+    self:SetButtonCooldownSource(button, nil, nil)
+    self:ClearButtonCooldown(button)
+    button:Hide()
+end
+
+function Portals:ClearDungeonPortalCache()
+    if type(InCombatLockdown) == "function" and InCombatLockdown() then
+        self.pendingDungeonPortalCacheRebuild = true
+        return false
+    end
+
+    self.portalButtonPool = self.portalButtonPool or {}
+    for index = 1, #(self.portalButtons or {}) do
+        local button = self.portalButtons[index]
+        if button and not self.portalButtonPool[index] then
+            self.portalButtonPool[index] = button
+        end
+    end
+
+    for index = 1, #self.portalButtonPool do
+        self:ResetDungeonPortalButton(self.portalButtonPool[index])
+    end
+
+    self.portalButtons = {}
+    self:RefreshActionCooldowns()
+    return true
+end
+
+function Portals:AcquireDungeonPortalButton(index)
+    self.portalButtonPool = self.portalButtonPool or {}
+    local button = self.portalButtonPool[index]
+    if button then
+        return button
+    end
+
+    local buttonName = "PortalButton" .. tostring(index)
+    if _G[buttonName] then
+        buttonName = nil
+    end
+
+    button = CreateFrame(
+        "Button",
+        buttonName,
+        self.VesperPortalsUI,
+        "InsecureActionButtonTemplate"
+    )
+    button:SetSize(52, 52)
+
+    local background = button:CreateTexture(nil, "BACKGROUND")
+    background:SetAllPoints(button)
+    background:SetColorTexture(0, 0, 0, 0.8)
+
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints(button)
+    highlight:SetColorTexture(1, 1, 0, 0.4)
+    button:SetHighlightTexture(highlight)
+
+    local icon = button:CreateTexture(nil, "ARTWORK")
+    icon:SetAllPoints(button)
+    button.icon = icon
+
+    self:EnsureCooldownOverlay(button)
+    button:RegisterForClicks("AnyUp", "AnyDown")
+    self.portalButtonPool[index] = button
+    return button
+end
+
+function Portals:RebuildDungeonPortalButtons()
+    if type(InCombatLockdown) == "function" and InCombatLockdown() then
+        self.pendingDungeonPortalCacheRebuild = true
+        return false
+    end
+
+    if not self.VesperPortalsUI then
+        return false
+    end
+
+    local DataHandle = vesperTools:GetModule("DataHandle", true)
+    if not DataHandle then
+        vesperTools:Print(L["PORTALS_DATAHANDLE_MODULE_NOT_FOUND"])
+        return false
+    end
+
+    local curSeason = C_ChallengeMode and C_ChallengeMode.GetMapTable and C_ChallengeMode.GetMapTable() or {}
+    self:WarnMissingSeasonDungeonMetadata(curSeason, DataHandle)
+
+    local curSeasonDungs = {}
+    for _, id in ipairs(curSeason) do
+        local dungInfo = DataHandle:GetDungeonByMapID(id)
+        if dungInfo then
+            curSeasonDungs[#curSeasonDungs + 1] = dungInfo
+        end
+    end
+
+    if not self:ClearDungeonPortalCache() then
+        return false
+    end
+
+    for index, dungInfo in ipairs(curSeasonDungs) do
+        local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(dungInfo.spellID)
+        local spellName = spellInfo and spellInfo.name
+        local iconFileID = spellInfo and (spellInfo.iconID or spellInfo.originalIconID)
+        local button = self:AcquireDungeonPortalButton(index)
+        local col = (index - 1) % 4
+        local row = math.floor((index - 1) / 4)
+
+        button:SetParent(self.VesperPortalsUI)
+        button:SetSize(52, 52)
+        button:ClearAllPoints()
+        button:SetPoint("TOPLEFT", self.VesperPortalsUI, "TOPLEFT", 20 + col * 70, -20 - row * 70)
+
+        if button.icon then
+            button.icon:SetTexture(iconFileID or "Interface\\ICONS\\INV_Misc_QuestionMark")
+            button.icon:SetDesaturated(false)
+            button.icon:SetAlpha(1)
+        end
+
+        button.dungeonName = dungInfo.dungeonName
+        button.portalMapID = dungInfo.mapID
+        button.portalSpellID = dungInfo.spellID
+        button.portalSpellName = spellName
+        self.portalButtons[#self.portalButtons + 1] = button
+        button:SetScript("OnEnter", function(portalButton)
+            GameTooltip:SetOwner(portalButton, "ANCHOR_RIGHT")
+            GameTooltip:SetText(portalButton.dungeonName, 1, 1, 1)
+            GameTooltip:Show()
+        end)
+        button:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
+        button:Show()
+    end
+
+    return self:RefreshDungeonPortalButtons()
+end
+
 function Portals:ApplyDungeonPortalButtonState(button)
     if not button then
         return false
@@ -964,8 +1118,13 @@ function Portals:RefreshDungeonPortalButtons()
     return true, knownCount, #buttons
 end
 
-function Portals:ForceRefreshPortalAvailability()
-    local refreshed, knownCount, totalCount = self:RefreshDungeonPortalButtons()
+function Portals:ForceRefreshPortalAvailability(options)
+    local refreshed
+    if type(options) == "table" and options.clearCache then
+        refreshed = self:RebuildDungeonPortalButtons()
+    else
+        refreshed = self:RefreshDungeonPortalButtons()
+    end
     self:RefreshMageTravelButtons()
     self:RefreshActionCooldowns()
     return refreshed

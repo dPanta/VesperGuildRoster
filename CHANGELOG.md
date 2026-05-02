@@ -1,3 +1,11 @@
+## 5.1.4 - 2026-05-02
+
+### Changed
+- Made the roster Sync button clear and rebuild dungeon portal availability from the current season catalog and current character spellbook state.
+
+### Fixed
+- Removed protected pass-through button calls from bag and bank item overlays to prevent action-blocked errors when opening the replacement bag window.
+
 ## 5.1.3 - 2026-05-02
 
 ### Notes
