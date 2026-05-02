@@ -1,3 +1,8 @@
+## 5.1.3 - 2026-05-02
+
+### Notes
+- Hotfix version bump for gitsync.
+
 ## 5.1.2 - 2026-05-02
 
 ### Fixed
