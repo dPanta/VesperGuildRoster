@@ -346,6 +346,131 @@ local PRIMARY_HEARTHSTONE_BLACKLIST = {
     [253629] = true, -- Personal Key to the Arcantina
 }
 
+-- The curated catalog above seeds canonical IDs (and ordering for exotically-named
+-- variants like "The Innkeeper's Daughter"). To stay future-proof we also scan the
+-- toy box at runtime and merge in any toy whose localized name contains the
+-- hearthstone token, so newly released hearthstone toys appear without a code patch.
+local mergedHearthstoneCatalog = nil
+
+-- Toys whose names match the hearthstone token but are not actually teleport
+-- hearthstones (Hearthstone-the-game promo cards, etc.). Add IDs here to keep
+-- false positives out of auto-discovery.
+local HEARTHSTONE_AUTODISCOVERY_BLACKLIST = {
+    [118427] = true, -- Autographed Hearthstone Card (WoD garrison mission toy)
+}
+
+local function resolveHearthstoneNameToken()
+    if C_Spell and type(C_Spell.GetSpellInfo) == "function" then
+        local ok, info = pcall(C_Spell.GetSpellInfo, 8690)
+        if ok and type(info) == "table" and type(info.name) == "string" and info.name ~= "" then
+            return string.lower(info.name)
+        end
+    end
+    if type(GetSpellInfo) == "function" then
+        local ok, name = pcall(GetSpellInfo, 8690)
+        if ok and type(name) == "string" and name ~= "" then
+            return string.lower(name)
+        end
+    end
+    return "hearthstone"
+end
+
+local function readToyName(itemID)
+    if not (C_ToyBox and type(C_ToyBox.GetToyInfo) == "function") then
+        return nil
+    end
+    -- Signature varies by client patch; accept (itemID, name, ...) or (name, icon, ...).
+    local t1, t2, t3 = C_ToyBox.GetToyInfo(itemID)
+    if type(t1) == "string" and t1 ~= "" then
+        return t1
+    end
+    if type(t2) == "string" and t2 ~= "" then
+        return t2
+    end
+    if type(t3) == "string" and t3 ~= "" then
+        return t3
+    end
+    return nil
+end
+
+local function discoverHearthstoneToyIDs()
+    local discovered = {}
+    if not C_ToyBox then
+        return discovered
+    end
+
+    local token = resolveHearthstoneNameToken()
+    local seen = {}
+
+    local function consider(itemID)
+        local id = tonumber(itemID)
+        if not id or id <= 0 or seen[id] then
+            return
+        end
+        if HEARTHSTONE_AUTODISCOVERY_BLACKLIST[id] then
+            return
+        end
+        local name = readToyName(id)
+        if not name then
+            return
+        end
+        if string.find(string.lower(name), token, 1, true) then
+            seen[id] = true
+            discovered[#discovered + 1] = id
+        end
+    end
+
+    if type(C_ToyBox.GetToyIDs) == "function" then
+        local ids = C_ToyBox.GetToyIDs()
+        if type(ids) == "table" then
+            for i = 1, #ids do
+                consider(ids[i])
+            end
+        end
+    end
+
+    if #discovered == 0 and type(C_ToyBox.GetNumFilteredToys) == "function"
+        and type(C_ToyBox.GetToyFromIndex) == "function" then
+        local total = tonumber(C_ToyBox.GetNumFilteredToys()) or 0
+        for i = 1, total do
+            consider(C_ToyBox.GetToyFromIndex(i))
+        end
+    end
+
+    return discovered
+end
+
+local function buildMergedHearthstoneCatalog()
+    local merged = {}
+    local seen = {}
+
+    for i = 1, #HEARTHSTONE_CATALOG do
+        local id = HEARTHSTONE_CATALOG[i]
+        if id and not seen[id] then
+            seen[id] = true
+            merged[#merged + 1] = id
+        end
+    end
+
+    local discovered = discoverHearthstoneToyIDs()
+    for i = 1, #discovered do
+        local id = discovered[i]
+        if id and not seen[id] then
+            seen[id] = true
+            merged[#merged + 1] = id
+        end
+    end
+
+    return merged
+end
+
+local function getMergedHearthstoneCatalog()
+    if not mergedHearthstoneCatalog then
+        mergedHearthstoneCatalog = buildMergedHearthstoneCatalog()
+    end
+    return mergedHearthstoneCatalog
+end
+
 local function normalizeIcon(iconValue)
     if type(iconValue) == "number" then
         if iconValue > 0 then
@@ -2402,9 +2527,14 @@ function vesperTools:SetModernScrollBarVisibility(scrollFrame, isVisible)
     return scrollBar
 end
 
--- Return ordered canonical hearthstone IDs.
+-- Return ordered hearthstone IDs (curated seed + auto-discovered toys).
 function vesperTools:GetHearthstoneCatalog()
-    return HEARTHSTONE_CATALOG
+    return getMergedHearthstoneCatalog()
+end
+
+-- Drop the cached merged catalog so the next query reruns auto-discovery.
+function vesperTools:InvalidateHearthstoneCatalog()
+    mergedHearthstoneCatalog = nil
 end
 
 function vesperTools:GetRandomDiscoHearthstoneID()
@@ -2435,16 +2565,19 @@ end
 -- Return currently usable hearthstone variants with cached display metadata.
 function vesperTools:GetAvailableHearthstoneOptions()
     local options = {}
+    local catalog = getMergedHearthstoneCatalog()
 
-    for i = 1, #HEARTHSTONE_CATALOG do
-        local itemID = HEARTHSTONE_CATALOG[i]
+    for i = 1, #catalog do
+        local itemID = catalog[i]
         local isToy = itemID ~= DEFAULT_PRIMARY_HEARTHSTONE_ID
         local isOwned = false
 
         if isToy then
             isOwned = (PlayerHasToy and PlayerHasToy(itemID)) and true or false
         else
-            isOwned = (GetItemCount(itemID, false, false, false) or 0) > 0
+            -- Search bags + bank + reagent bank: alts often park the physical
+            -- hearthstone in bank, and we still want to surface the button.
+            isOwned = (GetItemCount(itemID, true, false, true) or 0) > 0
         end
 
         if isOwned then

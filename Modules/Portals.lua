@@ -16,6 +16,12 @@ local TOY_FLYOUT_COLUMN_GAP = 8
 local TOY_FLYOUT_ANCHOR_Y_OFFSET = 8
 local TOY_FLYOUT_SCREEN_MARGIN = 10
 local COOLDOWN_TEXT_UPDATE_INTERVAL = 0.1
+-- Coalesce window for SPELLS_CHANGED bursts (talents/spec/login fire many in a row).
+local SPELLS_CHANGED_COALESCE_DELAY = 0.15
+-- Periodic sanity sweep so a missed event (TOYS_UPDATED, SPELLS_CHANGED, ...) can't
+-- leave the UI permanently stale. 5 minutes is gentle on CPU and good enough for
+-- catching dropped state transitions without the user noticing latency.
+local SANITY_SWEEP_INTERVAL = 300
 
 -- Curated mage travel catalogs. We still supplement this with spellbook scanning so
 -- newly added/seasonal travel spells can appear without hardcoding every edge case.
@@ -196,6 +202,8 @@ function Portals:OnInitialize()
     self.toyFlyoutColumnBackgrounds = {}
     self.cooldownButtons = {}
     self.cooldownUpdateElapsed = 0
+    self.spellsChangedRefreshTimer = nil
+    self.sanitySweepTicker = nil
     self:RegisterEvent("PLAYER_LOGIN")
 end
 
@@ -224,8 +232,12 @@ function Portals:PLAYER_LOGIN()
     AddonServices:RegisterChatCommand(self, "vesperportals", "Toggle")
     AddonServices:RegisterChatCommand(self, "vesperportalspells", "DebugDumpDungeonPortalSpells")
     self:CreatePortalFrame()
-    self:ScheduleDungeonPortalRefresh(0.25)
+    -- Late-binding window: season/portal data sometimes settles after PLAYER_LOGIN.
+    -- The 1.5s pass is the safety net; SPELLS_CHANGED bursts during login are
+    -- absorbed by the coalesce in ScheduleSpellsChangedRefresh.
+    self:ScheduleSpellsChangedRefresh()
     self:ScheduleDungeonPortalRefresh(1.50)
+    self:StartSanitySweepTicker()
 end
 
 -- Refresh hearthstone buttons when bag contents change.
@@ -240,16 +252,21 @@ end
 
 -- Refresh hearthstone buttons when toy ownership state changes.
 function Portals:TOYS_UPDATED()
+    -- New/removed toys can shift which IDs match the auto-discovered hearthstone
+    -- catalog, so drop the cached merge before we re-query options.
+    if vesperTools and type(vesperTools.InvalidateHearthstoneCatalog) == "function" then
+        vesperTools:InvalidateHearthstoneCatalog()
+    end
     self:RefreshHearthstoneButtons()
     self:RefreshToyFlyout()
     self:RefreshActionCooldowns()
 end
 
--- Refresh mage travel menus/icons when spellbook changes (newly learned spells, etc.).
+-- Coalesce SPELLS_CHANGED bursts. Login (talents, spec load, late spellbook
+-- population) and respec both fire the event many times back-to-back; without
+-- this we'd run the full spellbook waterfall once per fire.
 function Portals:SPELLS_CHANGED()
-    self:RefreshDungeonPortalButtons()
-    self:RefreshMageTravelButtons()
-    self:RefreshActionCooldowns()
+    self:ScheduleSpellsChangedRefresh()
 end
 
 function Portals:SPELL_UPDATE_COOLDOWN()
@@ -889,6 +906,62 @@ function Portals:ScheduleDungeonPortalRefresh(delaySeconds)
         if self and type(self.RefreshDungeonPortalButtons) == "function" then
             self:RefreshDungeonPortalButtons()
         end
+    end)
+end
+
+-- Single-shot debounce for SPELLS_CHANGED bursts. Drops dozens of redundant
+-- spellbook scans during login/spec switches into one refresh per quiet window.
+function Portals:ScheduleSpellsChangedRefresh()
+    if self.spellsChangedRefreshTimer then
+        return
+    end
+    if not C_Timer or type(C_Timer.NewTimer) ~= "function" then
+        -- No timer service: degrade to immediate refresh.
+        self:RefreshDungeonPortalButtons()
+        self:RefreshMageTravelButtons()
+        self:RefreshActionCooldowns()
+        return
+    end
+
+    self.spellsChangedRefreshTimer = C_Timer.NewTimer(SPELLS_CHANGED_COALESCE_DELAY, function()
+        self.spellsChangedRefreshTimer = nil
+        if not self then
+            return
+        end
+        self:RefreshDungeonPortalButtons()
+        self:RefreshMageTravelButtons()
+        self:RefreshActionCooldowns()
+    end)
+end
+
+-- Periodic safety net for any state transition we'd otherwise miss because the
+-- corresponding event didn't fire (TOYS_UPDATED dropped, Blizzard sometimes
+-- delivering SPELLS_CHANGED late on zone change, etc.). Cheap by design: just
+-- replays the same refresh paths the events use. Skipped during combat;
+-- PLAYER_REGEN_ENABLED already drains pending refreshes on its own.
+function Portals:StartSanitySweepTicker()
+    if self.sanitySweepTicker then
+        return
+    end
+    if not C_Timer or type(C_Timer.NewTicker) ~= "function" then
+        return
+    end
+
+    self.sanitySweepTicker = C_Timer.NewTicker(SANITY_SWEEP_INTERVAL, function()
+        if not self then
+            return
+        end
+        if type(InCombatLockdown) == "function" and InCombatLockdown() then
+            return
+        end
+        if vesperTools and type(vesperTools.InvalidateHearthstoneCatalog) == "function" then
+            vesperTools:InvalidateHearthstoneCatalog()
+        end
+        self:RefreshDungeonPortalButtons()
+        self:RefreshMageTravelButtons()
+        self:RefreshHearthstoneButtons()
+        self:RefreshToyFlyout()
+        self:RefreshActionCooldowns()
     end)
 end
 

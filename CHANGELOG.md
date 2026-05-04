@@ -1,3 +1,44 @@
+## 5.3.0 - 2026-05-04
+
+### Added
+- Roster window now auto-sizes vertically based on the number of online guildmates. Expands symmetrically up and down to keep its visual center fixed, clamped between the existing 250px minimum and 70% of the screen height.
+- Roster window listens for `OnSizeChanged` and re-lays out columns and rows during live resize drags, so the layout no longer freezes mid-drag until the resize grip is released.
+- Roster header sort indicators are now drawn as a separate icon texture anchored to the right of each column, so they stay visible even when a long localized label truncates.
+
+### Changed
+- Roster row, header, titlebar, and titlebar-action-button heights now scale with the configured roster font size, so larger fonts no longer clip the row text vertically.
+- Roster titlebar action buttons (`Sync`, `Cnf`, `Bags`, `Blizz`, `Bank`) now resize to fit their localized text under the current font instead of using fixed pixel widths.
+- Roster title text now anchors against the leftmost titlebar action button, preventing long guild names from drawing through the action buttons.
+- Roster scrollbar now appears only when row content exceeds the auto-sized window height (capped at 70% of the screen).
+- Roster column viewport width is now derived arithmetically from `contentFrame:GetWidth()` instead of the still-stale `scrollFrame:GetWidth()`, eliminating the first-paint flicker that occurred when the scrollbar visibility toggled.
+- Roster sync-driven refresh requests are now coalesced through a single `C_Timer.After(0)` window, so bursts of `VESPERTOOLS_*_UPDATE` messages trigger one rebuild per frame instead of one per message.
+- Roster resize grip now controls width only; vertical bounds are locked to the auto-sized height on every refresh.
+- Roster window is now `SetClampedToScreen(true)` and uses dynamic max resize bounds derived from `UIParent` dimensions, so it can no longer be dragged or resized fully off-screen.
+
+### Fixed
+- Double-clicking on the keyLevel column of a roster row now triggers the row's primary action (invite / request to join) in addition to firing the secure portal cast.
+- Roster row backgrounds are now reset when rows are recycled, so a row that was hovered when the data refreshed no longer keeps its hover tint.
+
+### Notes
+- This minor release focuses entirely on the roster window: a vertical auto-sizing pass and a sweep over the layout pipeline's visible-bug weak spots (title clipping, sort-arrow truncation, font-size-aware row heights, live-resize column relayout, and others).
+
+## 5.2.1 - 2026-05-04
+
+### Fixed
+- Added an auto-discovery blacklist so the `Autographed Hearthstone Card` (item 118427) — a Hearthstone-the-game promo toy that matches the hearthstone name token but is not a teleport — no longer leaks into the hearthstone catalog.
+
+## 5.2.0 - 2026-05-04
+
+### Changed
+- Hearthstone catalog now auto-discovers toys whose localized name contains the hearthstone token, so newly added hearthstone toys appear without a code patch. The previous curated list still seeds canonical IDs for exotically-named variants (Innkeeper's Daughter, Dark Portal, etc.).
+- Hearthstone availability check for the physical hearthstone (item 6948) now considers bags + bank + reagent bank instead of bags only, so alts that park their stone in the bank still get the button.
+- `SPELLS_CHANGED` is now coalesced through a single 0.15s debounce window. Login, spec switches, and talent loads stop running the spellbook waterfall dozens of times in a row.
+- Login refresh path runs through the same coalesce, eliminating the duplicate spellbook scan from the old 0.25s pre-warm.
+
+### Added
+- Periodic sanity sweep (every 5 minutes, skipped during combat) that re-runs portal, mage travel, hearthstone, and toy refreshes. Catches state we'd otherwise miss if `TOYS_UPDATED`/`SPELLS_CHANGED` ever drops.
+- `TOYS_UPDATED` invalidates the cached merged hearthstone catalog so newly learned hearthstone toys are picked up immediately.
+
 ## 5.1.4 - 2026-05-02
 
 ### Changed

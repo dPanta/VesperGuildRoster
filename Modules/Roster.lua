@@ -6,30 +6,63 @@ local CombatGate = addonTable.CombatGate
 local WindowLifecycle = addonTable.WindowLifecycle
 
 -- Roster renders the guild list view and wires its action buttons, sorting, and menus.
-local HEADER_ACTION_BUTTON_HEIGHT = 22
 local HEADER_ACTION_BUTTON_GAP = 6
-local ROSTER_HEADER_HEIGHT = 24
 local ROSTER_HEADER_BOTTOM_MARGIN = 5
-local ROSTER_ROW_HEIGHT = 24
-local ROSTER_SCROLL_STEP = ROSTER_ROW_HEIGHT * 2
 local ROSTER_SCROLLBAR_GUTTER = 27
 local ROSTER_MIN_CONTENT_WIDTH = 520
 local ROSTER_TEXT_INSET = 4
 local ROSTER_DOUBLE_CLICK_THRESHOLD = 0.35
+local ROSTER_MIN_ROW_HEIGHT = 24
+local ROSTER_MIN_HEADER_HEIGHT = 24
+local ROSTER_MIN_ACTION_BUTTON_HEIGHT = 22
+local ROSTER_MIN_TITLEBAR_HEIGHT = 32
+local ROSTER_SORT_ICON_SIZE = 12
+local ROSTER_SORT_ICON_RESERVE = ROSTER_SORT_ICON_SIZE + ROSTER_TEXT_INSET
+-- Column whose width is reserved for the secure portal-cast button overlay.
+local PORTAL_COLUMN_KEY = "keyLevel"
+-- Auto-sizing bounds for the roster window.
+local ROSTER_MIN_FRAME_WIDTH = 600
+local ROSTER_MIN_FRAME_HEIGHT = 250
+local ROSTER_MAX_HEIGHT_FRACTION = 0.7
+-- Vertical chrome around the scroll viewport: titlebar top inset (1) +
+-- contentFrame top inset (5) + headerFrame bottom margin (5) + contentFrame
+-- bottom inset (20). Add titlebar + header heights at runtime.
+local ROSTER_CHROME_PADDING = 31
 
--- Sort arrow indicators (WoW built-in arrow textures)
-local ARROW_UP = " |TInterface\\Buttons\\Arrow-Up-Up:12:12|t"
-local ARROW_DOWN = " |TInterface\\Buttons\\Arrow-Down-Up:12:12|t"
+local function rosterChromeHeight(titleBarH, headerH)
+    return (titleBarH or ROSTER_MIN_TITLEBAR_HEIGHT) + (headerH or ROSTER_MIN_HEADER_HEIGHT) + ROSTER_CHROME_PADDING
+end
 
--- Column definitions: key, label, width, sort type
+local function rosterFontSize()
+    return vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
+end
+
+local function rosterRowHeight(fontSize)
+    return math.max(ROSTER_MIN_ROW_HEIGHT, math.floor((tonumber(fontSize) or 12) + 12))
+end
+
+local function rosterHeaderHeight(fontSize)
+    return math.max(ROSTER_MIN_HEADER_HEIGHT, math.floor((tonumber(fontSize) or 12) + 12))
+end
+
+local function rosterActionButtonHeight(fontSize)
+    return math.max(ROSTER_MIN_ACTION_BUTTON_HEIGHT, math.floor((tonumber(fontSize) or 12) + 10))
+end
+
+local function rosterTitleBarHeight(fontSize)
+    return math.max(ROSTER_MIN_TITLEBAR_HEIGHT, rosterActionButtonHeight(fontSize) + 10)
+end
+
+-- Column relative weights — divided by TOTAL_COLUMN_WEIGHT at layout time, so they
+-- do not need to sum to any specific total. The last column absorbs rounding.
 local COLUMNS = {
-    { key = "name", label = L["ROSTER_COLUMN_NAME"], width = 0.15, sort = "string" },
-    { key = "level", label = L["ROSTER_COLUMN_LEVEL"], width = 0.07, sort = "number" },
-    { key = "zone", label = L["ROSTER_COLUMN_ZONE"], width = 0.18, sort = "string" },
-    { key = "status", label = L["ROSTER_COLUMN_STATUS"], width = 0.10, sort = "string" },
-    { key = "ilvl", label = L["ROSTER_COLUMN_ILVL"], width = 0.10, sort = "number" },
-    { key = "rating", label = L["ROSTER_COLUMN_RATING"], width = 0.10, sort = "number" },
-    { key = "keyLevel", label = L["ROSTER_COLUMN_KEY"], width = 0.18, sort = "number" },
+    { key = "name", label = L["ROSTER_COLUMN_NAME"], width = 15, sort = "string" },
+    { key = "level", label = L["ROSTER_COLUMN_LEVEL"], width = 7, sort = "number" },
+    { key = "zone", label = L["ROSTER_COLUMN_ZONE"], width = 18, sort = "string" },
+    { key = "status", label = L["ROSTER_COLUMN_STATUS"], width = 10, sort = "string" },
+    { key = "ilvl", label = L["ROSTER_COLUMN_ILVL"], width = 10, sort = "number" },
+    { key = "rating", label = L["ROSTER_COLUMN_RATING"], width = 10, sort = "number" },
+    { key = "keyLevel", label = L["ROSTER_COLUMN_KEY"], width = 18, sort = "number" },
 }
 
 local TOTAL_COLUMN_WEIGHT = 0
@@ -92,7 +125,8 @@ end
 local function createHeaderActionButton(parent, anchor, width, label, onClick)
     local button = CreateFrame("Button", nil, parent, "BackdropTemplate")
     button:SetPoint("RIGHT", anchor, "LEFT", -HEADER_ACTION_BUTTON_GAP, 0)
-    button:SetSize(width, HEADER_ACTION_BUTTON_HEIGHT)
+    button:SetSize(width, rosterActionButtonHeight(rosterFontSize()))
+    button.minWidth = width
     button:SetBackdrop({
         bgFile = "Interface\\Buttons\\WHITE8x8",
         edgeFile = "Interface\\Buttons\\WHITE8x8",
@@ -199,18 +233,22 @@ function Roster:ApplyTitlebarLayout()
     syncButton:ClearAllPoints()
     titleText:ClearAllPoints()
 
+    local clampAnchor = self.leftmostTitlebarButton or syncButton
+
     if vesperTools:UseRoundedWindowCorners() then
         titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 8, -1)
         titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -8, -1)
         closeButton:SetPoint("LEFT", titleBar, "LEFT", 6, 0)
         syncButton:SetPoint("RIGHT", titleBar, "RIGHT", -6, 0)
         titleText:SetPoint("LEFT", closeButton, "RIGHT", 8, 0)
+        titleText:SetPoint("RIGHT", clampAnchor, "LEFT", -HEADER_ACTION_BUTTON_GAP, 0)
     else
         titleBar:SetPoint("TOPLEFT", frame, "TOPLEFT", 1, -1)
         titleBar:SetPoint("TOPRIGHT", frame, "TOPRIGHT", -1, -1)
         closeButton:SetPoint("RIGHT", titleBar, "RIGHT", -6, 0)
         syncButton:SetPoint("RIGHT", closeButton, "LEFT", -HEADER_ACTION_BUTTON_GAP, 0)
         titleText:SetPoint("LEFT", titleBar, "LEFT", 10, 0)
+        titleText:SetPoint("RIGHT", clampAnchor, "LEFT", -HEADER_ACTION_BUTTON_GAP, 0)
     end
 end
 
@@ -219,9 +257,21 @@ function Roster:ApplyRosterStyling()
         return
     end
 
-    local baseFontSize = vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
+    local baseFontSize = rosterFontSize()
+    self.currentFontSize = baseFontSize
+    self.rowHeight = rosterRowHeight(baseFontSize)
+    self.headerHeight = rosterHeaderHeight(baseFontSize)
+    self.actionButtonHeight = rosterActionButtonHeight(baseFontSize)
+    self.titleBarHeight = rosterTitleBarHeight(baseFontSize)
+
     self.frame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("roster"))
-    self:ApplyTitlebarLayout()
+
+    if self.titleBar then
+        self.titleBar:SetHeight(self.titleBarHeight)
+    end
+    if self.headerFrame then
+        self.headerFrame:SetHeight(self.headerHeight)
+    end
 
     if self.titleText then
         self.titleText:SetText(GetGuildInfo("player") or L["ROSTER_TITLE_FALLBACK"])
@@ -235,6 +285,21 @@ function Roster:ApplyRosterStyling()
         end
     end
 
+    -- Resize titlebar action buttons to fit text + current font.
+    for i = 1, #(self.titlebarActionButtons or {}) do
+        local btn = self.titlebarActionButtons[i]
+        if btn and btn.text then
+            local minWidth = btn.minWidth or 56
+            local stringWidth = btn.text:GetStringWidth() or 0
+            local desiredWidth = math.max(minWidth, math.floor(stringWidth + 16))
+            btn:SetSize(desiredWidth, self.actionButtonHeight)
+        end
+    end
+
+    -- Apply titlebar layout AFTER buttons resize so the title text clamp uses
+    -- the post-resize position of the leftmost button.
+    self:ApplyTitlebarLayout()
+
     for i = 1, #(self.rosterRows or {}) do
         local row = self.rosterRows[i]
         if row and row.columns then
@@ -242,6 +307,11 @@ function Roster:ApplyRosterStyling()
                 vesperTools:ApplyConfiguredFont(text, baseFontSize, "")
             end
         end
+    end
+
+    -- Row heights / positions depend on font size; refresh the list when shown.
+    if self.frame:IsShown() then
+        self:RequestRosterRefresh()
     end
 end
 
@@ -259,20 +329,34 @@ function Roster:RequestRosterRefresh()
         return
     end
 
-    if CombatGate then
-        local executedNow = CombatGate:RunNamed(self, "refresh", function()
-            self:PerformRosterRefresh()
-        end)
-        self.pendingRosterRefresh = not executedNow
+    -- Coalesce bursts of refresh requests (e.g. multiple sync messages firing
+    -- back-to-back) into a single rebuild on the next frame.
+    if self.refreshScheduled then
         return
     end
+    self.refreshScheduled = true
 
-    if type(InCombatLockdown) == "function" and InCombatLockdown() then
-        self.pendingRosterRefresh = true
-        return
-    end
+    C_Timer.After(0, function()
+        self.refreshScheduled = false
+        if not self.frame or not self.frame:IsShown() then
+            return
+        end
 
-    self:PerformRosterRefresh()
+        if CombatGate then
+            local executedNow = CombatGate:RunNamed(self, "refresh", function()
+                self:PerformRosterRefresh()
+            end)
+            self.pendingRosterRefresh = not executedNow
+            return
+        end
+
+        if type(InCombatLockdown) == "function" and InCombatLockdown() then
+            self.pendingRosterRefresh = true
+            return
+        end
+
+        self:PerformRosterRefresh()
+    end)
 end
 
 -- Lazily create one dropdown frame used by legacy fallback context menus.
@@ -458,14 +542,19 @@ function Roster:BuildColumnLayout(availableWidth)
     return layout
 end
 
-function Roster:GetListContentWidth()
+-- Width derived arithmetically from contentFrame so a freshly-applied scrollbar
+-- inset does not require WoW to re-flow before we can read scrollFrame:GetWidth().
+function Roster:GetListContentWidth(hasScrollBar)
     local width = 0
-    if self.scrollFrame and self.scrollFrame.GetWidth then
-        width = self.scrollFrame:GetWidth() or 0
-    elseif self.headerFrame and self.headerFrame.GetWidth then
-        width = self.headerFrame:GetWidth() or 0
+    if self.contentFrame and self.contentFrame.GetWidth then
+        width = self.contentFrame:GetWidth() or 0
     end
-
+    if width <= 0 and self.scrollFrame and self.scrollFrame.GetWidth then
+        width = self.scrollFrame:GetWidth() or 0
+    end
+    if hasScrollBar then
+        width = width - ROSTER_SCROLLBAR_GUTTER
+    end
     return math.max(ROSTER_MIN_CONTENT_WIDTH, math.floor(width + 0.5))
 end
 
@@ -475,14 +564,12 @@ function Roster:UpdateListViewportLayout(hasScrollBar)
     end
 
     local shouldShowScrollBar = hasScrollBar and true or false
-    if self.rosterScrollBarVisible == shouldShowScrollBar then
-        vesperTools:SetModernScrollBarVisibility(self.scrollFrame, shouldShowScrollBar)
-        return
-    end
-
     self.rosterScrollBarVisible = shouldShowScrollBar
     vesperTools:SetModernScrollBarVisibility(self.scrollFrame, shouldShowScrollBar)
 
+    -- Always re-apply anchors. The cost is four SetPoint calls; the benefit is
+    -- that any external mutation (skinning, drag handles, future code) cannot
+    -- silently desync the header from the scroll viewport.
     local rightInset = shouldShowScrollBar and -ROSTER_SCROLLBAR_GUTTER or 0
 
     self.headerFrame:ClearAllPoints()
@@ -499,21 +586,32 @@ function Roster:UpdateHeaderLayout(columnLayout, fontSize)
         return
     end
 
-    local resolvedFontSize = tonumber(fontSize) or vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
+    local resolvedFontSize = tonumber(fontSize) or rosterFontSize()
+    local headerH = self.headerHeight or rosterHeaderHeight(resolvedFontSize)
     for i = 1, #COLUMNS do
         local layout = columnLayout[i]
         local button = self.headerButtons and self.headerButtons[i] or nil
         if layout and button then
             button:ClearAllPoints()
             button:SetPoint("TOPLEFT", self.headerFrame, "TOPLEFT", layout.offset, 0)
-            button:SetSize(layout.width, ROSTER_HEADER_HEIGHT)
+            button:SetSize(layout.width, headerH)
             vesperTools:ApplyConfiguredFont(button.text, resolvedFontSize, "")
+            button.text:SetText(layout.label)
 
-            local arrow = ""
-            if self.sortColumn == layout.key then
-                arrow = self.sortAscending and ARROW_UP or ARROW_DOWN
+            -- Show / hide a separate sort-direction icon. Rendering it as a
+            -- texture (instead of an inline |T...|t suffix on the label) keeps
+            -- it visible even when a long localized label gets truncated.
+            if button.sortIcon then
+                if self.sortColumn == layout.key then
+                    local texture = self.sortAscending
+                        and "Interface\\Buttons\\Arrow-Up-Up"
+                        or "Interface\\Buttons\\Arrow-Down-Up"
+                    button.sortIcon:SetTexture(texture)
+                    button.sortIcon:Show()
+                else
+                    button.sortIcon:Hide()
+                end
             end
-            button.text:SetText(layout.label .. arrow)
         end
     end
 end
@@ -523,20 +621,21 @@ function Roster:LayoutRowColumns(row, columnLayout, fontSize)
         return
     end
 
-    local resolvedFontSize = tonumber(fontSize) or vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
-    row:SetSize(columnLayout.totalWidth, ROSTER_ROW_HEIGHT)
-    local keyColumnLayout = nil
+    local resolvedFontSize = tonumber(fontSize) or rosterFontSize()
+    local rowH = self.rowHeight or rosterRowHeight(resolvedFontSize)
+    row:SetSize(columnLayout.totalWidth, rowH)
+    local portalColumnLayout = nil
 
     for i = 1, #COLUMNS do
         local layout = columnLayout[i]
         local text = row.columns[layout.key]
-        if layout.key == "keyLevel" then
-            keyColumnLayout = layout
+        if layout.key == PORTAL_COLUMN_KEY then
+            portalColumnLayout = layout
         end
         if text then
             text:ClearAllPoints()
             text:SetPoint("TOPLEFT", row, "TOPLEFT", layout.offset + ROSTER_TEXT_INSET, -1)
-            text:SetPoint("BOTTOMRIGHT", row, "TOPLEFT", layout.offset + layout.width - ROSTER_TEXT_INSET, -(ROSTER_ROW_HEIGHT - 1))
+            text:SetPoint("BOTTOMRIGHT", row, "TOPLEFT", layout.offset + layout.width - ROSTER_TEXT_INSET, -(rowH - 1))
             vesperTools:ApplyConfiguredFont(text, resolvedFontSize, "")
         end
     end
@@ -547,9 +646,9 @@ function Roster:LayoutRowColumns(row, columnLayout, fontSize)
 
     if row.portalButton then
         row.portalButton:ClearAllPoints()
-        if keyColumnLayout and row.portalSpellName then
-            row.portalButton:SetPoint("TOPLEFT", row, "TOPLEFT", keyColumnLayout.offset, 0)
-            row.portalButton:SetSize(keyColumnLayout.width, ROSTER_ROW_HEIGHT)
+        if portalColumnLayout and row.portalSpellName then
+            row.portalButton:SetPoint("TOPLEFT", row, "TOPLEFT", portalColumnLayout.offset, 0)
+            row.portalButton:SetSize(portalColumnLayout.width, rowH)
             row.portalButton:EnableMouse(true)
             row.portalButton:Show()
         else
@@ -569,6 +668,11 @@ function Roster:HideRosterRows(startIndex)
             row.tooltipMapID = nil
             row.dataHandle = nil
             row.fullName = nil
+            -- Reset background to base in case the row was recycled mid-hover
+            -- (OnLeave never fires when a frame hides under the cursor).
+            if row.background and row.baseColorR then
+                row.background:SetColorTexture(row.baseColorR, row.baseColorG, row.baseColorB, 1)
+            end
             if row.button then
                 row.button.ownerRow = nil
             end
@@ -597,7 +701,7 @@ function Roster:CreateWindow()
         return frame
     end
 
-    frame:SetSize(600, 250)
+    frame:SetSize(ROSTER_MIN_FRAME_WIDTH, ROSTER_MIN_FRAME_HEIGHT)
 
     -- Restore saved position or use default
     if vesperTools.db.profile.rosterPosition then
@@ -610,8 +714,17 @@ function Roster:CreateWindow()
     vesperTools:ApplyAddonWindowLayer(frame)
     frame:SetMovable(true)
     frame:EnableMouse(true)
+    frame:SetClampedToScreen(true)
     frame:SetResizable(true)
-    frame:SetResizeBounds(600, 250)
+    -- Initial bounds; ApplyAutoFrameHeight() locks the vertical range to the
+    -- content-driven height on every refresh.
+    local screenW = math.floor((UIParent:GetWidth() or 1920) + 0.5)
+    frame:SetResizeBounds(
+        ROSTER_MIN_FRAME_WIDTH,
+        ROSTER_MIN_FRAME_HEIGHT,
+        math.max(screenW, ROSTER_MIN_FRAME_WIDTH),
+        self:GetMaxFrameHeight()
+    )
 
     vesperTools:ApplyRoundedWindowBackdrop(frame)
     frame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("roster"))
@@ -625,8 +738,9 @@ function Roster:CreateWindow()
     end)
 
     -- Titlebar
+    local initialFontSize = rosterFontSize()
     local titlebar = CreateFrame("Frame", nil, frame)
-    titlebar:SetHeight(32)
+    titlebar:SetHeight(rosterTitleBarHeight(initialFontSize))
     titlebar:SetPoint("TOPLEFT", 1, -1)
     titlebar:SetPoint("TOPRIGHT", -1, -1)
 
@@ -637,9 +751,13 @@ function Roster:CreateWindow()
     local title = titlebar:CreateFontString(nil, "OVERLAY", "GameFontNormalLarge")
     title:SetPoint("LEFT", 10, 0)
     title:SetText(GetGuildInfo("player") or L["ROSTER_TITLE_FALLBACK"])
-    vesperTools:ApplyConfiguredFont(title, vesperTools:GetConfiguredFontSize("roster", 12, 8, 24) + 4, "")
+    title:SetWordWrap(false)
+    title:SetNonSpaceWrap(false)
+    title:SetJustifyH("LEFT")
+    vesperTools:ApplyConfiguredFont(title, initialFontSize + 4, "")
     self.titleText = title
     self.titleBar = titlebar
+    self.titlebarActionButtons = {}
 
     -- Make draggable via titlebar
     titlebar:EnableMouse(true)
@@ -716,12 +834,14 @@ function Roster:CreateWindow()
         self:RequestRosterRefresh()
     end)
     self.syncButton = syncBtn
+    self.titlebarActionButtons[#self.titlebarActionButtons + 1] = syncBtn
 
     local confBtn = createHeaderActionButton(titlebar, syncBtn, 56, L["ROSTER_BUTTON_CONFIG"], function(_, mouseButton)
         if mouseButton == "LeftButton" then
             vesperTools:OpenConfig()
         end
     end)
+    self.titlebarActionButtons[#self.titlebarActionButtons + 1] = confBtn
 
     local bagsBtn = createHeaderActionButton(titlebar, confBtn, 56, L["ROSTER_BUTTON_BAGS"], function(_, mouseButton)
         if mouseButton == "LeftButton" then
@@ -731,6 +851,7 @@ function Roster:CreateWindow()
             end
         end
     end)
+    self.titlebarActionButtons[#self.titlebarActionButtons + 1] = bagsBtn
 
     local blizzBagsBtn = createHeaderActionButton(titlebar, bagsBtn, 46, "Blizz", function(_, mouseButton)
         if mouseButton == "LeftButton" then
@@ -744,6 +865,7 @@ function Roster:CreateWindow()
             end
         end
     end)
+    self.titlebarActionButtons[#self.titlebarActionButtons + 1] = blizzBagsBtn
 
     local bankBtn = createHeaderActionButton(titlebar, blizzBagsBtn, 56, L["ROSTER_BUTTON_BANK"], function(_, mouseButton)
         if mouseButton == "LeftButton" then
@@ -753,6 +875,8 @@ function Roster:CreateWindow()
             end
         end
     end)
+    self.titlebarActionButtons[#self.titlebarActionButtons + 1] = bankBtn
+    self.leftmostTitlebarButton = bankBtn
 
     local contentFrame = CreateFrame("Frame", nil, frame)
     contentFrame:SetPoint("TOPLEFT", titlebar, "BOTTOMLEFT", 5, -5)
@@ -761,8 +885,8 @@ function Roster:CreateWindow()
 
     local headerFrame = CreateFrame("Frame", nil, contentFrame)
     headerFrame:SetPoint("TOPLEFT", contentFrame, "TOPLEFT", 0, 0)
-    headerFrame:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -27, 0)
-    headerFrame:SetHeight(ROSTER_HEADER_HEIGHT)
+    headerFrame:SetPoint("TOPRIGHT", contentFrame, "TOPRIGHT", -ROSTER_SCROLLBAR_GUTTER, 0)
+    headerFrame:SetHeight(rosterHeaderHeight(initialFontSize))
     self.headerFrame = headerFrame
 
     local headerBackground = headerFrame:CreateTexture(nil, "BACKGROUND")
@@ -787,13 +911,20 @@ function Roster:CreateWindow()
         button:SetHighlightTexture("Interface\\Buttons\\WHITE8x8", "ADD")
         button:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.18)
 
+        local sortIcon = button:CreateTexture(nil, "OVERLAY")
+        sortIcon:SetSize(ROSTER_SORT_ICON_SIZE, ROSTER_SORT_ICON_SIZE)
+        sortIcon:SetPoint("RIGHT", button, "RIGHT", -ROSTER_TEXT_INSET, 0)
+        sortIcon:Hide()
+        button.sortIcon = sortIcon
+
         local text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         text:SetPoint("LEFT", button, "LEFT", ROSTER_TEXT_INSET, 0)
-        text:SetPoint("RIGHT", button, "RIGHT", -ROSTER_TEXT_INSET, 0)
+        -- Always reserve room on the right so the sort icon never overlaps the label.
+        text:SetPoint("RIGHT", button, "RIGHT", -(ROSTER_TEXT_INSET + ROSTER_SORT_ICON_RESERVE), 0)
         text:SetJustifyH("LEFT")
         text:SetJustifyV("MIDDLE")
         text:SetWordWrap(false)
-        vesperTools:ApplyConfiguredFont(text, vesperTools:GetConfiguredFontSize("roster", 12, 8, 24), "")
+        vesperTools:ApplyConfiguredFont(text, initialFontSize, "")
         button.text = text
 
         button:SetScript("OnClick", function(selfButton)
@@ -819,12 +950,13 @@ function Roster:CreateWindow()
 
     local scrollFrame = CreateFrame("ScrollFrame", nil, contentFrame, "UIPanelScrollFrameTemplate")
     scrollFrame:SetPoint("TOPLEFT", headerFrame, "BOTTOMLEFT", 0, -ROSTER_HEADER_BOTTOM_MARGIN)
-    scrollFrame:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -27, 0)
+    scrollFrame:SetPoint("BOTTOMRIGHT", contentFrame, "BOTTOMRIGHT", -ROSTER_SCROLLBAR_GUTTER, 0)
     scrollFrame:EnableMouseWheel(true)
     scrollFrame:SetScript("OnMouseWheel", function(selfFrame, delta)
         local current = selfFrame:GetVerticalScroll() or 0
         local maximum = math.max(0, (selfFrame.contentHeight or 0) - (selfFrame:GetHeight() or 0))
-        local nextValue = math.max(0, math.min(maximum, current - (delta * ROSTER_SCROLL_STEP)))
+        local step = (self.rowHeight or rosterRowHeight(rosterFontSize())) * 2
+        local nextValue = math.max(0, math.min(maximum, current - (delta * step)))
         selfFrame:SetVerticalScroll(nextValue)
     end)
 
@@ -851,8 +983,54 @@ function Roster:CreateWindow()
     frame.vgScrollContent = scrollChild
     frame.vgRosterRows = self.rosterRows
 
+    -- Live-resize relayout: when the user drags the resize grip, columns and
+    -- rows are positioned by absolute pixel widths computed in UpdateRosterList.
+    -- Without this hook, the columns stay frozen until OnMouseUp triggers a
+    -- refresh, leaving rows misaligned mid-drag. We schedule a column-only
+    -- relayout on the next frame (cheap, no data refetch).
+    frame:SetScript("OnSizeChanged", function()
+        if self.relayoutScheduled then
+            return
+        end
+        self.relayoutScheduled = true
+        C_Timer.After(0, function()
+            self.relayoutScheduled = false
+            self:RelayoutColumnsForCurrentSize()
+        end)
+    end)
+
     self:ApplyRosterStyling()
     return frame
+end
+
+-- Lightweight column-only relayout used during live resize drags. Reuses the
+-- already-collected data; only recomputes widths and re-anchors visible rows.
+function Roster:RelayoutColumnsForCurrentSize()
+    if not self.frame or not self.frame:IsShown() then
+        return
+    end
+    if not self.scrollContent or not self.scrollFrame then
+        return
+    end
+
+    local fontSize = self.currentFontSize or rosterFontSize()
+    local visibleHeight = self.scrollFrame:GetHeight() or 0
+    local contentHeight = self.scrollFrame.contentHeight or 0
+    local hasScrollBar = contentHeight > (visibleHeight + 0.5)
+
+    self:UpdateListViewportLayout(hasScrollBar)
+    local columnLayout = self:BuildColumnLayout(self:GetListContentWidth(hasScrollBar))
+    self.currentColumnLayout = columnLayout
+    self:UpdateHeaderLayout(columnLayout, fontSize)
+
+    for i = 1, #(self.rosterRows or {}) do
+        local row = self.rosterRows[i]
+        if row and row:IsShown() then
+            self:LayoutRowColumns(row, columnLayout, fontSize)
+        end
+    end
+
+    self.scrollContent:SetWidth(columnLayout.totalWidth)
 end
 
 function Roster:AcquireRosterRow()
@@ -862,7 +1040,7 @@ function Roster:AcquireRosterRow()
     end
 
     local row = CreateFrame("Frame", nil, parent)
-    row:SetHeight(ROSTER_ROW_HEIGHT)
+    row:SetHeight(self.rowHeight or rosterRowHeight(rosterFontSize()))
 
     local background = row:CreateTexture(nil, "BACKGROUND")
     background:SetAllPoints()
@@ -909,8 +1087,13 @@ function Roster:AcquireRosterRow()
     portalButton:RegisterForClicks("AnyUp", "AnyDown")
     portalButton:HookScript("OnClick", function(selfButton, button, down)
         local ownerRow = selfButton.ownerRow
-        if button == "LeftButton" then
-            self:ResetRosterRowClickState()
+        -- Mirror the row's left-click handling so a double-click on the keyLevel
+        -- column still triggers the row's primary action (invite / request join).
+        -- The secure spell cast still fires; this only adds the row action on top.
+        if button == "LeftButton" and not down then
+            if ownerRow then
+                self:HandleRosterRowLeftClick(ownerRow)
+            end
         elseif ownerRow and button == "RightButton" and not down then
             self:ResetRosterRowClickState()
             self:OpenRosterContextMenu(selfButton, ownerRow.member or ownerRow.fullName)
@@ -1145,8 +1328,9 @@ function Roster:ConfigureRosterRow(row, member, index, columnLayout, fontSize, d
         end
     end
 
+    local rowH = self.rowHeight or rosterRowHeight(rosterFontSize())
     row:ClearAllPoints()
-    row:SetPoint("TOPLEFT", self.scrollContent, "TOPLEFT", 0, -((index - 1) * ROSTER_ROW_HEIGHT))
+    row:SetPoint("TOPLEFT", self.scrollContent, "TOPLEFT", 0, -((index - 1) * rowH))
     self:LayoutRowColumns(row, columnLayout, fontSize)
     row:Show()
 end
@@ -1263,6 +1447,78 @@ function Roster:CollectRosterMembers(dataHandle, keystoneSync)
     return members
 end
 
+function Roster:GetMaxFrameHeight()
+    local screenH = UIParent and UIParent:GetHeight() or 1080
+    return math.max(ROSTER_MIN_FRAME_HEIGHT, math.floor(screenH * ROSTER_MAX_HEIGHT_FRACTION + 0.5))
+end
+
+-- Returns (autoHeight, scrollViewport, chrome, rowH) for `numMembers`. autoHeight
+-- is clamped to [ROSTER_MIN_FRAME_HEIGHT, 70% of screen]; scrollViewport is the
+-- arithmetic scrollFrame height after auto-resize, used in place of
+-- scrollFrame:GetHeight() (which is stale until layout reflows).
+function Roster:ComputeAutoFrameMetrics(numMembers)
+    local fontSize = self.currentFontSize or rosterFontSize()
+    local rowH = self.rowHeight or rosterRowHeight(fontSize)
+    local headerH = self.headerHeight or rosterHeaderHeight(fontSize)
+    local titleBarH = self.titleBarHeight or rosterTitleBarHeight(fontSize)
+    local chrome = rosterChromeHeight(titleBarH, headerH)
+    local rowsHeight = math.max(rowH, (tonumber(numMembers) or 0) * rowH)
+    local desired = chrome + rowsHeight
+    local maxH = self:GetMaxFrameHeight()
+    local clampedHeight = math.max(ROSTER_MIN_FRAME_HEIGHT, math.min(maxH, desired))
+    return clampedHeight, clampedHeight - chrome, chrome, rowH
+end
+
+-- Apply a new frame height while preserving the visual vertical center, then
+-- save the resulting position. Width is left untouched. Vertical resize bounds
+-- are locked to the new height so the resize grip can only adjust width.
+function Roster:ApplyAutoFrameHeight(targetHeight)
+    if not self.frame then
+        return false
+    end
+    local currentHeight = self.frame:GetHeight() or 0
+    local delta = targetHeight - currentHeight
+
+    if math.abs(delta) >= 0.5 then
+        self.frame:SetHeight(targetHeight)
+
+        -- Keep the visual center fixed: shift the anchor by half the delta in
+        -- the direction opposite the anchor edge. CENTER / LEFT / RIGHT anchors
+        -- already grow symmetrically, so they need no adjustment.
+        local point, relativeTo, relativePoint, xOfs, yOfs = self.frame:GetPoint()
+        if point then
+            local yAdjust = 0
+            if point:find("TOP") then
+                yAdjust = delta / 2
+            elseif point:find("BOTTOM") then
+                yAdjust = -delta / 2
+            end
+            local newY = (yOfs or 0) + yAdjust
+            if yAdjust ~= 0 then
+                self.frame:ClearAllPoints()
+                self.frame:SetPoint(point, relativeTo or UIParent, relativePoint, xOfs or 0, newY)
+            end
+            vesperTools.db.profile.rosterPosition = {
+                point = point,
+                relativePoint = relativePoint,
+                xOfs = xOfs,
+                yOfs = newY,
+            }
+        end
+    end
+
+    -- Lock vertical bounds to the new auto height; keep horizontal range open.
+    local screenW = math.floor((UIParent:GetWidth() or 1920) + 0.5)
+    self.frame:SetResizeBounds(
+        ROSTER_MIN_FRAME_WIDTH,
+        targetHeight,
+        math.max(screenW, ROSTER_MIN_FRAME_WIDTH),
+        targetHeight
+    )
+
+    return true
+end
+
 -- Rebuild the visible guild list, including sorting and per-row actions.
 function Roster:UpdateRosterList()
     if not self.frame or not self.frame:IsShown() then
@@ -1274,34 +1530,42 @@ function Roster:UpdateRosterList()
         return
     end
 
-    local rosterFontSize = vesperTools:GetConfiguredFontSize("roster", 12, 8, 24)
+    local fontSize = rosterFontSize()
+    local rowH = self.rowHeight or rosterRowHeight(fontSize)
     local dataHandle = vesperTools:GetModule("DataHandle", true)
     local keystoneSync = vesperTools:GetModule("KeystoneSync", true)
     local members = self:CollectRosterMembers(dataHandle, keystoneSync)
-    local contentHeight = math.max(1, #members * ROSTER_ROW_HEIGHT)
-    local visibleHeight = self.scrollFrame and (self.scrollFrame:GetHeight() or 0) or 0
-    local hasScrollBar = contentHeight > (visibleHeight + 0.5)
+
+    -- Auto-size the frame vertically based on member count. Resizes both up
+    -- and down (anchor shifted by half the height delta to keep visual center).
+    local autoHeight, scrollViewport = self:ComputeAutoFrameMetrics(#members)
+    self:ApplyAutoFrameHeight(autoHeight)
+
+    local contentHeight = math.max(1, #members * rowH)
+    -- Use the arithmetic scrollViewport instead of scrollFrame:GetHeight(),
+    -- which is stale until WoW reflows after the SetHeight above.
+    local hasScrollBar = contentHeight > (scrollViewport + 0.5)
 
     self:UpdateListViewportLayout(hasScrollBar)
 
-    local columnLayout = self:BuildColumnLayout(self:GetListContentWidth())
+    local columnLayout = self:BuildColumnLayout(self:GetListContentWidth(hasScrollBar))
     local scrollPosition = self.scrollFrame and (self.scrollFrame:GetVerticalScroll() or 0) or 0
 
     self.currentColumnLayout = columnLayout
-    self:UpdateHeaderLayout(columnLayout, rosterFontSize)
+    self:UpdateHeaderLayout(columnLayout, fontSize)
 
     for index = 1, #members do
         local row = self.rosterRows[index] or self:AcquireRosterRow()
-        self:ConfigureRosterRow(row, members[index], index, columnLayout, rosterFontSize, dataHandle)
+        self:ConfigureRosterRow(row, members[index], index, columnLayout, fontSize, dataHandle)
     end
 
     self:HideRosterRows(#members + 1)
 
     self.scrollContent:SetWidth(columnLayout.totalWidth)
-    self.scrollContent:SetHeight(math.max(visibleHeight, contentHeight))
+    self.scrollContent:SetHeight(contentHeight)
     self.scrollFrame.contentHeight = contentHeight
 
-    local maxScroll = hasScrollBar and math.max(0, contentHeight - visibleHeight) or 0
+    local maxScroll = hasScrollBar and math.max(0, contentHeight - scrollViewport) or 0
     self.scrollFrame:SetVerticalScroll(math.max(0, math.min(maxScroll, scrollPosition)))
 end
 
