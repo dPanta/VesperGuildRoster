@@ -55,22 +55,37 @@ function AddonServices:RegisterChatCommand(owner, command, func)
         return false
     end
 
-    local slashName = "ACECONSOLE_" .. string.upper(command)
+    -- Use a vesperTools-private slash namespace so we don't share keys with every
+    -- AceConsole-3.0 addon in the ecosystem (their UnregisterChatCommand wipes the
+    -- global SlashCmdList entry, the SLASH_*1 global, AND hash_SlashCmdList["/X"]).
+    local slashName = "VESPERTOOLS_" .. string.upper(command)
+    local upperCommand = string.upper(command)
+
+    local handler
     if type(func) == "string" then
-        SlashCmdList[slashName] = function(input, editBox)
-            local method = owner and owner[func]
-            if type(method) == "function" then
-                method(owner, input, editBox)
-            end
+        local method = owner and owner[func]
+        if type(method) ~= "function" then
+            return false
+        end
+        handler = function(input, editBox)
+            method(owner, input, editBox)
         end
     elseif type(func) == "function" then
-        SlashCmdList[slashName] = function(input, editBox)
+        handler = function(input, editBox)
             func(owner, input, editBox)
         end
     else
         return false
     end
 
+    SlashCmdList[slashName] = handler
     _G["SLASH_" .. slashName .. "1"] = "/" .. string.lower(command)
+
+    -- Prime the hash so the first invocation skips the SLASH_* scan and so any
+    -- previously cached nil entry is replaced immediately.
+    if hash_SlashCmdList then
+        hash_SlashCmdList["/" .. upperCommand] = handler
+    end
+
     return true
 end

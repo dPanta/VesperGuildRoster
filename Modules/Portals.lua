@@ -1012,7 +1012,10 @@ function Portals:AcquireDungeonPortalButton(index)
         return button
     end
 
-    local buttonName = "PortalButton" .. tostring(index)
+    -- Prefixed so we don't compete with any other addon's globals named
+    -- PortalButton<n>. Fallback to a nameless frame if even our prefixed name
+    -- happens to be taken (only realistic if someone reuses our prefix).
+    local buttonName = "vesperToolsPortalButton" .. tostring(index)
     if _G[buttonName] then
         buttonName = nil
     end
@@ -1142,7 +1145,13 @@ function Portals:ApplyDungeonPortalButtonState(button)
     local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
     local spellName = (spellInfo and spellInfo.name) or button.portalSpellName
     local iconFileID = spellInfo and (spellInfo.iconID or spellInfo.originalIconID)
-    local known = spellName and vesperTools:IsSpellKnownForPlayer(spellID)
+    -- The known check stands on its own. Previously it was gated behind
+    -- spellName, which meant any GetSpellInfo cache miss (common right after
+    -- login) reported owned portals as locked.
+    local known = vesperTools:IsSpellKnownForPlayer(spellID) and true or false
+    -- Secure cast attribute still needs a name; if we don't have one yet, the
+    -- button stays visually-known but click-disabled until the next refresh.
+    local castName = spellName
 
     button.portalSpellName = spellName
     if button.icon then
@@ -1153,10 +1162,10 @@ function Portals:ApplyDungeonPortalButtonState(button)
         button.icon:SetAlpha(known and 1 or 0.5)
     end
 
-    if known then
+    if known and castName then
         button:EnableMouse(true)
         button:SetAttribute("type1", "spell")
-        button:SetAttribute("spell1", spellName)
+        button:SetAttribute("spell1", castName)
         self:SetButtonCooldownSource(button, "spell", spellID)
     else
         button:EnableMouse(false)
@@ -1165,7 +1174,7 @@ function Portals:ApplyDungeonPortalButtonState(button)
         self:SetButtonCooldownSource(button, nil, nil)
     end
 
-    return known and true or false
+    return known
 end
 
 function Portals:RefreshDungeonPortalButtons()
@@ -1221,19 +1230,35 @@ function Portals:DebugDumpDungeonPortalSpells()
 
     for index = 1, #curSeason do
         local mapID = curSeason[index]
-        local dungInfo = dataHandle:GetDungeonByMapID(mapID)
-        if dungInfo then
-            local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(dungInfo.spellID)
-            local spellName = (spellInfo and spellInfo.name) or tostring(dungInfo.spellID)
-            local known, source = vesperTools:GetPlayerSpellKnownState(dungInfo.spellID)
+        local entries = dataHandle:GetDungeonsByMapID(mapID)
+        if type(entries) == "table" and #entries > 0 then
+            -- Iterate every catalog entry for this mapID so users with
+            -- multi-variant dungeons (e.g. Skyreach Midnight + Warlords) can
+            -- see which alternate spellIDs were tried and which API path
+            -- detected each one. The per-mapID summary line below mirrors
+            -- what the live UI uses.
+            local dungeonLabel = entries[1].dungeonName or tostring(mapID)
+            for _, dungInfo in ipairs(entries) do
+                local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(dungInfo.spellID)
+                local spellName = (spellInfo and spellInfo.name) or tostring(dungInfo.spellID)
+                local known, source = vesperTools:GetPlayerSpellKnownState(dungInfo.spellID)
+                vesperTools:Print(string.format(
+                    "  %s (%d): %s [%d] = %s via %s",
+                    dungInfo.dungeonName or dungeonLabel,
+                    mapID,
+                    spellName,
+                    dungInfo.spellID,
+                    known and "known" or "missing",
+                    source or "unknown"
+                ))
+            end
+
+            local resolved = dataHandle:GetKnownDungeonByMapID(mapID)
             vesperTools:Print(string.format(
-                "%s (%d): %s [%d] = %s via %s",
-                dungInfo.dungeonName or tostring(mapID),
+                "%s (%d): UI uses %s",
+                dungeonLabel,
                 mapID,
-                spellName,
-                dungInfo.spellID,
-                known and "known" or "missing",
-                source or "unknown"
+                resolved and ("spellID " .. tostring(resolved.spellID)) or "no known variant"
             ))
         end
     end
@@ -2082,7 +2107,7 @@ function Portals:CreatePortalFrame()
             local iconFileID = spellInfo and (spellInfo.iconID or spellInfo.originalIconID)
             local btn = CreateFrame(
                 "Button",
-                "PortalButton" .. index,
+                "vesperToolsPortalButton" .. index,
                 self.VesperPortalsUI,
                 "InsecureActionButtonTemplate"
             )

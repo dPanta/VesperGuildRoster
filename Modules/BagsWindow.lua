@@ -316,6 +316,21 @@ function BagsWindow:GetItemInteraction()
 
             return nil
         end,
+        -- Disable Blizzard's native ContainerFrameItemButton overlay while a
+        -- writable bank is live. The native overlay routes right-click through
+        -- C_Container.UseContainerItem which honors BankFrame.activeBankType
+        -- (always character on retail), ignoring vesperTools' selected view.
+        -- Disabling it lets the secure overlay's macrotext2 (configured in
+        -- ConfigureSecureItemUse) deposit into the correct bank type.
+        shouldUseNativeOverlay = function(window, button)
+            if window:HasAnyWritableBankLive() then
+                return false
+            end
+
+            local bagID = button and (button.bagID or button.actionBagID) or nil
+            local slotID = button and (button.slotID or button.actionSlotID) or nil
+            return button and button.isInteractive and bagID and slotID and true or false
+        end,
         afterConfigureButton = function(window, button, record, context)
             local isCurrentCharacter = context and context.isCurrentCharacter and true or false
 
@@ -3589,7 +3604,11 @@ function BagsWindow:FindDepositTargetSlot(sourceBagID, sourceSlotID, targetBagID
     return emptyBagID, emptySlotID
 end
 
-function BagsWindow:TryDepositItemIntoActiveBank(button)
+-- Variant of TryDepositItemIntoActiveBank that takes an explicit bag/slot
+-- instead of inferring from a button. Used by the secure overlay's macrotext
+-- pass-through so right-clicks while the warband view is selected route to the
+-- warband bank instead of Blizzard's BankFrame.activeBankType-driven default.
+function BagsWindow:DepositBagItemToActiveBankAt(sourceBagID, sourceSlotID)
     if InCombatLockdown() then
         return false
     end
@@ -3598,12 +3617,6 @@ function BagsWindow:TryDepositItemIntoActiveBank(button)
     end
     if not C_Container or type(C_Container.PickupContainerItem) ~= "function" then
         return false
-    end
-
-    local itemInteraction = self:GetItemInteraction()
-    local sourceBagID, sourceSlotID = nil, nil
-    if itemInteraction then
-        sourceBagID, sourceSlotID = itemInteraction:GetButtonBagSlot(button, false)
     end
     if not sourceBagID or not sourceSlotID then
         return false
@@ -3635,6 +3648,15 @@ function BagsWindow:TryDepositItemIntoActiveBank(button)
     C_Container.PickupContainerItem(sourceBagID, sourceSlotID)
     C_Container.PickupContainerItem(targetBagID, targetSlotID)
     return true
+end
+
+function BagsWindow:TryDepositItemIntoActiveBank(button)
+    local itemInteraction = self:GetItemInteraction()
+    local sourceBagID, sourceSlotID = nil, nil
+    if itemInteraction then
+        sourceBagID, sourceSlotID = itemInteraction:GetButtonBagSlot(button, false)
+    end
+    return self:DepositBagItemToActiveBankAt(sourceBagID, sourceSlotID)
 end
 
 function BagsWindow:HandleItemEnter(button)

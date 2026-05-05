@@ -385,16 +385,42 @@ function vesperTools:CreateContainerItemController(host, config)
         end
 
         if canUse then
-            local itemLocation = string.format("%d %d", bagID, slotID)
-            secureButton:SetAttribute("type", "item")
-            secureButton:SetAttribute("item", itemLocation)
-            secureButton:SetAttribute("bag", bagID)
-            secureButton:SetAttribute("slot", slotID)
-            secureButton:SetAttribute("type2", "item")
-            secureButton:SetAttribute("item2", itemLocation)
-            secureButton:SetAttribute("bag2", bagID)
-            secureButton:SetAttribute("slot2", slotID)
-            secureButton:SetAttribute("macrotext2", nil)
+            -- When the host has a writable bank live and exposes the deposit
+            -- helper, route right-click through a macrotext that calls
+            -- vesperTools' deposit routing (which honors the selected
+            -- character/warband view). Otherwise fall back to type="item",
+            -- which uses Blizzard's BankFrame.activeBankType.
+            local useDepositMacro = type(host.HasAnyWritableBankLive) == "function"
+                and host:HasAnyWritableBankLive()
+                and vesperTools
+                and type(vesperTools.DepositBagItemToActiveBank) == "function"
+
+            if useDepositMacro then
+                local macrotext = string.format(
+                    "/run vesperTools:DepositBagItemToActiveBank(%d, %d)",
+                    bagID, slotID
+                )
+                secureButton:SetAttribute("type", nil)
+                secureButton:SetAttribute("item", nil)
+                secureButton:SetAttribute("bag", nil)
+                secureButton:SetAttribute("slot", nil)
+                secureButton:SetAttribute("type2", "macro")
+                secureButton:SetAttribute("item2", nil)
+                secureButton:SetAttribute("bag2", nil)
+                secureButton:SetAttribute("slot2", nil)
+                secureButton:SetAttribute("macrotext2", macrotext)
+            else
+                local itemLocation = string.format("%d %d", bagID, slotID)
+                secureButton:SetAttribute("type", "item")
+                secureButton:SetAttribute("item", itemLocation)
+                secureButton:SetAttribute("bag", bagID)
+                secureButton:SetAttribute("slot", slotID)
+                secureButton:SetAttribute("type2", "item")
+                secureButton:SetAttribute("item2", itemLocation)
+                secureButton:SetAttribute("bag2", bagID)
+                secureButton:SetAttribute("slot2", slotID)
+                secureButton:SetAttribute("macrotext2", nil)
+            end
             secureButton.vgSecureUseBagID = bagID
             secureButton.vgSecureUseSlotID = slotID
             secureButton:EnableMouse(true)

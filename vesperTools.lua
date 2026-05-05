@@ -56,8 +56,25 @@ local function getPlayerSpellBookBank()
     return Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or nil
 end
 
-local function getSpellBookSpellType()
-    return Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell or nil
+-- Returns the set of spellbook item types the manual scan should accept. Some
+-- account-wide unlocks land as Flyout entries that still expose the contained
+-- spell ID via itemInfo.spellID, so accepting Flyout avoids false negatives
+-- without losing the Spell-only intent for normal teleports.
+local function getAcceptedSpellBookItemTypes()
+    if not (Enum and Enum.SpellBookItemType) then
+        return nil
+    end
+    local accepted = {}
+    if Enum.SpellBookItemType.Spell ~= nil then
+        accepted[Enum.SpellBookItemType.Spell] = true
+    end
+    if Enum.SpellBookItemType.Flyout ~= nil then
+        accepted[Enum.SpellBookItemType.Flyout] = true
+    end
+    if next(accepted) == nil then
+        return nil
+    end
+    return accepted
 end
 
 local function getPlayerSpellBookItemInfo(slotIndex)
@@ -127,7 +144,7 @@ local function isSpellInPlayerSpellBook(spellID)
         targetSpellIDs[overrideSpellID] = true
     end
 
-    local spellType = getSpellBookSpellType()
+    local acceptedTypes = getAcceptedSpellBookItemTypes()
     local ok, numLines = pcall(C_SpellBook.GetNumSpellBookSkillLines)
     if not ok then
         return false
@@ -144,7 +161,9 @@ local function isSpellInPlayerSpellBook(spellID)
                 local itemInfo = getPlayerSpellBookItemInfo(slot)
                 local itemType = itemInfo and itemInfo.itemType or nil
                 local itemSpellID = itemInfo and tonumber(itemInfo.spellID or itemInfo.actionID) or nil
-                if itemSpellID and targetSpellIDs[itemSpellID] and (spellType == nil or itemType == spellType) then
+                if itemSpellID and targetSpellIDs[itemSpellID]
+                    and (acceptedTypes == nil or itemType == nil or acceptedTypes[itemType])
+                then
                     return true
                 end
             end
@@ -160,36 +179,32 @@ function vesperTools:GetPlayerSpellKnownState(spellID)
         return false, "invalid"
     end
 
-    local checkedModernAPI = false
+    -- Always run every probe in order. Previously the cascade returned false as
+    -- soon as any C_SpellBook function existed (always true on retail), which
+    -- made IsPlayerSpell unreachable — the only probe that catches account-wide
+    -- spells the C_SpellBook layer doesn't surface for the active spec.
     if C_SpellBook then
-        if type(C_SpellBook.IsSpellKnown) == "function" then
-            checkedModernAPI = true
-            if callSpellKnowledgeAPI(C_SpellBook.IsSpellKnown, normalizedSpellID) then
-                return true, "C_SpellBook.IsSpellKnown"
-            end
+        if type(C_SpellBook.IsSpellKnown) == "function"
+            and callSpellKnowledgeAPI(C_SpellBook.IsSpellKnown, normalizedSpellID)
+        then
+            return true, "C_SpellBook.IsSpellKnown"
         end
 
-        if type(C_SpellBook.IsSpellKnownOrInSpellBook) == "function" then
-            checkedModernAPI = true
-            if callSpellKnowledgeAPI(C_SpellBook.IsSpellKnownOrInSpellBook, normalizedSpellID) then
-                return true, "C_SpellBook.IsSpellKnownOrInSpellBook"
-            end
+        if type(C_SpellBook.IsSpellKnownOrInSpellBook) == "function"
+            and callSpellKnowledgeAPI(C_SpellBook.IsSpellKnownOrInSpellBook, normalizedSpellID)
+        then
+            return true, "C_SpellBook.IsSpellKnownOrInSpellBook"
         end
 
-        if type(C_SpellBook.IsSpellInSpellBook) == "function" then
-            checkedModernAPI = true
-            if callSpellKnowledgeAPI(C_SpellBook.IsSpellInSpellBook, normalizedSpellID) then
-                return true, "C_SpellBook.IsSpellInSpellBook"
-            end
+        if type(C_SpellBook.IsSpellInSpellBook) == "function"
+            and callSpellKnowledgeAPI(C_SpellBook.IsSpellInSpellBook, normalizedSpellID)
+        then
+            return true, "C_SpellBook.IsSpellInSpellBook"
         end
     end
 
     if isSpellInPlayerSpellBook(normalizedSpellID) then
         return true, "spellbook scan"
-    end
-
-    if checkedModernAPI then
-        return false, "C_SpellBook"
     end
 
     if callSpellKnowledgeAPI(IsSpellKnownOrOverridesKnown, normalizedSpellID) then
@@ -3132,6 +3147,18 @@ function vesperTools:OpenConfig()
     self:Print(L["CONFIG_MODULE_NOT_FOUND"])
 end
 
+-- Macrotext entry point used by the bag item secure overlay so right-clicks
+-- while a writable bank is live route through vesperTools' selected view
+-- (character/warband) instead of Blizzard's BankFrame.activeBankType. Must be
+-- callable from a /run line — keep it simple and side-effect-free on failure.
+function vesperTools:DepositBagItemToActiveBank(bagID, slotID)
+    local BagsWindow = self:GetModule("BagsWindow", true)
+    if BagsWindow and type(BagsWindow.DepositBagItemToActiveBankAt) == "function" then
+        return BagsWindow:DepositBagItemToActiveBankAt(tonumber(bagID), tonumber(slotID))
+    end
+    return false
+end
+
 function vesperTools:ShowSearchOverlay()
     local SearchOverlay = self:GetModule("SearchOverlay", true)
     if SearchOverlay and type(SearchOverlay.ShowOverlay) == "function" then
@@ -4043,12 +4070,19 @@ function vesperTools:CreateFloatingIcon()
     btn:SetScript("OnLeave", function() GameTooltip:Hide() end)
 end
 
+-- Re-asserts the top-level slash commands. Idempotent — safe to call multiple
+-- times. Used both at OnEnable and on PLAYER_ENTERING_WORLD to recover if
+-- another addon nils SlashCmdList/hash_SlashCmdList entries we depend on.
+function vesperTools:RegisterTopLevelChatCommands()
+    self:RegisterChatCommand("vesper", "HandleChatCommand")
+    self:RegisterChatCommand("vg", "HandleChatCommand")
+end
+
 -- Register top-level slash commands, events, and the floating launcher.
 function vesperTools:OnEnable()
     -- Called when the addon is enabled
-    self:RegisterChatCommand("vesper", "HandleChatCommand")
-    self:RegisterChatCommand("vg", "HandleChatCommand")
-    
+    self:RegisterTopLevelChatCommands()
+
     -- HealthCheck if modules are loaded
     local Roster = self:GetModule("Roster", true)
     local Portals = self:GetModule("Portals", true)
@@ -4058,10 +4092,11 @@ function vesperTools:OnEnable()
     if not Portals then
         self:Print(L["PORTALS_MODULE_WARNING"])
     end
-    
+
     self:CreateFloatingIcon()
     self:RegisterEvent("GUILD_ROSTER_UPDATE", "OnGuildRosterUpdate")
     self:RegisterEvent("PLAYER_GUILD_UPDATE", "OnGuildRosterUpdate")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", "RegisterTopLevelChatCommands")
     if IsInGuild() then
         RequestGuildRosterUpdate()
     end
@@ -4172,6 +4207,27 @@ function vesperTools:HandleChatCommand(input)
         else
             self:Print(L["KEYSTONE_SYNC_MODULE_NOT_FOUND"])
         end
+    elseif loweredInput == "diag" or loweredInput == "diagslash" then
+        -- Diagnostic: report whether the /vg and /vesper slash dispatch entries
+        -- are intact. Useful when users report the macro silently no-oping.
+        local function describeSlash(command)
+            local upper = string.upper(command)
+            local slashName = "VESPERTOOLS_" .. upper
+            local fn = SlashCmdList and SlashCmdList[slashName]
+            local globalSlash = _G["SLASH_" .. slashName .. "1"]
+            local hashed = hash_SlashCmdList and hash_SlashCmdList["/" .. upper]
+            self:Print(string.format(
+                "/%s: SlashCmdList=%s SLASH_*1=%s hash=%s%s",
+                string.lower(command),
+                fn and "ok" or "MISSING",
+                tostring(globalSlash),
+                hashed and "ok" or "MISSING",
+                (fn and hashed and fn ~= hashed) and " (MISMATCH)" or ""
+            ))
+        end
+        describeSlash("vg")
+        describeSlash("vesper")
+        self:Print("If any field is MISSING or MISMATCH, /reload should restore it.")
     elseif loweredInput == "portalspells" or loweredInput == "portalsdebug" then
         local Portals = self:GetModule("Portals", true)
         if Portals and type(Portals.DebugDumpDungeonPortalSpells) == "function" then

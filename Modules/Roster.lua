@@ -1603,9 +1603,19 @@ function Roster:HandleCloseRequest()
         self.dungeonPanel = nil
     end
 
+    -- Portals UI hosts SecureActionButtonTemplate children, so hiding it during
+    -- combat lockdown taints. Delegate to Portals which gates this correctly;
+    -- if we're locked down, leave portals up rather than risk a taint error
+    -- that would abort the macro/slash dispatch entirely.
     local Portals = vesperTools:GetModule("Portals", true)
-    if Portals and Portals.VesperPortalsUI then
-        Portals.VesperPortalsUI:Hide()
+    if Portals and Portals.VesperPortalsUI and Portals.VesperPortalsUI:IsShown() then
+        if not InCombatLockdown() then
+            if type(Portals.HandleCloseRequest) == "function" then
+                Portals:HandleCloseRequest()
+            else
+                Portals.VesperPortalsUI:Hide()
+            end
+        end
     end
 end
 

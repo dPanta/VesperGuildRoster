@@ -1,3 +1,34 @@
+## 6.1.0 - 2026-05-05
+
+### Fixed
+- Right-clicking a bag item with vesperTools' warband bank view selected now deposits into the warband bank instead of the character bank. The native `ContainerFrameItemButton` overlay used to route right-clicks through Blizzard's `UseContainerItem`, which always honors `BankFrame.activeBankType` (defaulting to character) regardless of which view vesperTools displays. The native overlay is now suppressed whenever a writable bank is live; the secure overlay underneath fires a `macrotext2` that calls `vesperTools:DepositBagItemToActiveBank(bag, slot)`, which routes through vesperTools' selected character/warband view and recomputes the target slot at click time.
+
+### Changed
+- `BagsWindow:TryDepositItemIntoActiveBank` extracted into a new public `BagsWindow:DepositBagItemToActiveBankAt(bagID, slotID)` helper so the deposit routing can be invoked from a macrotext without going through a button reference. The button-driven path now thin-wraps the helper.
+- `vesperTools:DepositBagItemToActiveBank(bagID, slotID)` exposed as a top-level entry point, callable from `/run` macros and the secure overlay's `macrotext2` attribute.
+
+### Notes
+- This fix is fully taint-free: `BankFrame.activeBankType` is never written from addon code, Blizzard's protected `UseContainerItem` is never invoked, and the macrotext runs from a hardware-event-triggered SecureActionButton click. Left-click pickup, modifier-click hyperlinks, drag-and-drop, and consumable use outside the bank context are unaffected.
+
+## 6.0.0 - 2026-05-05
+
+### Fixed
+- Dungeon portals owned account-wide are now detected reliably. The spell-known cascade in `vesperTools:GetPlayerSpellKnownState` previously short-circuited to `false` as soon as any `C_SpellBook` API existed (always true on retail), making the legacy `IsPlayerSpell` probe unreachable — the only check that surfaces account-wide spells the active spec doesn't expose. Every probe now runs in order; first hit wins.
+- Portal availability no longer flips to "locked" when `C_Spell.GetSpellInfo` returns nil right after login. The `known` flag in `Portals:ApplyDungeonPortalButtonState` is now decided purely by `IsSpellKnownForPlayer`; the spell name is only required to wire the secure cast attribute, so a brief cache miss leaves the portal visually-known but click-disabled until the next refresh instead of reporting it as missing.
+- Manual spellbook scan now accepts both `Spell` and `Flyout` itemTypes, so account-wide unlocks delivered as flyout entries no longer escape the scan.
+- The `/vg` macro no longer stops working after another addon's chat-command lifecycle clears the slash entry. Slash commands moved off the shared `ACECONSOLE_*` namespace into a private `VESPERTOOLS_*` namespace, the slash hash is primed at registration time so the cache can never be empty when invoked, the slash dispatcher resolves the target method once at registration instead of per-call, and `PLAYER_ENTERING_WORLD` re-asserts the registrations so any post-load clobber self-heals on the next loading screen.
+- `Roster:HandleCloseRequest` no longer touches `Portals.VesperPortalsUI` during combat lockdown (the portals UI hosts secure-template children). Closing the roster mid-combat now leaves portals open until lockdown ends instead of risking a taint error that would abort the slash/macro dispatch.
+
+### Changed
+- Dungeon portal buttons are now created with the `vesperToolsPortalButton<n>` global frame name instead of the unprefixed `PortalButton<n>`, removing a cross-addon collision vector.
+- `/vg portalspells` debug now iterates every catalog entry per mapID and prints a per-mapID summary line showing which spellID the live UI would actually use. Users with multi-variant dungeons (e.g. Skyreach Midnight + Warlords) can see which alternates were tried and which API path detected each one.
+
+### Added
+- `/vg diag` (alias `/vg diagslash`) reports whether the live `SlashCmdList`, `SLASH_*1` global, and `hash_SlashCmdList` entries for `/vg` and `/vesper` are intact. Affected users can confirm slash health in one message.
+
+### Notes
+- Major bump because the slash command namespace migrates from `ACECONSOLE_*` to `VESPERTOOLS_*` and the dungeon-portal frame names migrate from `PortalButton<n>` to `vesperToolsPortalButton<n>`. Anything reaching into vesperTools through those globals (custom WeakAuras, third-party scripts) needs to update its references.
+
 ## 5.3.0 - 2026-05-04
 
 ### Added
