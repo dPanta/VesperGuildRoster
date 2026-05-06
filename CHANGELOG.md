@@ -1,3 +1,8 @@
+## 6.1.1 - 2026-05-06
+
+### Fixed
+- Combined bag-item buttons no longer throw `bad argument #1 to 'SetID'` when the native container overlay tries to refresh. `ConfigureItemButton` was using the `X and nil or Y` Lua ternary to clear `button.bagID`/`button.slotID` for combined records — but `true and nil` evaluates to `nil`, so `nil or record.bagID` always returned `record.bagID`, leaving combined buttons with a single record's bag/slot. The `BagsWindow` `shouldUseNativeOverlay` callback (which only checks `button.bagID/slotID`, not `isCombined`) then green-lit the native overlay, after which `GetNativeOverlayBagSlot` correctly returned `nil, nil` for combined items without a usable combined action (e.g. Void-Tempered Leather, Artisan's Consortium Payout), and `overlay:SetID(nil)` errored. Replaced the broken idiom with an explicit `if/else` so combined buttons get genuine `nil` IDs and route through the secure-button path in `ConfigureSecureItemUse`, which walks `combinedRecords` properly.
+
 ## 6.1.0 - 2026-05-05
 
 ### Fixed

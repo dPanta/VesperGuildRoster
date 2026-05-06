@@ -701,8 +701,13 @@ function vesperTools:CreateContainerItemController(host, config)
         button.hyperlink = record.hyperlink
         button.combinedRecords = type(record.combinedRecords) == "table" and record.combinedRecords or nil
         button.isCombined = record.isCombined and true or false
-        button.bagID = button.isCombined and nil or record.bagID
-        button.slotID = button.isCombined and nil or record.slotID
+        if button.isCombined then
+            button.bagID = nil
+            button.slotID = nil
+        else
+            button.bagID = record.bagID
+            button.slotID = record.slotID
+        end
         button.actionBagID = nil
         button.actionSlotID = nil
         button.ownerName = context and context.ownerName or nil
