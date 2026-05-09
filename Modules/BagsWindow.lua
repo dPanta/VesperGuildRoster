@@ -3654,7 +3654,7 @@ function BagsWindow:TryDepositItemIntoActiveBank(button)
     local itemInteraction = self:GetItemInteraction()
     local sourceBagID, sourceSlotID = nil, nil
     if itemInteraction then
-        sourceBagID, sourceSlotID = itemInteraction:GetButtonBagSlot(button, false)
+        sourceBagID, sourceSlotID = itemInteraction:GetButtonDepositBagSlot(button)
     end
     return self:DepositBagItemToActiveBankAt(sourceBagID, sourceSlotID)
 end

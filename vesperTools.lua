@@ -173,10 +173,44 @@ local function isSpellInPlayerSpellBook(spellID)
     return false
 end
 
+function vesperTools:RememberSpellKnownForSession(spellID, source)
+    local normalizedSpellID = tonumber(spellID)
+    if not normalizedSpellID or normalizedSpellID <= 0 then
+        return
+    end
+
+    self.sessionKnownSpellIDs = self.sessionKnownSpellIDs or {}
+    self.sessionKnownSpellIDs[normalizedSpellID] = source or true
+end
+
+function vesperTools:GetSessionKnownSpellSource(spellID)
+    local normalizedSpellID = tonumber(spellID)
+    if not normalizedSpellID or normalizedSpellID <= 0 then
+        return nil
+    end
+
+    local cache = self.sessionKnownSpellIDs
+    local source = cache and cache[normalizedSpellID] or nil
+    if not source then
+        return nil
+    end
+
+    if source == true then
+        return "session cache"
+    end
+
+    return "session cache: " .. tostring(source)
+end
+
 function vesperTools:GetPlayerSpellKnownState(spellID)
     local normalizedSpellID = tonumber(spellID)
     if not normalizedSpellID or normalizedSpellID <= 0 then
         return false, "invalid"
+    end
+
+    local function rememberKnown(source)
+        self:RememberSpellKnownForSession(normalizedSpellID, source)
+        return true, source
     end
 
     -- Always run every probe in order. Previously the cascade returned false as
@@ -187,36 +221,41 @@ function vesperTools:GetPlayerSpellKnownState(spellID)
         if type(C_SpellBook.IsSpellKnown) == "function"
             and callSpellKnowledgeAPI(C_SpellBook.IsSpellKnown, normalizedSpellID)
         then
-            return true, "C_SpellBook.IsSpellKnown"
+            return rememberKnown("C_SpellBook.IsSpellKnown")
         end
 
         if type(C_SpellBook.IsSpellKnownOrInSpellBook) == "function"
             and callSpellKnowledgeAPI(C_SpellBook.IsSpellKnownOrInSpellBook, normalizedSpellID)
         then
-            return true, "C_SpellBook.IsSpellKnownOrInSpellBook"
+            return rememberKnown("C_SpellBook.IsSpellKnownOrInSpellBook")
         end
 
         if type(C_SpellBook.IsSpellInSpellBook) == "function"
             and callSpellKnowledgeAPI(C_SpellBook.IsSpellInSpellBook, normalizedSpellID)
         then
-            return true, "C_SpellBook.IsSpellInSpellBook"
+            return rememberKnown("C_SpellBook.IsSpellInSpellBook")
         end
     end
 
     if isSpellInPlayerSpellBook(normalizedSpellID) then
-        return true, "spellbook scan"
+        return rememberKnown("spellbook scan")
     end
 
     if callSpellKnowledgeAPI(IsSpellKnownOrOverridesKnown, normalizedSpellID) then
-        return true, "IsSpellKnownOrOverridesKnown"
+        return rememberKnown("IsSpellKnownOrOverridesKnown")
     end
 
     if callSpellKnowledgeAPI(IsSpellKnown, normalizedSpellID) then
-        return true, "IsSpellKnown"
+        return rememberKnown("IsSpellKnown")
     end
 
     if callSpellKnowledgeAPI(IsPlayerSpell, normalizedSpellID) then
-        return true, "IsPlayerSpell"
+        return rememberKnown("IsPlayerSpell")
+    end
+
+    local cachedSource = self:GetSessionKnownSpellSource(normalizedSpellID)
+    if cachedSource then
+        return true, cachedSource
     end
 
     return false, "none"

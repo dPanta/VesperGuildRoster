@@ -1,3 +1,9 @@
+## 6.1.2 - 2026-05-09
+
+### Fixed
+- Dungeon portal buttons now rebuild when the current Mythic+ map table changes or settles late after login. This fixes cases where a seasonal dungeon such as Skyreach could be absent from the portal window if `C_ChallengeMode.GetMapTable()` was incomplete during the initial `PLAYER_LOGIN` build.
+- Portal spell-known checks now remember a spell as known for the current session once any Blizzard API path confirms it, preventing transient spellbook/API false negatives from flipping an already-confirmed dungeon portal back to unavailable.
+
 ## 6.1.1 - 2026-05-06
 
 ### Fixed

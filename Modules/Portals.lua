@@ -18,6 +18,7 @@ local TOY_FLYOUT_SCREEN_MARGIN = 10
 local COOLDOWN_TEXT_UPDATE_INTERVAL = 0.1
 -- Coalesce window for SPELLS_CHANGED bursts (talents/spec/login fire many in a row).
 local SPELLS_CHANGED_COALESCE_DELAY = 0.15
+local DUNGEON_PORTAL_REBUILD_COALESCE_DELAY = 0.25
 -- Periodic sanity sweep so a missed event (TOYS_UPDATED, SPELLS_CHANGED, ...) can't
 -- leave the UI permanently stale. 5 minutes is gentle on CPU and good enough for
 -- catching dropped state transitions without the user noticing latency.
@@ -203,6 +204,8 @@ function Portals:OnInitialize()
     self.cooldownButtons = {}
     self.cooldownUpdateElapsed = 0
     self.spellsChangedRefreshTimer = nil
+    self.dungeonPortalRebuildTimer = nil
+    self.dungeonPortalMapSignature = nil
     self.sanitySweepTicker = nil
     self:RegisterEvent("PLAYER_LOGIN")
 end
@@ -226,6 +229,9 @@ function Portals:OnEnable()
     self:RegisterEvent("SPELLS_CHANGED")
     self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD")
+    self:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE")
+    self:RegisterEvent("MYTHIC_PLUS_CURRENT_AFFIX_UPDATE")
 end
 
 function Portals:PLAYER_LOGIN()
@@ -233,11 +239,23 @@ function Portals:PLAYER_LOGIN()
     AddonServices:RegisterChatCommand(self, "vesperportalspells", "DebugDumpDungeonPortalSpells")
     self:CreatePortalFrame()
     -- Late-binding window: season/portal data sometimes settles after PLAYER_LOGIN.
-    -- The 1.5s pass is the safety net; SPELLS_CHANGED bursts during login are
-    -- absorbed by the coalesce in ScheduleSpellsChangedRefresh.
+    -- This must rebuild, not just refresh, because the initial map table can be
+    -- incomplete and missing buttons cannot be repainted into existence.
     self:ScheduleSpellsChangedRefresh()
-    self:ScheduleDungeonPortalRefresh(1.50)
+    self:ScheduleDungeonPortalRebuild(1.50)
     self:StartSanitySweepTicker()
+end
+
+function Portals:PLAYER_ENTERING_WORLD()
+    self:ScheduleDungeonPortalRebuild(0.75)
+end
+
+function Portals:CHALLENGE_MODE_MAPS_UPDATE()
+    self:ScheduleDungeonPortalRebuild(0)
+end
+
+function Portals:MYTHIC_PLUS_CURRENT_AFFIX_UPDATE()
+    self:ScheduleDungeonPortalRebuild(DUNGEON_PORTAL_REBUILD_COALESCE_DELAY)
 end
 
 -- Refresh hearthstone buttons when bag contents change.
@@ -909,6 +927,24 @@ function Portals:ScheduleDungeonPortalRefresh(delaySeconds)
     end)
 end
 
+function Portals:ScheduleDungeonPortalRebuild(delaySeconds)
+    if self.dungeonPortalRebuildTimer then
+        return
+    end
+
+    if not C_Timer or type(C_Timer.NewTimer) ~= "function" then
+        self:RebuildDungeonPortalButtons()
+        return
+    end
+
+    self.dungeonPortalRebuildTimer = C_Timer.NewTimer(math.max(0, tonumber(delaySeconds) or 0), function()
+        self.dungeonPortalRebuildTimer = nil
+        if self and type(self.RebuildDungeonPortalButtons) == "function" then
+            self:RebuildDungeonPortalButtons()
+        end
+    end)
+end
+
 -- Single-shot debounce for SPELLS_CHANGED bursts. Drops dozens of redundant
 -- spellbook scans during login/spec switches into one refresh per quiet window.
 function Portals:ScheduleSpellsChangedRefresh()
@@ -1047,6 +1083,112 @@ function Portals:AcquireDungeonPortalButton(index)
     return button
 end
 
+function Portals:GetCurrentSeasonDungeonRecords(dataHandle, shouldWarnMissing)
+    local curSeason = C_ChallengeMode and C_ChallengeMode.GetMapTable and C_ChallengeMode.GetMapTable() or {}
+    if type(curSeason) ~= "table" then
+        curSeason = {}
+    end
+
+    if shouldWarnMissing then
+        self:WarnMissingSeasonDungeonMetadata(curSeason, dataHandle)
+    end
+
+    local curSeasonDungs = {}
+    if not dataHandle then
+        return curSeasonDungs, curSeason
+    end
+
+    for _, id in ipairs(curSeason) do
+        local lookupID = tonumber(id) or id
+        local dungInfo = dataHandle:GetDungeonByMapID(lookupID)
+        if dungInfo then
+            curSeasonDungs[#curSeasonDungs + 1] = dungInfo
+        end
+    end
+
+    return curSeasonDungs, curSeason
+end
+
+function Portals:BuildDungeonPortalMapSignature(dungeons)
+    if type(dungeons) ~= "table" or #dungeons == 0 then
+        return nil
+    end
+
+    local parts = {}
+    for index = 1, #dungeons do
+        local mapID = dungeons[index] and tonumber(dungeons[index].mapID) or nil
+        if mapID then
+            parts[#parts + 1] = tostring(mapID)
+        end
+    end
+
+    if #parts == 0 then
+        return nil
+    end
+
+    return table.concat(parts, ",")
+end
+
+function Portals:GetPortalButtonMapSignature()
+    local buttons = self.portalButtons
+    if type(buttons) ~= "table" or #buttons == 0 then
+        return nil
+    end
+
+    local parts = {}
+    for index = 1, #buttons do
+        local mapID = buttons[index] and tonumber(buttons[index].portalMapID) or nil
+        if mapID then
+            parts[#parts + 1] = tostring(mapID)
+        end
+    end
+
+    if #parts == 0 then
+        return nil
+    end
+
+    return table.concat(parts, ",")
+end
+
+function Portals:GetCurrentSeasonDungeonMapSignature(dataHandle)
+    if not dataHandle or type(dataHandle.GetDungeonsByMapID) ~= "function" then
+        return nil
+    end
+
+    local curSeason = C_ChallengeMode and C_ChallengeMode.GetMapTable and C_ChallengeMode.GetMapTable() or {}
+    if type(curSeason) ~= "table" or #curSeason == 0 then
+        return nil
+    end
+
+    local parts = {}
+    for _, id in ipairs(curSeason) do
+        local lookupID = tonumber(id) or id
+        if dataHandle:GetDungeonsByMapID(lookupID) then
+            parts[#parts + 1] = tostring(lookupID)
+        end
+    end
+
+    if #parts == 0 then
+        return nil
+    end
+
+    return table.concat(parts, ",")
+end
+
+function Portals:ShouldRebuildDungeonPortalButtons()
+    local dataHandle = vesperTools:GetModule("DataHandle", true)
+    if not dataHandle then
+        return false
+    end
+
+    local desiredSignature = self:GetCurrentSeasonDungeonMapSignature(dataHandle)
+    if not desiredSignature then
+        return false
+    end
+
+    return self:GetPortalButtonMapSignature() ~= desiredSignature
+end
+
 function Portals:RebuildDungeonPortalButtons()
     if type(InCombatLockdown) == "function" and InCombatLockdown() then
         self.pendingDungeonPortalCacheRebuild = true
@@ -1063,16 +1205,8 @@ function Portals:RebuildDungeonPortalButtons()
         return false
     end
 
-    local curSeason = C_ChallengeMode and C_ChallengeMode.GetMapTable and C_ChallengeMode.GetMapTable() or {}
-    self:WarnMissingSeasonDungeonMetadata(curSeason, DataHandle)
-
-    local curSeasonDungs = {}
-    for _, id in ipairs(curSeason) do
-        local dungInfo = DataHandle:GetDungeonByMapID(id)
-        if dungInfo then
-            curSeasonDungs[#curSeasonDungs + 1] = dungInfo
-        end
-    end
+    local curSeasonDungs = self:GetCurrentSeasonDungeonRecords(DataHandle, true)
+    local desiredSignature = self:BuildDungeonPortalMapSignature(curSeasonDungs)
 
     if not self:ClearDungeonPortalCache() then
         return false
@@ -1113,7 +1247,8 @@ function Portals:RebuildDungeonPortalButtons()
         button:Show()
     end
 
-    return self:RefreshDungeonPortalButtons()
+    self.dungeonPortalMapSignature = desiredSignature
+    return self:RefreshDungeonPortalButtons({ skipRebuildCheck = true })
 end
 
 function Portals:ApplyDungeonPortalButtonState(button)
@@ -1177,10 +1312,20 @@ function Portals:ApplyDungeonPortalButtonState(button)
     return known
 end
 
-function Portals:RefreshDungeonPortalButtons()
+function Portals:RefreshDungeonPortalButtons(options)
+    options = type(options) == "table" and options or {}
+
     if type(InCombatLockdown) == "function" and InCombatLockdown() then
-        self.pendingDungeonPortalRefresh = true
+        if not options.skipRebuildCheck and self:ShouldRebuildDungeonPortalButtons() then
+            self.pendingDungeonPortalCacheRebuild = true
+        else
+            self.pendingDungeonPortalRefresh = true
+        end
         return false
+    end
+
+    if not options.skipRebuildCheck and self:ShouldRebuildDungeonPortalButtons() then
+        return self:RebuildDungeonPortalButtons()
     end
 
     local buttons = self.portalButtons
@@ -1196,6 +1341,7 @@ function Portals:RefreshDungeonPortalButtons()
     end
 
     self:RefreshActionCooldowns()
+    self.dungeonPortalMapSignature = self:GetPortalButtonMapSignature()
     vesperTools:SendMessage("VESPERTOOLS_PORTAL_SPELLS_REFRESHED", knownCount, #buttons)
     return true, knownCount, #buttons
 end
@@ -1229,7 +1375,7 @@ function Portals:DebugDumpDungeonPortalSpells()
     vesperTools:Print("Current character dungeon portal spell check:")
 
     for index = 1, #curSeason do
-        local mapID = curSeason[index]
+        local mapID = tonumber(curSeason[index]) or curSeason[index]
         local entries = dataHandle:GetDungeonsByMapID(mapID)
         if type(entries) == "table" and #entries > 0 then
             -- Iterate every catalog entry for this mapID so users with
@@ -2088,16 +2234,9 @@ function Portals:CreatePortalFrame()
         return
     end
 
-    local curSeason = C_ChallengeMode.GetMapTable() or {}
-    self:WarnMissingSeasonDungeonMetadata(curSeason, DataHandle)
-    local curSeasonDungs = {}
     -- Keep only maps we have metadata for; unknown mapIDs are skipped safely.
-    for _, id in ipairs(curSeason) do
-        local dungInfo = DataHandle:GetDungeonByMapID(id)
-        if dungInfo then
-            table.insert(curSeasonDungs, dungInfo)
-        end
-    end
+    local curSeasonDungs = self:GetCurrentSeasonDungeonRecords(DataHandle, true)
+    self.dungeonPortalMapSignature = self:BuildDungeonPortalMapSignature(curSeasonDungs)
 
     self.portalButtons = {}
     local index = 1

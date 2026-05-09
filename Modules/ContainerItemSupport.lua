@@ -466,6 +466,43 @@ function vesperTools:CreateContainerItemController(host, config)
         return fallbackBagID, fallbackSlotID
     end
 
+    -- Resolve a bag/slot suitable for a deposit from a (possibly combined)
+    -- button. Unlike GetButtonBagSlot(true), this never gates on
+    -- CanUseCombinedButton: depositing a stack into the bank does not require
+    -- the item to have a "use" action, so combined reagent/quest stacks must
+    -- still resolve to one of their underlying records.
+    function controller:GetButtonDepositBagSlot(button)
+        if not button then
+            return nil, nil
+        end
+
+        if not button.isCombined and button.bagID and button.slotID then
+            return button.bagID, button.slotID
+        end
+
+        if type(button.combinedRecords) ~= "table" then
+            return nil, nil
+        end
+
+        local fallbackBagID, fallbackSlotID = nil, nil
+        for i = 1, #button.combinedRecords do
+            local record = button.combinedRecords[i]
+            local bagID = type(record) == "table" and record.bagID or nil
+            local slotID = type(record) == "table" and record.slotID or nil
+            if bagID and slotID then
+                if not record.isLocked then
+                    return bagID, slotID
+                end
+
+                if not fallbackBagID then
+                    fallbackBagID, fallbackSlotID = bagID, slotID
+                end
+            end
+        end
+
+        return fallbackBagID, fallbackSlotID
+    end
+
     function controller:GetNativeOverlayBagSlot(button)
         if not button then
             return nil, nil
