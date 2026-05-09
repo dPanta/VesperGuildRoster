@@ -402,7 +402,11 @@ function KeystoneSync:GetDungeonAbbrev(mapID)
     end
     
     -- Fallback: derive abbreviation from dungeon name initials.
-    local name = C_ChallengeMode.GetMapUIInfo(mapID)
+    local ok, name = false, nil
+    if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
+        ok, name = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
+    end
+    name = ok and name or nil
     if name then
         -- Try to create abbreviation from first letters
         local abbrev = ""

@@ -107,12 +107,12 @@ end
 
 -- Derive localized travel category token from known sample spells (e.g. "Teleport", "Portal").
 local function buildTravelToken(sampleSpellIDs, fallbackToken)
-    if not C_Spell or not C_Spell.GetSpellInfo then
+    if not vesperTools or type(vesperTools.GetSpellInfoSafe) ~= "function" then
         return string.lower(fallbackToken)
     end
 
     for i = 1, #sampleSpellIDs do
-        local spellInfo = C_Spell.GetSpellInfo(sampleSpellIDs[i])
+        local spellInfo = vesperTools:GetSpellInfoSafe(sampleSpellIDs[i])
         local spellName = spellInfo and spellInfo.name
         if type(spellName) == "string" and spellName ~= "" then
             local token = spellName:match("^(.-):")
@@ -160,6 +160,42 @@ local function getPlayerMythicPlusRating()
     return 0
 end
 
+local function callAPI(apiFunc, ...)
+    if type(apiFunc) ~= "function" then
+        return false
+    end
+
+    return pcall(apiFunc, ...)
+end
+
+local function isInCombatLockdown()
+    return type(InCombatLockdown) == "function" and InCombatLockdown()
+end
+
+local function getChallengeModeMapTableSafe()
+    local ok, mapTable = callAPI(C_ChallengeMode and C_ChallengeMode.GetMapTable)
+    if ok and type(mapTable) == "table" then
+        return mapTable
+    end
+    return {}
+end
+
+local function getChallengeModeMapNameSafe(mapID)
+    local ok, dungeonName = callAPI(C_ChallengeMode and C_ChallengeMode.GetMapUIInfo, mapID)
+    if ok and type(dungeonName) == "string" and dungeonName ~= "" then
+        return dungeonName
+    end
+    return nil
+end
+
+local function getSeasonBestForMapSafe(mapID)
+    local ok, inTimeInfo, overTimeInfo = callAPI(C_MythicPlus and C_MythicPlus.GetSeasonBestForMap, mapID)
+    if ok then
+        return inTimeInfo, overTimeInfo
+    end
+    return nil, nil
+end
+
 local function getMageTravelSelectionKey(kind)
     return kind == "portal" and "_selectedMagePortalSpellID" or "_selectedMageTeleportSpellID"
 end
@@ -180,14 +216,6 @@ local function findMageTravelSpell(spells, spellID)
     return nil
 end
 
-local function getSpellBookBank()
-    return Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
-end
-
-local function getSpellBookSpellType()
-    return Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell or nil
-end
-
 -- Lifecycle and event wiring.
 function Portals:OnInitialize()
     -- Tracks deferred secure-button updates blocked by combat lockdown.
@@ -205,7 +233,7 @@ function Portals:OnInitialize()
     self.cooldownUpdateElapsed = 0
     self.spellsChangedRefreshTimer = nil
     self.dungeonPortalRebuildTimer = nil
-    self.dungeonPortalMapSignature = nil
+    self.dungeonPortalRebuildDueTime = nil
     self.sanitySweepTicker = nil
     self:RegisterEvent("PLAYER_LOGIN")
 end
@@ -387,7 +415,7 @@ function Portals:GetKnownMageTravelSpells(kind)
             return
         end
 
-        local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+        local spellInfo = vesperTools:GetSpellInfoSafe(spellID)
         local spellName = explicitName or (spellInfo and spellInfo.name)
         if type(spellName) ~= "string" or spellName == "" then
             return
@@ -409,35 +437,23 @@ function Portals:GetKnownMageTravelSpells(kind)
     end
 
     -- Spellbook scan fallback picks up travel spells not yet in the local curated list.
-    if C_SpellBook
-        and C_SpellBook.GetNumSpellBookSkillLines
-        and C_SpellBook.GetSpellBookSkillLineInfo
-        and C_SpellBook.GetSpellBookItemInfo
-    then
-        local bank = getSpellBookBank()
-        local spellType = getSpellBookSpellType()
-        local numLines = tonumber(C_SpellBook.GetNumSpellBookSkillLines()) or 0
-
-        for lineIndex = 1, numLines do
-            local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(lineIndex)
-            local offset = lineInfo and lineInfo.itemIndexOffset or 0
-            local numSlots = lineInfo and lineInfo.numSpellBookItems or 0
-            for slot = (offset + 1), (offset + numSlots) do
-                local itemInfo = C_SpellBook.GetSpellBookItemInfo(slot, bank)
-                local itemType = itemInfo and itemInfo.itemType or nil
-                local spellID = itemInfo and (itemInfo.spellID or itemInfo.actionID) or nil
-                if spellID and not seen[spellID] and (spellType == nil or itemType == spellType) then
-                    local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
-                    local spellName = spellInfo and spellInfo.name
-                    if type(spellName) == "string" and spellName ~= "" then
-                        local lowerName = string.lower(spellName)
-                        if string.find(lowerName, token, 1, true) then
-                            tryAddSpell(spellID, spellName)
-                        end
+    if vesperTools and type(vesperTools.ForEachPlayerSpellBookItem) == "function" then
+        local spellType = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell or nil
+        vesperTools:ForEachPlayerSpellBookItem(function(itemInfo)
+            local itemType = itemInfo and itemInfo.itemType or nil
+            local spellID = itemInfo and (itemInfo.spellID or itemInfo.actionID) or nil
+            if spellID and not seen[spellID] and (spellType == nil or itemType == spellType) then
+                local spellInfo = vesperTools:GetSpellInfoSafe(spellID)
+                local spellName = spellInfo and spellInfo.name
+                if type(spellName) == "string" and spellName ~= "" then
+                    local lowerName = string.lower(spellName)
+                    if string.find(lowerName, token, 1, true) then
+                        tryAddSpell(spellID, spellName)
                     end
                 end
             end
-        end
+            return nil
+        end)
     end
 
     table.sort(spells, function(a, b)
@@ -915,30 +931,30 @@ function Portals:RefreshActionCooldowns()
     end
 end
 
-function Portals:ScheduleDungeonPortalRefresh(delaySeconds)
-    if not C_Timer or type(C_Timer.After) ~= "function" then
-        return
-    end
-
-    C_Timer.After(math.max(0, tonumber(delaySeconds) or 0), function()
-        if self and type(self.RefreshDungeonPortalButtons) == "function" then
-            self:RefreshDungeonPortalButtons()
-        end
-    end)
-end
-
 function Portals:ScheduleDungeonPortalRebuild(delaySeconds)
-    if self.dungeonPortalRebuildTimer then
-        return
-    end
-
     if not C_Timer or type(C_Timer.NewTimer) ~= "function" then
         self:RebuildDungeonPortalButtons()
         return
     end
 
-    self.dungeonPortalRebuildTimer = C_Timer.NewTimer(math.max(0, tonumber(delaySeconds) or 0), function()
+    local delay = math.max(0, tonumber(delaySeconds) or 0)
+    local now = type(GetTime) == "function" and GetTime() or 0
+    local dueTime = now + delay
+    if self.dungeonPortalRebuildTimer then
+        if self.dungeonPortalRebuildDueTime and self.dungeonPortalRebuildDueTime <= dueTime then
+            return
+        end
+        if type(self.dungeonPortalRebuildTimer.Cancel) == "function" then
+            self.dungeonPortalRebuildTimer:Cancel()
+        end
         self.dungeonPortalRebuildTimer = nil
+        self.dungeonPortalRebuildDueTime = nil
+    end
+
+    self.dungeonPortalRebuildDueTime = dueTime
+    self.dungeonPortalRebuildTimer = C_Timer.NewTimer(delay, function()
+        self.dungeonPortalRebuildTimer = nil
+        self.dungeonPortalRebuildDueTime = nil
         if self and type(self.RebuildDungeonPortalButtons) == "function" then
             self:RebuildDungeonPortalButtons()
         end
@@ -1003,7 +1019,12 @@ end
 
 function Portals:ResetDungeonPortalButton(button)
     if not button then
-        return
+        return false
+    end
+
+    if isInCombatLockdown() then
+        self.pendingDungeonPortalCacheRebuild = true
+        return false
     end
 
     button.portalMapID = nil
@@ -1016,10 +1037,11 @@ function Portals:ResetDungeonPortalButton(button)
     self:SetButtonCooldownSource(button, nil, nil)
     self:ClearButtonCooldown(button)
     button:Hide()
+    return true
 end
 
 function Portals:ClearDungeonPortalCache()
-    if type(InCombatLockdown) == "function" and InCombatLockdown() then
+    if isInCombatLockdown() then
         self.pendingDungeonPortalCacheRebuild = true
         return false
     end
@@ -1042,6 +1064,11 @@ function Portals:ClearDungeonPortalCache()
 end
 
 function Portals:AcquireDungeonPortalButton(index)
+    if isInCombatLockdown() then
+        self.pendingDungeonPortalCacheRebuild = true
+        return nil
+    end
+
     self.portalButtonPool = self.portalButtonPool or {}
     local button = self.portalButtonPool[index]
     if button then
@@ -1084,7 +1111,7 @@ function Portals:AcquireDungeonPortalButton(index)
 end
 
 function Portals:GetCurrentSeasonDungeonRecords(dataHandle, shouldWarnMissing)
-    local curSeason = C_ChallengeMode and C_ChallengeMode.GetMapTable and C_ChallengeMode.GetMapTable() or {}
+    local curSeason = getChallengeModeMapTableSafe()
     if type(curSeason) ~= "table" then
         curSeason = {}
     end
@@ -1107,26 +1134,6 @@ function Portals:GetCurrentSeasonDungeonRecords(dataHandle, shouldWarnMissing)
     end
 
     return curSeasonDungs, curSeason
-end
-
-function Portals:BuildDungeonPortalMapSignature(dungeons)
-    if type(dungeons) ~= "table" or #dungeons == 0 then
-        return nil
-    end
-
-    local parts = {}
-    for index = 1, #dungeons do
-        local mapID = dungeons[index] and tonumber(dungeons[index].mapID) or nil
-        if mapID then
-            parts[#parts + 1] = tostring(mapID)
-        end
-    end
-
-    if #parts == 0 then
-        return nil
-    end
-
-    return table.concat(parts, ",")
 end
 
 function Portals:GetPortalButtonMapSignature()
@@ -1155,7 +1162,7 @@ function Portals:GetCurrentSeasonDungeonMapSignature(dataHandle)
         return nil
     end
 
-    local curSeason = C_ChallengeMode and C_ChallengeMode.GetMapTable and C_ChallengeMode.GetMapTable() or {}
+    local curSeason = getChallengeModeMapTableSafe()
     if type(curSeason) ~= "table" or #curSeason == 0 then
         return nil
     end
@@ -1189,8 +1196,65 @@ function Portals:ShouldRebuildDungeonPortalButtons()
     return self:GetPortalButtonMapSignature() ~= desiredSignature
 end
 
+function Portals:ResolveDungeonPortalState(mapID, options)
+    local normalizedMapID = tonumber(mapID) or mapID
+    if not normalizedMapID then
+        return nil
+    end
+
+    local dataHandle = vesperTools:GetModule("DataHandle", true)
+    local entries = dataHandle
+        and type(dataHandle.GetDungeonsByMapID) == "function"
+        and dataHandle:GetDungeonsByMapID(normalizedMapID)
+        or nil
+    if type(entries) ~= "table" or #entries == 0 then
+        return nil
+    end
+
+    options = type(options) == "table" and options or {}
+    local spellOptions = {
+        allowSessionCache = options.allowSessionCache == true,
+        rememberSession = options.rememberSession == true,
+        sessionScope = "dungeonPortal",
+    }
+
+    local fallbackState = nil
+    for i = 1, #entries do
+        local entry = entries[i]
+        local spellID = entry and tonumber(entry.spellID) or nil
+        if spellID then
+            local spellInfo = vesperTools:GetSpellInfoSafe(spellID)
+            local state = {
+                mapID = normalizedMapID,
+                dungeonName = entry.dungeonName,
+                spellID = spellID,
+                spellName = spellInfo and spellInfo.name or nil,
+                icon = normalizeTextureToken(spellInfo and (spellInfo.iconID or spellInfo.originalIconID))
+                    or FALLBACK_ICON_TEXTURE,
+                known = false,
+                source = "none",
+                entries = entries,
+            }
+
+            if not fallbackState then
+                fallbackState = state
+            end
+
+            local known, source = vesperTools:GetPlayerSpellKnownState(spellID, spellOptions)
+            if known then
+                state.known = true
+                state.source = source or "unknown"
+                return state
+            end
+            state.source = source or "none"
+        end
+    end
+
+    return fallbackState
+end
+
 function Portals:RebuildDungeonPortalButtons()
-    if type(InCombatLockdown) == "function" and InCombatLockdown() then
+    if isInCombatLockdown() then
         self.pendingDungeonPortalCacheRebuild = true
         return false
     end
@@ -1205,18 +1269,29 @@ function Portals:RebuildDungeonPortalButtons()
         return false
     end
 
-    local curSeasonDungs = self:GetCurrentSeasonDungeonRecords(DataHandle, true)
-    local desiredSignature = self:BuildDungeonPortalMapSignature(curSeasonDungs)
+    local curSeasonDungs, curSeason = self:GetCurrentSeasonDungeonRecords(DataHandle, true)
+    if type(curSeason) ~= "table" or #curSeason == 0 then
+        return false
+    end
 
     if not self:ClearDungeonPortalCache() then
         return false
     end
 
     for index, dungInfo in ipairs(curSeasonDungs) do
-        local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(dungInfo.spellID)
-        local spellName = spellInfo and spellInfo.name
-        local iconFileID = spellInfo and (spellInfo.iconID or spellInfo.originalIconID)
+        local resolved = self:ResolveDungeonPortalState(dungInfo.mapID, {
+            allowSessionCache = true,
+            rememberSession = true,
+        })
+        local spellInfo = not resolved and vesperTools:GetSpellInfoSafe(dungInfo.spellID) or nil
+        local spellName = resolved and resolved.spellName or (spellInfo and spellInfo.name)
+        local iconFileID = resolved and resolved.icon
+            or normalizeTextureToken(spellInfo and (spellInfo.iconID or spellInfo.originalIconID))
+            or FALLBACK_ICON_TEXTURE
         local button = self:AcquireDungeonPortalButton(index)
+        if not button then
+            return false
+        end
         local col = (index - 1) % 4
         local row = math.floor((index - 1) / 4)
 
@@ -1231,9 +1306,9 @@ function Portals:RebuildDungeonPortalButtons()
             button.icon:SetAlpha(1)
         end
 
-        button.dungeonName = dungInfo.dungeonName
+        button.dungeonName = (resolved and resolved.dungeonName) or dungInfo.dungeonName
         button.portalMapID = dungInfo.mapID
-        button.portalSpellID = dungInfo.spellID
+        button.portalSpellID = (resolved and resolved.spellID) or dungInfo.spellID
         button.portalSpellName = spellName
         self.portalButtons[#self.portalButtons + 1] = button
         button:SetScript("OnEnter", function(portalButton)
@@ -1247,7 +1322,6 @@ function Portals:RebuildDungeonPortalButtons()
         button:Show()
     end
 
-    self.dungeonPortalMapSignature = desiredSignature
     return self:RefreshDungeonPortalButtons({ skipRebuildCheck = true })
 end
 
@@ -1256,17 +1330,22 @@ function Portals:ApplyDungeonPortalButtonState(button)
         return false
     end
 
+    if isInCombatLockdown() then
+        self.pendingDungeonPortalRefresh = true
+        return false
+    end
+
     local mapID = tonumber(button.portalMapID)
+    local resolved = nil
     if mapID then
-        local dataHandle = vesperTools:GetModule("DataHandle", true)
-        local knownDungeon = dataHandle
-            and type(dataHandle.GetKnownDungeonByMapID) == "function"
-            and dataHandle:GetKnownDungeonByMapID(mapID)
-            or nil
-        if knownDungeon and tonumber(knownDungeon.spellID) then
-            button.portalSpellID = knownDungeon.spellID
-            button.portalSpellName = nil
-            button.dungeonName = knownDungeon.dungeonName or button.dungeonName
+        resolved = self:ResolveDungeonPortalState(mapID, {
+            allowSessionCache = true,
+            rememberSession = true,
+        })
+        if resolved and tonumber(resolved.spellID) then
+            button.portalSpellID = resolved.spellID
+            button.portalSpellName = resolved.spellName
+            button.dungeonName = resolved.dungeonName or button.dungeonName
         end
     end
 
@@ -1277,13 +1356,26 @@ function Portals:ApplyDungeonPortalButtonState(button)
         return false
     end
 
-    local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(spellID)
+    local spellInfo = nil
+    if not resolved then
+        spellInfo = vesperTools:GetSpellInfoSafe(spellID)
+    end
     local spellName = (spellInfo and spellInfo.name) or button.portalSpellName
-    local iconFileID = spellInfo and (spellInfo.iconID or spellInfo.originalIconID)
+    local iconFileID = resolved and resolved.icon
+        or normalizeTextureToken(spellInfo and (spellInfo.iconID or spellInfo.originalIconID))
     -- The known check stands on its own. Previously it was gated behind
     -- spellName, which meant any GetSpellInfo cache miss (common right after
     -- login) reported owned portals as locked.
-    local known = vesperTools:IsSpellKnownForPlayer(spellID) and true or false
+    local known
+    if resolved then
+        known = resolved.known and true or false
+    else
+        known = vesperTools:IsSpellKnownForPlayer(spellID, {
+            allowSessionCache = true,
+            rememberSession = true,
+            sessionScope = "dungeonPortal",
+        })
+    end
     -- Secure cast attribute still needs a name; if we don't have one yet, the
     -- button stays visually-known but click-disabled until the next refresh.
     local castName = spellName
@@ -1341,7 +1433,6 @@ function Portals:RefreshDungeonPortalButtons(options)
     end
 
     self:RefreshActionCooldowns()
-    self.dungeonPortalMapSignature = self:GetPortalButtonMapSignature()
     vesperTools:SendMessage("VESPERTOOLS_PORTAL_SPELLS_REFRESHED", knownCount, #buttons)
     return true, knownCount, #buttons
 end
@@ -1365,14 +1456,13 @@ function Portals:DebugDumpDungeonPortalSpells()
         return
     end
 
-    local curSeason = C_ChallengeMode and C_ChallengeMode.GetMapTable and C_ChallengeMode.GetMapTable() or {}
+    local curSeason = getChallengeModeMapTableSafe()
     if #curSeason == 0 then
         vesperTools:Print("No current-season dungeon portal map table is available.")
         return
     end
 
-    self:RefreshDungeonPortalButtons()
-    vesperTools:Print("Current character dungeon portal spell check:")
+    vesperTools:Print("Current character dungeon portal spell check (raw probes; debug does not update session cache):")
 
     for index = 1, #curSeason do
         local mapID = tonumber(curSeason[index]) or curSeason[index]
@@ -1385,26 +1475,35 @@ function Portals:DebugDumpDungeonPortalSpells()
             -- what the live UI uses.
             local dungeonLabel = entries[1].dungeonName or tostring(mapID)
             for _, dungInfo in ipairs(entries) do
-                local spellInfo = C_Spell and C_Spell.GetSpellInfo and C_Spell.GetSpellInfo(dungInfo.spellID)
+                local spellInfo = vesperTools:GetSpellInfoSafe(dungInfo.spellID)
                 local spellName = (spellInfo and spellInfo.name) or tostring(dungInfo.spellID)
-                local known, source = vesperTools:GetPlayerSpellKnownState(dungInfo.spellID)
+                local known, source = vesperTools:GetPlayerSpellKnownState(dungInfo.spellID, {
+                    allowSessionCache = false,
+                    rememberSession = false,
+                    sessionScope = "dungeonPortal",
+                })
+                local cachedSource = vesperTools:GetSessionKnownSpellSource(dungInfo.spellID, "dungeonPortal")
                 vesperTools:Print(string.format(
-                    "  %s (%d): %s [%d] = %s via %s",
+                    "  %s (%d): %s [%d] = %s via %s%s",
                     dungInfo.dungeonName or dungeonLabel,
                     mapID,
                     spellName,
                     dungInfo.spellID,
                     known and "known" or "missing",
-                    source or "unknown"
+                    source or "unknown",
+                    cachedSource and ("; cached " .. cachedSource) or ""
                 ))
             end
 
-            local resolved = dataHandle:GetKnownDungeonByMapID(mapID)
+            local resolved = self:ResolveDungeonPortalState(mapID, {
+                allowSessionCache = true,
+                rememberSession = false,
+            })
             vesperTools:Print(string.format(
                 "%s (%d): UI uses %s",
                 dungeonLabel,
                 mapID,
-                resolved and ("spellID " .. tostring(resolved.spellID)) or "no known variant"
+                (resolved and resolved.known) and ("spellID " .. tostring(resolved.spellID)) or "no known variant"
             ))
         end
     end
@@ -1585,6 +1684,11 @@ end
 
 -- Hide the toy flyout safely.
 function Portals:HideToyFlyout()
+    if isInCombatLockdown() then
+        self.pendingUtilityRefresh = true
+        return
+    end
+
     self._toyFlyoutHideToken = (tonumber(self._toyFlyoutHideToken) or 0) + 1
     if self.toyFlyoutFrame then
         self.toyFlyoutFrame:Hide()
@@ -1594,6 +1698,10 @@ end
 -- Show toy flyout when available.
 function Portals:ShowToyFlyout()
     if not self.toyFlyoutFrame then
+        return
+    end
+    if isInCombatLockdown() then
+        self.pendingUtilityRefresh = true
         return
     end
     if not self.toyFlyoutButton or not self.toyFlyoutButton._isAvailable then
@@ -1882,6 +1990,11 @@ function Portals:ApplyMageTravelButtonState(button, spells, titleText, unavailab
         return
     end
 
+    if isInCombatLockdown() then
+        self.pendingUtilityRefresh = true
+        return
+    end
+
     local hasSpells = type(spells) == "table" and #spells > 0
     if hasSpells then
         local selectionKey = button._mageTravelSelectionKey
@@ -2012,6 +2125,11 @@ function Portals:ApplyHearthstoneOption(button, option)
         return
     end
 
+    if isInCombatLockdown() then
+        self.pendingUtilityRefresh = true
+        return
+    end
+
     if option then
         if option.isRandomDisco then
             button.icon:SetTexture(option.icon or FALLBACK_ICON_TEXTURE)
@@ -2066,10 +2184,11 @@ function Portals:ApplyHearthstoneOption(button, option)
                 or normalizeTextureToken(toyIconD)
                 or icon
         end
-        if not icon and C_Item and C_Item.GetItemSpell and C_Spell and C_Spell.GetSpellInfo then
-            local _, itemSpellID = C_Item.GetItemSpell(option.itemID)
+        if not icon and C_Item and C_Item.GetItemSpell then
+            local okSpell, _, itemSpellID = pcall(C_Item.GetItemSpell, option.itemID)
+            itemSpellID = okSpell and itemSpellID or nil
             if itemSpellID then
-                local spellInfo = C_Spell.GetSpellInfo(itemSpellID)
+                local spellInfo = vesperTools:GetSpellInfoSafe(itemSpellID)
                 icon = normalizeTextureToken(spellInfo and (spellInfo.iconID or spellInfo.originalIconID)) or icon
             end
         end
@@ -2173,7 +2292,7 @@ function Portals:WarnMissingSeasonDungeonMetadata(curSeason, dataHandle)
     for i = 1, #missingMapIDs do
         local mapID = missingMapIDs[i]
         if not self.reportedMissingSeasonDungeonMapIDs[mapID] then
-            local dungeonName = C_ChallengeMode.GetMapUIInfo(mapID) or L["UNKNOWN_DUNGEON"]
+            local dungeonName = getChallengeModeMapNameSafe(mapID) or L["UNKNOWN_DUNGEON"]
             unresolved[#unresolved + 1] = string.format("%s (%d)", dungeonName, mapID)
             self.reportedMissingSeasonDungeonMapIDs[mapID] = true
         end
@@ -2234,70 +2353,7 @@ function Portals:CreatePortalFrame()
         return
     end
 
-    -- Keep only maps we have metadata for; unknown mapIDs are skipped safely.
-    local curSeasonDungs = self:GetCurrentSeasonDungeonRecords(DataHandle, true)
-    self.dungeonPortalMapSignature = self:BuildDungeonPortalMapSignature(curSeasonDungs)
-
-    self.portalButtons = {}
-    local index = 1
-    for _, dungInfo in ipairs(curSeasonDungs) do
-            local spellInfo = C_Spell.GetSpellInfo(dungInfo.spellID)
-            local spellName = spellInfo and spellInfo.name
-            local iconFileID = spellInfo and (spellInfo.iconID or spellInfo.originalIconID)
-            local btn = CreateFrame(
-                "Button",
-                "vesperToolsPortalButton" .. index,
-                self.VesperPortalsUI,
-                "InsecureActionButtonTemplate"
-            )
-                btn:SetSize(52, 52)
-                
-                -- Arrange in 4x2 grid (4 columns, 2 rows)
-                local col = (index - 1) % 4
-                local row = math.floor((index - 1) / 4)
-                btn:SetPoint("TOPLEFT", self.VesperPortalsUI, "TOPLEFT", 20 + col * 70, -20 - row * 70)
-
-            -- Background
-            local tex = btn:CreateTexture(nil, "BACKGROUND")
-                tex:SetAllPoints(btn)
-                tex:SetColorTexture(0, 0, 0, 0.8)
-            
-            -- Highlight on mouseover
-            local highlight = btn:CreateTexture(nil, "HIGHLIGHT")
-			    highlight:SetAllPoints(btn)
-			    highlight:SetColorTexture(1, 1, 0, 0.4)
-			    btn:SetHighlightTexture(highlight)
-
-            -- Dungeon Icon Overlay
-            local icon = btn:CreateTexture(nil, "ARTWORK")
-                icon:SetAllPoints(btn)
-                icon:SetTexture(iconFileID or "Interface\\ICONS\\INV_Misc_QuestionMark")
-                btn.icon = icon
-
-            -- Cooldown swipe + numeric counter
-            self:EnsureCooldownOverlay(btn)
-
-            -- Tooltip
-            btn.dungeonName = dungInfo.dungeonName
-            btn.portalMapID = dungInfo.mapID
-            btn.portalSpellID = dungInfo.spellID
-            btn.portalSpellName = spellName
-            self.portalButtons[#self.portalButtons + 1] = btn
-            btn:SetScript("OnEnter", function(portalButton)
-                GameTooltip:SetOwner(portalButton, "ANCHOR_RIGHT")
-                GameTooltip:SetText(portalButton.dungeonName, 1, 1, 1)
-                GameTooltip:Show()
-            end)
-            btn:SetScript("OnLeave", function()
-                GameTooltip:Hide()
-            end)
-
-            -- Clickitty Click
-            btn:RegisterForClicks("AnyUp", "AnyDown")
-            self:ApplyDungeonPortalButtonState(btn)
-
-            index = index + 1
-        end
+    self:RebuildDungeonPortalButtons()
 
     self:CreateTopUtilityFrame()
     self:RefreshHearthstoneButtons()
@@ -2552,7 +2608,7 @@ function Portals:RebuildProgressFrames()
         keystoneSync:UpdateCurrentCharacterKeystoneSnapshot()
     end
 
-    local curSeason = C_ChallengeMode.GetMapTable()
+    local curSeason = getChallengeModeMapTableSafe()
     if curSeason and #curSeason > 0 then
         self:CreateMPlusProgFrame(curSeason)
     end
@@ -2582,7 +2638,7 @@ function Portals:CreateMPlusProgFrame(curSeason)
     vesperTools:ApplyConfiguredFont(measure, bestKeysFontSize, "")
     local maxNameWidth = 0
     for _, mapID in ipairs(curSeason) do
-        local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or L["UNKNOWN_DUNGEON"]
+        local dungName = getChallengeModeMapNameSafe(mapID) or L["UNKNOWN_DUNGEON"]
         measure:SetText(dungName)
         local w = measure:GetStringWidth()
         if w > maxNameWidth then maxNameWidth = w end
@@ -2646,7 +2702,7 @@ function Portals:CreateMPlusProgFrame(curSeason)
         end
 
         -- Dungeon name
-        local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or L["UNKNOWN_DUNGEON"]
+        local dungName = getChallengeModeMapNameSafe(mapID) or L["UNKNOWN_DUNGEON"]
         local nameText = self.mplusProgFrame:CreateFontString(nil, "OVERLAY")
         vesperTools:ApplyConfiguredFont(nameText, bestKeysFontSize, "")
         nameText:SetPoint("LEFT", self.mplusProgFrame, "TOPLEFT", padding, rowCenter)
@@ -2657,7 +2713,7 @@ function Portals:CreateMPlusProgFrame(curSeason)
         local bestLevel = 0
         local bestDuration = 0
         local wasInTime = false
-        local inTimeInfo, overTimeInfo = C_MythicPlus.GetSeasonBestForMap(mapID)
+        local inTimeInfo, overTimeInfo = getSeasonBestForMapSafe(mapID)
         if inTimeInfo and inTimeInfo.level then
             bestLevel = inTimeInfo.level
             bestDuration = inTimeInfo.durationSec

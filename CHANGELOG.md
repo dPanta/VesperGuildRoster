@@ -1,3 +1,11 @@
+## 6.1.3 - 2026-05-09
+
+### Fixed
+- Portal availability now uses one shared resolver for the portal window, roster key buttons, and `/vg portalspells`, so duplicate map entries such as Skyreach choose the same known spell variant everywhere.
+- The session-known cache is now scoped to dungeon portal checks instead of all spell checks, and `/vg portalspells` debug output can inspect raw Blizzard API probe results without mutating that cache.
+- Portal, roster, vault, search, best-key refresh, keystone sync, and color/name lookup paths now wrap restricted spellbook, spell-info, challenge-mode, and Mythic+ APIs with safe fallbacks so transient restricted-call failures degrade instead of aborting the flow.
+- Dungeon portal and roster secure-button refresh paths now defer unsafe attribute, position, and visibility updates during combat lockdown, preventing protected-button refresh work from tripping restricted-action failures.
+
 ## 6.1.2 - 2026-05-09
 
 ### Fixed

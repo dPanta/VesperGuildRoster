@@ -82,17 +82,17 @@ local function getPlayerSpellBookItemInfo(slotIndex)
         return nil
     end
 
+    local ok, itemInfo = pcall(C_SpellBook.GetSpellBookItemInfo, slotIndex)
+    if ok and itemInfo then
+        return itemInfo
+    end
+
     local bank = getPlayerSpellBookBank()
     if bank ~= nil then
-        local ok, itemInfo = pcall(C_SpellBook.GetSpellBookItemInfo, slotIndex, bank)
+        ok, itemInfo = pcall(C_SpellBook.GetSpellBookItemInfo, slotIndex, bank)
         if ok and itemInfo then
             return itemInfo
         end
-    end
-
-    local ok, itemInfo = pcall(C_SpellBook.GetSpellBookItemInfo, slotIndex)
-    if ok then
-        return itemInfo
     end
 
     return nil
@@ -123,16 +123,62 @@ local function getSpellOverrideID(spellID)
     return nil
 end
 
+function vesperTools:GetPlayerSpellBookItemInfo(slotIndex)
+    return getPlayerSpellBookItemInfo(slotIndex)
+end
+
+function vesperTools:ForEachPlayerSpellBookItem(callback)
+    if type(callback) ~= "function"
+        or not (C_SpellBook
+            and type(C_SpellBook.GetNumSpellBookSkillLines) == "function"
+            and type(C_SpellBook.GetSpellBookSkillLineInfo) == "function"
+            and type(C_SpellBook.GetSpellBookItemInfo) == "function")
+    then
+        return nil
+    end
+
+    local ok, numLines = pcall(C_SpellBook.GetNumSpellBookSkillLines)
+    if not ok then
+        return nil
+    end
+
+    numLines = tonumber(numLines) or 0
+    for lineIndex = 1, numLines do
+        local lineOk, lineInfo = pcall(C_SpellBook.GetSpellBookSkillLineInfo, lineIndex)
+        if lineOk and lineInfo then
+            local offset = tonumber(lineInfo.itemIndexOffset) or 0
+            local numSlots = tonumber(lineInfo.numSpellBookItems) or 0
+
+            for slot = (offset + 1), (offset + numSlots) do
+                local itemInfo = getPlayerSpellBookItemInfo(slot)
+                local result = callback(itemInfo, slot, lineInfo, lineIndex)
+                if result ~= nil then
+                    return result
+                end
+            end
+        end
+    end
+
+    return nil
+end
+
+function vesperTools:GetSpellInfoSafe(spellID)
+    if not (C_Spell and type(C_Spell.GetSpellInfo) == "function") then
+        return nil
+    end
+
+    local ok, spellInfo = pcall(C_Spell.GetSpellInfo, spellID)
+    return ok and spellInfo or nil
+end
+
+function vesperTools:GetSpellNameSafe(spellID)
+    local spellInfo = self:GetSpellInfoSafe(spellID)
+    return spellInfo and spellInfo.name or nil
+end
+
 local function isSpellInPlayerSpellBook(spellID)
     local normalizedSpellID = tonumber(spellID)
     if not normalizedSpellID or normalizedSpellID <= 0 then
-        return false
-    end
-    if not (C_SpellBook
-        and type(C_SpellBook.GetNumSpellBookSkillLines) == "function"
-        and type(C_SpellBook.GetSpellBookSkillLineInfo) == "function"
-        and type(C_SpellBook.GetSpellBookItemInfo) == "function")
-    then
         return false
     end
 
@@ -145,52 +191,47 @@ local function isSpellInPlayerSpellBook(spellID)
     end
 
     local acceptedTypes = getAcceptedSpellBookItemTypes()
-    local ok, numLines = pcall(C_SpellBook.GetNumSpellBookSkillLines)
-    if not ok then
-        return false
-    end
-
-    numLines = tonumber(numLines) or 0
-    for lineIndex = 1, numLines do
-        local lineOk, lineInfo = pcall(C_SpellBook.GetSpellBookSkillLineInfo, lineIndex)
-        if lineOk and lineInfo then
-            local offset = tonumber(lineInfo.itemIndexOffset) or 0
-            local numSlots = tonumber(lineInfo.numSpellBookItems) or 0
-
-            for slot = (offset + 1), (offset + numSlots) do
-                local itemInfo = getPlayerSpellBookItemInfo(slot)
-                local itemType = itemInfo and itemInfo.itemType or nil
-                local itemSpellID = itemInfo and tonumber(itemInfo.spellID or itemInfo.actionID) or nil
-                if itemSpellID and targetSpellIDs[itemSpellID]
-                    and (acceptedTypes == nil or itemType == nil or acceptedTypes[itemType])
-                then
-                    return true
-                end
-            end
+    local found = vesperTools:ForEachPlayerSpellBookItem(function(itemInfo)
+        local itemType = itemInfo and itemInfo.itemType or nil
+        local itemSpellID = itemInfo and tonumber(itemInfo.spellID or itemInfo.actionID) or nil
+        if itemSpellID and targetSpellIDs[itemSpellID]
+            and (acceptedTypes == nil or itemType == nil or acceptedTypes[itemType])
+        then
+            return true
         end
-    end
+        return nil
+    end)
 
-    return false
+    return found and true or false
 end
 
-function vesperTools:RememberSpellKnownForSession(spellID, source)
+function vesperTools:RememberSpellKnownForSession(spellID, source, scope)
     local normalizedSpellID = tonumber(spellID)
     if not normalizedSpellID or normalizedSpellID <= 0 then
         return
     end
 
     self.sessionKnownSpellIDs = self.sessionKnownSpellIDs or {}
-    self.sessionKnownSpellIDs[normalizedSpellID] = source or true
+    local cacheScope = scope or "global"
+    self.sessionKnownSpellIDs[cacheScope] = self.sessionKnownSpellIDs[cacheScope] or {}
+    self.sessionKnownSpellIDs[cacheScope][normalizedSpellID] = source or true
 end
 
-function vesperTools:GetSessionKnownSpellSource(spellID)
+function vesperTools:GetSessionKnownSpellSource(spellID, scope)
     local normalizedSpellID = tonumber(spellID)
     if not normalizedSpellID or normalizedSpellID <= 0 then
         return nil
     end
 
     local cache = self.sessionKnownSpellIDs
-    local source = cache and cache[normalizedSpellID] or nil
+    local cacheScope = scope or "global"
+    local scopedCache = cache and cache[cacheScope] or nil
+    local source = scopedCache and scopedCache[normalizedSpellID] or nil
+
+    if not source and cacheScope == "global" and cache and type(cache[normalizedSpellID]) ~= "table" then
+        source = cache[normalizedSpellID]
+    end
+
     if not source then
         return nil
     end
@@ -202,14 +243,21 @@ function vesperTools:GetSessionKnownSpellSource(spellID)
     return "session cache: " .. tostring(source)
 end
 
-function vesperTools:GetPlayerSpellKnownState(spellID)
+function vesperTools:GetPlayerSpellKnownState(spellID, options)
     local normalizedSpellID = tonumber(spellID)
     if not normalizedSpellID or normalizedSpellID <= 0 then
         return false, "invalid"
     end
 
+    options = type(options) == "table" and options or {}
+    local rememberSession = options.rememberSession == true
+    local allowSessionCache = options.allowSessionCache == true
+    local sessionScope = options.sessionScope or "global"
+
     local function rememberKnown(source)
-        self:RememberSpellKnownForSession(normalizedSpellID, source)
+        if rememberSession then
+            self:RememberSpellKnownForSession(normalizedSpellID, source, sessionScope)
+        end
         return true, source
     end
 
@@ -253,16 +301,18 @@ function vesperTools:GetPlayerSpellKnownState(spellID)
         return rememberKnown("IsPlayerSpell")
     end
 
-    local cachedSource = self:GetSessionKnownSpellSource(normalizedSpellID)
-    if cachedSource then
-        return true, cachedSource
+    if allowSessionCache then
+        local cachedSource = self:GetSessionKnownSpellSource(normalizedSpellID, sessionScope)
+        if cachedSource then
+            return true, cachedSource
+        end
     end
 
     return false, "none"
 end
 
-function vesperTools:IsSpellKnownForPlayer(spellID)
-    local known = self:GetPlayerSpellKnownState(spellID)
+function vesperTools:IsSpellKnownForPlayer(spellID, options)
+    local known = self:GetPlayerSpellKnownState(spellID, options)
     return known and true or false
 end
 
@@ -1046,10 +1096,11 @@ local function getItemNameAndIcon(itemID)
     end
 
     -- Mirror portal-button style: item spell icon is often the most stable visual for toys/items.
-    if not icon and C_Item and C_Item.GetItemSpell and C_Spell and C_Spell.GetSpellInfo then
-        local _, itemSpellID = C_Item.GetItemSpell(itemID)
+    if not icon and C_Item and C_Item.GetItemSpell then
+        local okSpell, _, itemSpellID = pcall(C_Item.GetItemSpell, itemID)
+        itemSpellID = okSpell and itemSpellID or nil
         if itemSpellID then
-            local spellInfo = C_Spell.GetSpellInfo(itemSpellID)
+            local spellInfo = vesperTools:GetSpellInfoSafe(itemSpellID)
             icon = normalizeIcon(spellInfo and (spellInfo.iconID or spellInfo.originalIconID)) or icon
         end
     end
@@ -4292,7 +4343,11 @@ function vesperTools:HandleChatCommand(input)
             local entries = {}
             for mapID, info in pairs(data) do
                 if type(info) == "table" and info.level then
-                    local dungName = C_ChallengeMode.GetMapUIInfo(mapID) or tostring(mapID)
+                    local ok, dungName = false, nil
+                    if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
+                        ok, dungName = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
+                    end
+                    dungName = ok and dungName or tostring(mapID)
                     local timeStr = string.format("%d:%02d", math.floor(info.duration / 60), info.duration % 60)
                     local timedStr = info.inTime and L["BEST_KEYS_STATUS_TIMED"] or L["BEST_KEYS_STATUS_OVER"]
                     table.insert(entries, string.format(L["BEST_KEYS_DATABASE_LINE_FMT"], dungName, info.level, timeStr, timedStr))

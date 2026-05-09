@@ -591,23 +591,24 @@ local function getDungeonRunName(mapChallengeModeID)
         return L["UNKNOWN_DUNGEON"]
     end
 
-    if C_ChallengeMode and C_ChallengeMode.GetMapUIInfo then
-        local dungeonName = C_ChallengeMode.GetMapUIInfo(mapID)
-        if type(dungeonName) == "string" and dungeonName ~= "" then
+    if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
+        local ok, dungeonName = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
+        if ok and type(dungeonName) == "string" and dungeonName ~= "" then
             return dungeonName
         end
     end
 
-    if C_ChallengeMode and C_ChallengeMode.GetMapInfo then
-        local mapInfo = C_ChallengeMode.GetMapInfo(mapID)
+    if C_ChallengeMode and type(C_ChallengeMode.GetMapInfo) == "function" then
+        local ok, mapInfo = pcall(C_ChallengeMode.GetMapInfo, mapID)
+        mapInfo = ok and mapInfo or nil
         if type(mapInfo) == "table" and type(mapInfo.name) == "string" and mapInfo.name ~= "" then
             return mapInfo.name
         end
     end
 
     local dataHandle = vesperTools:GetModule("DataHandle", true)
-    if dataHandle and type(dataHandle.GetDungeonByMapID) == "function" then
-        local dungeonInfo = dataHandle:GetDungeonByMapID(mapID)
+    if dataHandle and type(dataHandle.GetDefaultDungeonByMapID) == "function" then
+        local dungeonInfo = dataHandle:GetDefaultDungeonByMapID(mapID)
         if type(dungeonInfo) == "table" and type(dungeonInfo.dungeonName) == "string" and dungeonInfo.dungeonName ~= "" then
             return dungeonInfo.dungeonName
         end

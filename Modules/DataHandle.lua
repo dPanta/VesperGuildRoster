@@ -7,6 +7,11 @@ local DataHandle = vesperTools:NewModule("DataHandle")
 -- 3) Persistent data accessors for ilvl sync + best-key sync stores.
 -- Runtime mapID index built once from the static dungeon catalog below.
 local dungListDB = nil
+local DUNGEON_PORTAL_SPELL_OPTIONS = {
+    allowSessionCache = true,
+    rememberSession = true,
+    sessionScope = "dungeonPortal",
+}
 
 -- Canonical dungeon catalog used by portal and roster modules.
 -- Note: some dungeons intentionally appear twice with different portal spell IDs.
@@ -116,6 +121,14 @@ function DataHandle:GetDungeonsByMapID(mapID)
     return nil
 end
 
+function DataHandle:GetDefaultDungeonByMapID(mapID)
+    local entries = self:GetDungeonsByMapID(mapID)
+    if type(entries) == "table" and #entries > 0 then
+        return entries[1]
+    end
+    return nil
+end
+
 -- Return the configured dungeon record for this character, preferring a known portal variant.
 function DataHandle:GetDungeonByMapID(mapID)
     local entries = self:GetDungeonsByMapID(mapID)
@@ -125,7 +138,7 @@ function DataHandle:GetDungeonByMapID(mapID)
 
     for i = 1, #entries do
         local dungInfo = entries[i]
-        if dungInfo and vesperTools:IsSpellKnownForPlayer(dungInfo.spellID) then
+        if dungInfo and vesperTools:IsSpellKnownForPlayer(dungInfo.spellID, DUNGEON_PORTAL_SPELL_OPTIONS) then
             return dungInfo
         end
     end
@@ -142,7 +155,7 @@ function DataHandle:GetKnownDungeonByMapID(mapID)
 
     for i = 1, #entries do
         local dungInfo = entries[i]
-        if dungInfo and vesperTools:IsSpellKnownForPlayer(dungInfo.spellID) then
+        if dungInfo and vesperTools:IsSpellKnownForPlayer(dungInfo.spellID, DUNGEON_PORTAL_SPELL_OPTIONS) then
             return dungInfo
         end
     end
@@ -178,7 +191,11 @@ end
 
 -- M+ key level coloring (Blizzard API, auto-updates each season)
 function DataHandle:GetKeyColor(level)
-    local color = C_ChallengeMode.GetKeystoneLevelRarityColor(level)
+    local ok, color = false, nil
+    if C_ChallengeMode and type(C_ChallengeMode.GetKeystoneLevelRarityColor) == "function" then
+        ok, color = pcall(C_ChallengeMode.GetKeystoneLevelRarityColor, level)
+    end
+    color = ok and color or nil
     if color then
         -- Convert float color components [0..1] to integer hex for "|cffRRGGBB".
         local r = math.floor((color.r or 0) * 255 + 0.5)
@@ -191,7 +208,11 @@ end
 
 -- M+ rating coloring (Blizzard API, auto-updates each season)
 function DataHandle:GetRatingColor(rating)
-    local color = C_ChallengeMode.GetDungeonScoreRarityColor(rating)
+    local ok, color = false, nil
+    if C_ChallengeMode and type(C_ChallengeMode.GetDungeonScoreRarityColor) == "function" then
+        ok, color = pcall(C_ChallengeMode.GetDungeonScoreRarityColor, rating)
+    end
+    color = ok and color or nil
     if color then
         -- Convert float color components [0..1] to integer hex for "|cffRRGGBB".
         local r = math.floor((color.r or 0) * 255 + 0.5)

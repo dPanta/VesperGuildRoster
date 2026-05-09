@@ -75,15 +75,18 @@ local function getSpellName(spellID)
         return nil
     end
 
-    if C_Spell and C_Spell.GetSpellInfo then
-        local spellInfo = C_Spell.GetSpellInfo(spellID)
-        if spellInfo and spellInfo.name then
-            return spellInfo.name
+    if vesperTools and type(vesperTools.GetSpellNameSafe) == "function" then
+        local spellName = vesperTools:GetSpellNameSafe(spellID)
+        if spellName then
+            return spellName
         end
     end
 
     if GetSpellInfo then
-        return GetSpellInfo(spellID)
+        local ok, spellName = pcall(GetSpellInfo, spellID)
+        if ok then
+            return spellName
+        end
     end
 
     return nil
@@ -645,6 +648,9 @@ function Roster:LayoutRowColumns(row, columnLayout, fontSize)
     end
 
     if row.portalButton then
+        if type(InCombatLockdown) == "function" and InCombatLockdown() then
+            return
+        end
         row.portalButton:ClearAllPoints()
         if portalColumnLayout and row.portalSpellName then
             row.portalButton:SetPoint("TOPLEFT", row, "TOPLEFT", portalColumnLayout.offset, 0)
@@ -678,10 +684,12 @@ function Roster:HideRosterRows(startIndex)
             end
             if row.portalButton then
                 row.portalButton.ownerRow = nil
-                row.portalButton:SetAttribute("type1", nil)
-                row.portalButton:SetAttribute("spell1", nil)
-                row.portalButton:EnableMouse(false)
-                row.portalButton:Hide()
+                if not (type(InCombatLockdown) == "function" and InCombatLockdown()) then
+                    row.portalButton:SetAttribute("type1", nil)
+                    row.portalButton:SetAttribute("spell1", nil)
+                    row.portalButton:EnableMouse(false)
+                    row.portalButton:Hide()
+                end
             end
             row:Hide()
         end
@@ -1158,11 +1166,19 @@ function Roster:GetRosterTooltipLines(row)
 end
 
 function Roster:BuildGuildBestTooltip(mapID, dataHandle)
-    if not mapID or not (C_ChallengeMode and C_ChallengeMode.GetMapUIInfo) then
+    if not mapID then
         return
     end
 
-    local dungeonName = C_ChallengeMode.GetMapUIInfo(mapID)
+    local ok, dungeonName = false, nil
+    if C_ChallengeMode and type(C_ChallengeMode.GetMapUIInfo) == "function" then
+        ok, dungeonName = pcall(C_ChallengeMode.GetMapUIInfo, mapID)
+    end
+    dungeonName = ok and dungeonName or nil
+    if not dungeonName and dataHandle and type(dataHandle.GetDefaultDungeonByMapID) == "function" then
+        local dungeonInfo = dataHandle:GetDefaultDungeonByMapID(mapID)
+        dungeonName = dungeonInfo and dungeonInfo.dungeonName or nil
+    end
     if not dungeonName then
         return
     end
@@ -1312,18 +1328,41 @@ function Roster:ConfigureRosterRow(row, member, index, columnLayout, fontSize, d
 
     local portalButton = row.portalButton
     portalButton.ownerRow = row
-    portalButton:SetAttribute("type1", nil)
-    portalButton:SetAttribute("spell1", nil)
 
-    row.portalSpellName = nil
-    if member.keystoneMapID and dataHandle then
-        local dungeonInfo = dataHandle:GetDungeonByMapID(member.keystoneMapID)
-        if dungeonInfo then
-            local spellName = getSpellName(dungeonInfo.spellID)
-            if spellName and vesperTools:IsSpellKnownForPlayer(dungeonInfo.spellID) then
-                row.portalSpellName = spellName
+    local canUpdateSecure = not (type(InCombatLockdown) == "function" and InCombatLockdown())
+    if canUpdateSecure then
+        portalButton:SetAttribute("type1", nil)
+        portalButton:SetAttribute("spell1", nil)
+
+        row.portalSpellName = nil
+        if member.keystoneMapID and dataHandle then
+            local portals = vesperTools:GetModule("Portals", true)
+            local portalState = portals
+                and type(portals.ResolveDungeonPortalState) == "function"
+                and portals:ResolveDungeonPortalState(member.keystoneMapID, {
+                    allowSessionCache = true,
+                    rememberSession = true,
+                })
+                or nil
+
+            if portalState and portalState.known and portalState.spellName then
+                row.portalSpellName = portalState.spellName
                 portalButton:SetAttribute("type1", "spell")
-                portalButton:SetAttribute("spell1", spellName)
+                portalButton:SetAttribute("spell1", portalState.spellName)
+            else
+                local dungeonInfo = dataHandle:GetDungeonByMapID(member.keystoneMapID)
+                if dungeonInfo then
+                    local spellName = getSpellName(dungeonInfo.spellID)
+                    if spellName and vesperTools:IsSpellKnownForPlayer(dungeonInfo.spellID, {
+                        allowSessionCache = true,
+                        rememberSession = true,
+                        sessionScope = "dungeonPortal",
+                    }) then
+                        row.portalSpellName = spellName
+                        portalButton:SetAttribute("type1", "spell")
+                        portalButton:SetAttribute("spell1", spellName)
+                    end
+                end
             end
         end
     end

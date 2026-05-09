@@ -384,16 +384,16 @@ local function safeGetSpellInfo(spellID)
         return nil
     end
 
-    if C_Spell and C_Spell.GetSpellInfo then
-        local info = C_Spell.GetSpellInfo(numericSpellID)
+    if vesperTools and type(vesperTools.GetSpellInfoSafe) == "function" then
+        local info = vesperTools:GetSpellInfoSafe(numericSpellID)
         if type(info) == "table" and type(info.name) == "string" and info.name ~= "" then
             return info
         end
     end
 
     if GetSpellInfo then
-        local name, _, icon = GetSpellInfo(numericSpellID)
-        if type(name) == "string" and name ~= "" then
+        local ok, name, _, icon = pcall(GetSpellInfo, numericSpellID)
+        if ok and type(name) == "string" and name ~= "" then
             return {
                 name = name,
                 iconID = icon,
@@ -881,46 +881,37 @@ function SearchOverlay:AddToyEntries(entries)
 end
 
 function SearchOverlay:AddSpellEntries(entries)
-    if not (C_SpellBook and C_SpellBook.GetNumSpellBookSkillLines and C_SpellBook.GetSpellBookSkillLineInfo and C_SpellBook.GetSpellBookItemInfo) then
+    if not (vesperTools and type(vesperTools.ForEachPlayerSpellBookItem) == "function") then
         return
     end
 
-    local bank = Enum and Enum.SpellBookSpellBank and Enum.SpellBookSpellBank.Player or 0
     local spellType = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell or nil
     local seenSpellIDs = {}
-    local numLines = tonumber(C_SpellBook.GetNumSpellBookSkillLines()) or 0
-
-    for lineIndex = 1, numLines do
-        local lineInfo = C_SpellBook.GetSpellBookSkillLineInfo(lineIndex)
+    vesperTools:ForEachPlayerSpellBookItem(function(itemInfo, _, lineInfo)
         local skillLineName = lineInfo and lineInfo.name or nil
-        local offset = lineInfo and lineInfo.itemIndexOffset or 0
-        local count = lineInfo and lineInfo.numSpellBookItems or 0
-
-        for slot = offset + 1, offset + count do
-            local itemInfo = C_SpellBook.GetSpellBookItemInfo(slot, bank)
-            local itemType = itemInfo and itemInfo.itemType or nil
-            local spellID = itemInfo and (itemInfo.spellID or itemInfo.actionID) or nil
-            if spellID and not seenSpellIDs[spellID] and (spellType == nil or itemType == spellType) then
-                local spellInfo = safeGetSpellInfo(spellID)
-                if spellInfo and spellInfo.name then
-                    seenSpellIDs[spellID] = true
-                    local subtitle = itemInfo and itemInfo.isPassive and "Spellbook - Passive" or "Spellbook"
-                    if type(skillLineName) == "string" and skillLineName ~= "" then
-                        subtitle = string.format("%s - %s", subtitle, skillLineName)
-                    end
-                    entries[#entries + 1] = self:CreateIndexEntry({
-                        kind = "spell",
-                        title = spellInfo.name,
-                        subtitle = subtitle,
-                        icon = spellInfo.iconID or SPELL_ICON_TEXTURE,
-                        spellID = spellID,
-                        searchTags = "spell spellbook player spells",
-                        priority = itemInfo and itemInfo.isPassive and 8 or 12,
-                    })
+        local itemType = itemInfo and itemInfo.itemType or nil
+        local spellID = itemInfo and (itemInfo.spellID or itemInfo.actionID) or nil
+        if spellID and not seenSpellIDs[spellID] and (spellType == nil or itemType == spellType) then
+            local spellInfo = safeGetSpellInfo(spellID)
+            if spellInfo and spellInfo.name then
+                seenSpellIDs[spellID] = true
+                local subtitle = itemInfo and itemInfo.isPassive and "Spellbook - Passive" or "Spellbook"
+                if type(skillLineName) == "string" and skillLineName ~= "" then
+                    subtitle = string.format("%s - %s", subtitle, skillLineName)
                 end
+                entries[#entries + 1] = self:CreateIndexEntry({
+                    kind = "spell",
+                    title = spellInfo.name,
+                    subtitle = subtitle,
+                    icon = spellInfo.iconID or SPELL_ICON_TEXTURE,
+                    spellID = spellID,
+                    searchTags = "spell spellbook player spells",
+                    priority = itemInfo and itemInfo.isPassive and 8 or 12,
+                })
             end
         end
-    end
+        return nil
+    end)
 end
 
 function SearchOverlay:AddTalentEntries(entries)

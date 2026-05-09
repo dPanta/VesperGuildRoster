@@ -160,7 +160,11 @@ function Automation:BroadcastBestKeys()
     if (now - lastBestKeysBroadcast) < SYNC_COOLDOWN then return end
     lastBestKeysBroadcast = now
 
-    local curSeason = C_ChallengeMode.GetMapTable()
+    local okMaps, curSeason = false, nil
+    if C_ChallengeMode and type(C_ChallengeMode.GetMapTable) == "function" then
+        okMaps, curSeason = pcall(C_ChallengeMode.GetMapTable)
+    end
+    curSeason = okMaps and curSeason or nil
     if not curSeason or #curSeason == 0 then return end
 
     local _, _, classID = UnitClass("player")
@@ -168,7 +172,13 @@ function Automation:BroadcastBestKeys()
     local parts = {}
     local localBestKeys = {}
     for _, mapID in ipairs(curSeason) do
-        local inTimeInfo, overTimeInfo = C_MythicPlus.GetSeasonBestForMap(mapID)
+        local okBest, inTimeInfo, overTimeInfo = false, nil, nil
+        if C_MythicPlus and type(C_MythicPlus.GetSeasonBestForMap) == "function" then
+            okBest, inTimeInfo, overTimeInfo = pcall(C_MythicPlus.GetSeasonBestForMap, mapID)
+        end
+        if not okBest then
+            inTimeInfo, overTimeInfo = nil, nil
+        end
         local bestLevel, bestDuration, wasInTime = 0, 0, false
         if inTimeInfo and inTimeInfo.level then
             bestLevel = inTimeInfo.level
