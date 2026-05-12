@@ -185,11 +185,19 @@ function Roster:OnEnable()
     self:RegisterMessage("VESPERTOOLS_BESTKEYS_UPDATE", "OnSyncUpdate")
     self:RegisterMessage("VESPERTOOLS_KEYSTONE_UPDATE", "OnSyncUpdate")
     self:RegisterMessage("VESPERTOOLS_PORTAL_SPELLS_REFRESHED", "OnSyncUpdate")
+    self:RegisterMessage("VESPERTOOLS_ROSTER_REFRESH_REQUESTED", "OnRosterSourceChanged")
     self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "OnConfigChanged")
+    self:RegisterEvent("GROUP_ROSTER_UPDATE", "OnRosterSourceChanged")
+    self:RegisterEvent("GUILD_ROSTER_UPDATE", "OnRosterSourceChanged")
+    self:RegisterEvent("PLAYER_GUILD_UPDATE", "OnRosterSourceChanged")
 end
 
 -- Redraw the list whenever synced guild data changes.
 function Roster:OnSyncUpdate()
+    self:RequestRosterRefresh()
+end
+
+function Roster:OnRosterSourceChanged()
     self:RequestRosterRefresh()
 end
 
@@ -1380,13 +1388,30 @@ function Roster:CollectRosterMembers(dataHandle, keystoneSync)
     local playerRealmNormalized = GetNormalizedRealmName()
 
     local groupMembers = {}
+    local function markGroupMember(unitName, unitRealm)
+        if type(unitName) ~= "string" or unitName == "" then
+            return
+        end
+
+        groupMembers[unitName] = true
+        local shortName = unitName:match("([^-]+)") or unitName
+        groupMembers[shortName] = true
+
+        if string.find(unitName, "-", 1, true) then
+            groupMembers[unitName] = true
+            return
+        end
+
+        local realm = unitRealm and unitRealm ~= "" and unitRealm or playerRealmNormalized
+        if realm and realm ~= "" then
+            groupMembers[unitName .. "-" .. realm] = true
+        end
+    end
+
     if IsInGroup() then
         for j = 1, GetNumGroupMembers() do
             local unit = IsInRaid() and ("raid" .. j) or (j == 1 and "player" or ("party" .. (j - 1)))
-            local groupName = UnitName(unit)
-            if groupName then
-                groupMembers[groupName] = true
-            end
+            markGroupMember(UnitName(unit))
         end
     end
 
@@ -1456,7 +1481,7 @@ function Roster:CollectRosterMembers(dataHandle, keystoneSync)
                 keystoneText = keystoneText,
                 keystoneMapID = keystoneMapID,
                 keyLevel = keyLevel,
-                isInGroup = groupMembers[displayName] or false,
+                isInGroup = groupMembers[fullName] or groupMembers[name] or groupMembers[displayName] or false,
                 guildIndex = i,
             }
         end

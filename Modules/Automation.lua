@@ -14,6 +14,9 @@ local BESTKEYS_PREFIX = "VGBestKeys"
 local BESTKEYS_REQ_PREFIX = "VGBKReq"
 -- Shared cooldown for outgoing broadcasts to avoid chat-throttle spam.
 local SYNC_COOLDOWN = 30 -- seconds between broadcasts to avoid spam
+local AUTO_ROSTER_SYNC_INTERVAL = 30
+local AUTO_ROSTER_SYNC_GROUP_DELAY = 0.75
+local AUTO_ROSTER_SYNC_LOGIN_DELAY = 5
 -- Incoming "request best keys" spam guard:
 -- 1) throttle repeated requests from same sender,
 -- 2) coalesce many valid requests into one delayed response broadcast.
@@ -25,6 +28,17 @@ local lastBestKeysBroadcast = 0
 local cachedRealmName = nil
 local lastBestKeysRequestBySender = {}
 local pendingBestKeysRequestResponse = false
+local lastAutomaticNetworkSync = 0
+
+local function isCombatLocked()
+    return type(InCombatLockdown) == "function" and InCombatLockdown() and true or false
+end
+
+local function requestGuildRosterUpdate()
+    if IsInGuild() and type(vesperTools.RequestGuildRosterUpdate) == "function" then
+        vesperTools:RequestGuildRosterUpdate()
+    end
+end
 
 local function getChallengeCompletionInfo()
     if C_ChallengeMode and type(C_ChallengeMode.GetChallengeCompletionInfo) == "function" then
@@ -53,6 +67,9 @@ function Automation:OnEnable()
 
     -- Listen for M+ completion
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED", "OnMPlusCompleted")
+    self:RegisterEvent("GROUP_ROSTER_UPDATE", "OnGroupRosterUpdate")
+    self:RegisterEvent("PLAYER_ENTERING_WORLD", "OnPlayerEnteringWorld")
+    self:RegisterEvent("PLAYER_REGEN_ENABLED", "OnPlayerRegenEnabled")
 
     -- Warm up Blizzard M+ cache so best-run API is populated before we read it.
     C_MythicPlus.RequestMapInfo()
@@ -69,10 +86,21 @@ function Automation:OnEnable()
     -- Reset runtime-only anti-spam state on module (re)enable.
     lastBestKeysRequestBySender = {}
     pendingBestKeysRequestResponse = false
+    lastAutomaticNetworkSync = 0
+    self.automaticRosterSyncPendingCombat = false
+    self.pendingAutomaticRosterSyncReason = nil
+    self:StartAutomaticRosterSyncTicker()
+    self:QueueAutomaticRosterSync("startup", AUTO_ROSTER_SYNC_LOGIN_DELAY)
 end
 
 function Automation:OnDisable()
     CommAdapter:UnregisterOwner(self)
+    self:StopAutomaticRosterSyncTicker()
+    if self.automaticRosterSyncTimer and type(self.automaticRosterSyncTimer.Cancel) == "function" then
+        pcall(self.automaticRosterSyncTimer.Cancel, self.automaticRosterSyncTimer)
+    end
+    self.automaticRosterSyncTimer = nil
+    self:UnregisterAllEvents()
 end
 
 function Automation:RefreshKeystonesAndPortals(options)
@@ -101,26 +129,150 @@ function Automation:OnAddonOpened()
     self:BroadcastBestKeys()
     self:RequestBestKeys()
     self:RefreshKeystonesAndPortals({ requestGuild = true, silent = true })
+    requestGuildRosterUpdate()
+    lastAutomaticNetworkSync = GetTime()
+    vesperTools:SendMessage("VESPERTOOLS_ROSTER_REFRESH_REQUESTED", "addon-opened")
 end
 
 function Automation:TestKeyReminder()
     self:ShowKeyReminder()
 end
 
+function Automation:StartAutomaticRosterSyncTicker()
+    if self.automaticRosterSyncTicker then
+        return
+    end
+
+    if not (C_Timer and type(C_Timer.NewTicker) == "function") then
+        return
+    end
+
+    self.automaticRosterSyncTicker = C_Timer.NewTicker(AUTO_ROSTER_SYNC_INTERVAL, function()
+        self:QueueAutomaticRosterSync("periodic", 0)
+    end)
+end
+
+function Automation:StopAutomaticRosterSyncTicker()
+    if self.automaticRosterSyncTicker and type(self.automaticRosterSyncTicker.Cancel) == "function" then
+        pcall(self.automaticRosterSyncTicker.Cancel, self.automaticRosterSyncTicker)
+    end
+    self.automaticRosterSyncTicker = nil
+end
+
+function Automation:QueueAutomaticRosterSync(reason, delaySeconds)
+    self.pendingAutomaticRosterSyncReason = reason or self.pendingAutomaticRosterSyncReason or "automatic"
+
+    if isCombatLocked() then
+        self.automaticRosterSyncPendingCombat = true
+        return
+    end
+
+    if self.automaticRosterSyncTimer then
+        return
+    end
+
+    local delay = math.max(0, tonumber(delaySeconds) or 0)
+    local function runQueuedSync()
+        self.automaticRosterSyncTimer = nil
+        if isCombatLocked() then
+            self.automaticRosterSyncPendingCombat = true
+            return
+        end
+
+        local queuedReason = self.pendingAutomaticRosterSyncReason or reason or "automatic"
+        self.pendingAutomaticRosterSyncReason = nil
+        self:RunAutomaticRosterSync(queuedReason)
+    end
+
+    if C_Timer and type(C_Timer.NewTimer) == "function" then
+        self.automaticRosterSyncTimer = C_Timer.NewTimer(delay, runQueuedSync)
+    elseif C_Timer and type(C_Timer.After) == "function" then
+        C_Timer.After(delay, runQueuedSync)
+    else
+        runQueuedSync()
+    end
+end
+
+function Automation:RunAutomaticRosterSync(reason)
+    self.automaticRosterSyncPendingCombat = false
+
+    -- Keep current-character data fresh even when network broadcasts are cooling down.
+    self:StoreCurrentCharacterIlvl()
+    requestGuildRosterUpdate()
+
+    local now = GetTime()
+    local shouldNetworkSync = (now - (tonumber(lastAutomaticNetworkSync) or 0)) >= AUTO_ROSTER_SYNC_INTERVAL
+
+    if shouldNetworkSync then
+        lastAutomaticNetworkSync = now
+        self:BroadcastIlvl()
+        self:BroadcastBestKeys()
+        self:RequestBestKeys()
+        self:RefreshKeystonesAndPortals({ requestGuild = true, silent = true })
+    else
+        self:RefreshKeystonesAndPortals({ requestGuild = false, silent = true })
+    end
+
+    vesperTools:SendMessage("VESPERTOOLS_ROSTER_REFRESH_REQUESTED", reason or "automatic")
+end
+
+function Automation:OnGroupRosterUpdate()
+    self:QueueAutomaticRosterSync("group-roster-update", AUTO_ROSTER_SYNC_GROUP_DELAY)
+end
+
+function Automation:OnPlayerEnteringWorld()
+    self:QueueAutomaticRosterSync("entering-world", AUTO_ROSTER_SYNC_LOGIN_DELAY)
+end
+
+function Automation:OnPlayerRegenEnabled()
+    if not self.automaticRosterSyncPendingCombat then
+        return
+    end
+
+    self:QueueAutomaticRosterSync(self.pendingAutomaticRosterSyncReason or "post-combat", 0)
+end
+
+function Automation:StoreCurrentCharacterIlvl()
+    if not IsInGuild() then
+        return nil, nil
+    end
+
+    local _, ilvl = GetAverageItemLevel()
+    ilvl = tonumber(ilvl)
+    if not ilvl then
+        return nil, nil
+    end
+
+    ilvl = math.floor(ilvl)
+    local _, _, classID = UnitClass("player")
+    classID = tonumber(classID) or 0
+
+    local DataHandle = vesperTools:GetModule("DataHandle", true)
+    if DataHandle and type(DataHandle.StoreIlvl) == "function" then
+        local playerName = vesperTools:GetCurrentCharacterFullName()
+        local previous = type(DataHandle.GetIlvlForPlayer) == "function" and DataHandle:GetIlvlForPlayer(playerName) or nil
+        local changed = not previous or previous.ilvl ~= ilvl or previous.classID ~= classID
+
+        DataHandle:StoreIlvl(playerName, ilvl, classID)
+        if changed then
+            vesperTools:SendMessage("VESPERTOOLS_ILVL_UPDATE", playerName)
+        end
+    end
+
+    return ilvl, classID
+end
+
 -- Broadcast player's ilvl to guild as addon message
 function Automation:BroadcastIlvl()
     if not IsInGuild() then return end
+
+    local ilvl, classID = self:StoreCurrentCharacterIlvl()
+    if not ilvl then return end
 
     -- Cooldown gate to avoid sending repeated payloads during quick UI toggles.
     local now = GetTime()
     if (now - lastIlvlBroadcast) < SYNC_COOLDOWN then return end
     lastIlvlBroadcast = now
-
-    local _, ilvl = GetAverageItemLevel()
-    -- Keep payload compact and stable for display/sorting.
-    ilvl = math.floor(ilvl)
-
-    local _, _, classID = UnitClass("player")
 
     -- Payload format: "ilvl:classID" (example: "635:11").
     local payload = string.format("%d:%d", ilvl, classID)
@@ -363,5 +515,8 @@ function Automation:ManualSync()
     self:BroadcastBestKeys()
     self:RequestBestKeys()
     self:RefreshKeystonesAndPortals({ requestGuild = true, silent = false })
+    requestGuildRosterUpdate()
+    lastAutomaticNetworkSync = GetTime()
+    vesperTools:SendMessage("VESPERTOOLS_ROSTER_REFRESH_REQUESTED", "manual-sync")
     vesperTools:Print(L["SYNC_BROADCASTED_MESSAGE"])
 end
