@@ -61,6 +61,7 @@ function BagsBridge:OnInitialize()
     self.pendingMerchantBagOpenAt = nil
     self.merchantFrameHooked = false
     self.blizzardBagBypassUntil = 0
+    self.suppressBlizzardBagHooks = false
 end
 
 function BagsBridge:OnEnable()
@@ -192,24 +193,29 @@ end
 
 -- Close the native backpack UI before showing the replacement frame.
 function BagsBridge:HideBlizzardBags()
+    self.suppressBlizzardBagHooks = true
     if type(CloseAllBags) == "function" then
-        CloseAllBags()
+        pcall(CloseAllBags)
+        self.suppressBlizzardBagHooks = false
         return
     end
 
     if type(CloseBag) ~= "function" then
+        self.suppressBlizzardBagHooks = false
         return
     end
 
     local store = vesperTools:GetModule("BagsStore", true)
     if not store or type(store.GetTrackedBagIDs) ~= "function" then
+        self.suppressBlizzardBagHooks = false
         return
     end
 
     local bagIDs = store:GetTrackedBagIDs()
     for i = 1, #bagIDs do
-        CloseBag(bagIDs[i])
+        pcall(CloseBag, bagIDs[i])
     end
+    self.suppressBlizzardBagHooks = false
 end
 
 function BagsBridge:HideInactiveBlizzardBankPanel()
@@ -298,6 +304,12 @@ function BagsBridge:ToggleReplacementWindow(source)
     end
 
     local wasShown = BagsWindow.frame and BagsWindow.frame:IsShown() and true or false
+    if wasShown then
+        self.pendingBagAction = nil
+        BagsWindow:Toggle()
+        return
+    end
+
     self:HideBlizzardBags()
     BagsWindow:Toggle()
     self:TrackMerchantOwnedBagOpen(source, wasShown, BagsWindow)
@@ -346,6 +358,9 @@ end
 -- Translate native Blizzard bag calls into replacement window actions.
 function BagsBridge:HandleBlizzardBagHook(action, bagID)
     if not self:IsBackpackReplacementEnabled() then
+        return
+    end
+    if self.suppressBlizzardBagHooks then
         return
     end
     if self:IsBlizzardBagBypassActive() then

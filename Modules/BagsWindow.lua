@@ -2502,6 +2502,18 @@ function BagsWindow:CreateWindow()
     local content = CreateFrame("Frame", nil, frame)
     content:SetPoint("TOPLEFT", navFrame, "BOTTOMLEFT", 0, -10)
     content:SetSize(1, 1)
+    content:EnableMouse(true)
+    if content.RegisterForDrag then
+        content:RegisterForDrag("LeftButton")
+    end
+    content:SetScript("OnMouseUp", function(_, mouseButton)
+        if mouseButton == "LeftButton" or mouseButton == "RightButton" then
+            self:PlaceCursorItemInContent()
+        end
+    end)
+    content:SetScript("OnReceiveDrag", function()
+        self:PlaceCursorItemInContent()
+    end)
     self.content = content
 
     local emptyText = content:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
@@ -3210,6 +3222,9 @@ function BagsWindow:AcquireSummaryButton()
     button:SetBackdropColor(0.06, 0.06, 0.06, 1)
     button:SetBackdropBorderColor(0.18, 0.18, 0.18, 1)
     button:EnableMouse(true)
+    if button.RegisterForDrag then
+        button:RegisterForDrag("LeftButton")
+    end
 
     local icon = button:CreateTexture(nil, "ARTWORK")
     icon:SetPoint("TOPLEFT", 2, -2)
@@ -3225,6 +3240,93 @@ function BagsWindow:AcquireSummaryButton()
 
     self.summaryButtons[#self.summaryButtons + 1] = button
     return button
+end
+
+function BagsWindow:CursorHasHeldItem()
+    if CursorHasItem and CursorHasItem() then
+        return true
+    end
+
+    return GetCursorInfo and GetCursorInfo() == "item"
+end
+
+function BagsWindow:GetEmptySummaryTargetBagIDs(summaryKey)
+    local store = self:GetStore()
+    local trackedBagIDs = store and store.GetTrackedBagIDs and store:GetTrackedBagIDs() or nil
+    if type(trackedBagIDs) == "table" then
+        return trackedBagIDs
+    end
+
+    if Enum and Enum.BagIndex then
+        return {
+            Enum.BagIndex.Backpack,
+            Enum.BagIndex.Bag_1,
+            Enum.BagIndex.Bag_2,
+            Enum.BagIndex.Bag_3,
+            Enum.BagIndex.Bag_4,
+            Enum.BagIndex.ReagentBag,
+        }
+    end
+
+    return {}
+end
+
+function BagsWindow:FindEmptyCursorPlacementSlot(summaryKey)
+    if not self:CursorHasHeldItem()
+        or not C_Container
+        or type(C_Container.GetContainerNumSlots) ~= "function"
+        or type(C_Container.GetContainerItemInfo) ~= "function"
+    then
+        return nil, nil
+    end
+
+    local bagIDs = self:GetEmptySummaryTargetBagIDs(summaryKey)
+    for i = 1, #bagIDs do
+        local bagID = bagIDs[i]
+        local isReagentBag = REAGENT_BAG_ID ~= nil and bagID == REAGENT_BAG_ID
+        if (summaryKey == "reagent" and isReagentBag) or (summaryKey ~= "reagent" and not isReagentBag) then
+            local slotCount = tonumber(C_Container.GetContainerNumSlots(bagID)) or 0
+            for slotID = 1, slotCount do
+                if not C_Container.GetContainerItemInfo(bagID, slotID) then
+                    return bagID, slotID
+                end
+            end
+        end
+    end
+
+    return nil, nil
+end
+
+function BagsWindow:PlaceCursorItemInEmptySummarySlot(button)
+    if not button
+        or not button.summaryIsCurrentCharacter
+        or not self:CursorHasHeldItem()
+        or InCombatLockdown()
+        or not C_Container
+        or type(C_Container.PickupContainerItem) ~= "function"
+    then
+        return false
+    end
+
+    local bagID, slotID = self:FindEmptyCursorPlacementSlot(button.summaryKey)
+    if not bagID or not slotID then
+        return false
+    end
+
+    C_Container.PickupContainerItem(bagID, slotID)
+    return true
+end
+
+function BagsWindow:PlaceCursorItemInContent()
+    local selectedCharacter = self.currentDisplayCharacter or self:ResolveSelectedCharacter()
+    if not selectedCharacter or not selectedCharacter.isCurrent then
+        return false
+    end
+
+    return self:PlaceCursorItemInEmptySummarySlot({
+        summaryKey = "regular",
+        summaryIsCurrentCharacter = true,
+    })
 end
 
 function BagsWindow:AcquireCurrencyButton()
@@ -3705,9 +3807,9 @@ function BagsWindow:HandleItemClick(button, mouseButton)
         return
     end
 
+    local itemInteraction = self:GetItemInteraction()
     if (mouseButton == "LeftButton" or mouseButton == "RightButton") and self:HasAnyWritableBankLive() then
-        local hyperlink = button and button.hyperlink
-        if type(hyperlink) == "string" and hyperlink ~= "" and HandleModifiedItemClick and HandleModifiedItemClick(hyperlink) then
+        if itemInteraction and itemInteraction:HandleModifiedItemClick(button, mouseButton) then
             return
         end
 
@@ -3717,7 +3819,6 @@ function BagsWindow:HandleItemClick(button, mouseButton)
         end
     end
 
-    local itemInteraction = self:GetItemInteraction()
     if itemInteraction then
         itemInteraction:HandleItemClick(button, mouseButton)
     end
@@ -3837,7 +3938,9 @@ function BagsWindow:ConfigureSummaryButton(button, summaryEntry, viewSettings)
 
     button:SetSize(itemIconSize, itemIconSize)
     button.summaryLabel = summaryEntry.label
+    button.summaryKey = summaryEntry.key
     button.summaryCount = tonumber(summaryEntry.count) or 0
+    button.summaryIsCurrentCharacter = summaryEntry.isCurrentCharacter and true or false
     button.icon:SetTexture(summaryEntry.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
     button.count:SetText(tostring(button.summaryCount))
     button.count:SetTextColor(0.95, 0.95, 0.95, 1)
@@ -3847,6 +3950,14 @@ function BagsWindow:ConfigureSummaryButton(button, summaryEntry, viewSettings)
     end)
     button:SetScript("OnLeave", function()
         GameTooltip:Hide()
+    end)
+    button:SetScript("OnMouseUp", function(selfButton, mouseButton)
+        if mouseButton == "LeftButton" or mouseButton == "RightButton" then
+            self:PlaceCursorItemInEmptySummarySlot(selfButton)
+        end
+    end)
+    button:SetScript("OnReceiveDrag", function(selfButton)
+        self:PlaceCursorItemInEmptySummarySlot(selfButton)
     end)
     button:Show()
 end
@@ -4068,6 +4179,7 @@ function BagsWindow:RefreshWindow()
     for i = 1, #emptySlotSummary do
         summaryIndex = summaryIndex + 1
         local button = self.summaryButtons[summaryIndex] or self:AcquireSummaryButton()
+        emptySlotSummary[i].isCurrentCharacter = selectedCharacter.isCurrent and true or false
         local x = CONTENT_SIDE_PADDING + ((i - 1) * slotPitch)
         button:ClearAllPoints()
         button:SetPoint("TOPLEFT", self.content, "TOPLEFT", x, yOffset)

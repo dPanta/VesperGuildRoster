@@ -1,3 +1,17 @@
+## 6.3.0 - 2026-05-14
+
+### Added
+- Replacement bags now support direct stack splitting. Shift-clicking a stack opens Blizzard's split-stack dialog from vesperTools item buttons, and split stacks can be placed back into the replacement bag UI by clicking an occupied item button, an empty-slot summary button, or the empty bag content area.
+
+### Changed
+- `/vg bags` now routes through the replacement-bag bridge when Blizzard bag replacement is enabled, matching the regular bag-toggle path.
+- The "Replace Blizzard Bags" option now sits at the top of the Bags config tab for easier access.
+
+### Fixed
+- The split-stack dialog now stays above the replacement bag window, including when Blizzard's hidden native container overlay opens it.
+- Closing the replacement bag window no longer bounces through suppressed Blizzard bag hooks and immediately reopens itself.
+- Modifier-click handling for replacement-bag items now passes the correct bag item location, while cursor-held items bypass modifier/deposit routing so dropping split stacks behaves like normal bag placement.
+
 ## 6.2.0 - 2026-05-12
 
 ### Fixed

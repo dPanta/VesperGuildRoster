@@ -4209,6 +4209,16 @@ function vesperTools:HandleChatCommand(input)
         -- Keep both aliases for convenience and discoverability.
         self:OpenConfig()
     elseif loweredInput == "bags" then
+        local BagsBridge = self:GetModule("BagsBridge", true)
+        if BagsBridge
+            and type(BagsBridge.IsBackpackReplacementEnabled) == "function"
+            and BagsBridge:IsBackpackReplacementEnabled()
+            and type(BagsBridge.ToggleReplacementWindow) == "function"
+        then
+            BagsBridge:ToggleReplacementWindow("slash")
+            return
+        end
+
         local BagsWindow = self:GetModule("BagsWindow", true)
         if BagsWindow and type(BagsWindow.Toggle) == "function" then
             BagsWindow:Toggle()

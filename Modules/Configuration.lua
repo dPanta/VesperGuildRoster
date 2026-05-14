@@ -2530,6 +2530,16 @@ function Configuration:BuildPanel()
     bagsAllowGuildLookupRequestsCheckbox:ClearAllPoints()
     bagsAllowGuildLookupRequestsCheckbox:SetPoint("TOPLEFT", 0, -2)
 
+    local bagsReplaceBlizzardCheckbox = self:CreateCheckButton(
+        "vesperToolsConfigBagsReplaceBlizzardCheckbox",
+        bagsTab,
+        L["CONFIG_BAGS_REPLACE_BLIZZARD"],
+        bagsTab,
+        -2
+    )
+    bagsReplaceBlizzardCheckbox:ClearAllPoints()
+    bagsReplaceBlizzardCheckbox:SetPoint("TOPLEFT", bagsTab, "TOPLEFT", 228, -2)
+
     local bagsGuildLookupHint = bagsTab:CreateFontString(nil, "ARTWORK")
     bagsGuildLookupHint:SetPoint("TOPLEFT", bagsAllowGuildLookupRequestsCheckbox, "BOTTOMLEFT", 4, -2)
     bagsGuildLookupHint:SetWidth(400)
@@ -2630,14 +2640,6 @@ function Configuration:BuildPanel()
     bagsCurrencyBarHint:SetJustifyV("TOP")
     setFontStringTextSafe(bagsCurrencyBarHint, L["CONFIG_BAGS_CURRENCY_BAR_HINT"], 11, "", GameFontHighlightSmall)
     bagsCurrencyBarHint:SetTextColor(0.78, 0.82, 0.9, 1)
-
-    local bagsReplaceBlizzardCheckbox = self:CreateCheckButton(
-        "vesperToolsConfigBagsReplaceBlizzardCheckbox",
-        bagsTab,
-        L["CONFIG_BAGS_REPLACE_BLIZZARD"],
-        bagsCurrencyBarHint,
-        -18
-    )
 
     local bankSectionTitle = bankTab:CreateFontString(nil, "ARTWORK")
     bankSectionTitle:SetPoint("TOPLEFT", 0, -2)
