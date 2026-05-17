@@ -108,8 +108,12 @@ function MidnightLurePinMixin:OnMouseEnter()
         self.vgIcon:SetAlpha(1)
     end
 
+    local data = self.data
     GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
-    GameTooltip:AddLine(self.data and (self.data.zoneName or UNKNOWN) or UNKNOWN, 1, 1, 1)
+    GameTooltip:AddLine(data and (data.lureName or data.zoneName or UNKNOWN) or UNKNOWN, 1, 1, 1)
+    if data and data.lureName and data.zoneName then
+        GameTooltip:AddLine(data.zoneName, 0.82, 0.82, 0.82, true)
+    end
     GameTooltip:AddLine(L["MIDNIGHT_LURE_SITE"], 0.95, 0.82, 0.45, true)
     GameTooltip:AddLine(L["MIDNIGHT_LURE_CLICK_SET_WAYPOINT"], 0.76, 0.76, 0.76, true)
     GameTooltip:Show()

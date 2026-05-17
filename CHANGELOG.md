@@ -1,3 +1,8 @@
+## 6.3.1 - 2026-05-17
+
+### Fixed
+- Added the missing Grand Beast Lure site to the Midnight skinning lure world-map pins and labeled lure tooltips so Voidstorm's two lure pins are distinguishable.
+
 ## 6.3.0 - 2026-05-14
 
 ### Added
