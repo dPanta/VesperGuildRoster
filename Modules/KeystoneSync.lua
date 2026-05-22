@@ -212,7 +212,7 @@ function KeystoneSync:GetAccountKeystoneDB()
     return vesperTools.db.global.accountKeystones
 end
 
-function KeystoneSync:StoreAccountKeystone(playerName, mapID, level)
+function KeystoneSync:StoreAccountKeystone(playerName, mapID, level, rating)
     local normalizedName = vesperTools:NormalizePlayerFullName(playerName)
     if not normalizedName then
         return false
@@ -221,6 +221,7 @@ function KeystoneSync:StoreAccountKeystone(playerName, mapID, level)
     local db = self:GetAccountKeystoneDB()
     local numericMapID = tonumber(mapID)
     local numericLevel = tonumber(level)
+    local numericRating = tonumber(rating)
 
     if not numericMapID or numericMapID <= 0 or not numericLevel or numericLevel <= 0 then
         if db[normalizedName] ~= nil then
@@ -235,9 +236,15 @@ function KeystoneSync:StoreAccountKeystone(playerName, mapID, level)
     numericLevel = math.floor(numericLevel + 0.5)
 
     local existing = db[normalizedName]
+    if not numericRating and existing then
+        numericRating = tonumber(existing.rating)
+    end
+    numericRating = math.max(0, math.floor((numericRating or 0) + 0.5))
+
     if existing
         and existing.mapID == numericMapID
         and existing.level == numericLevel
+        and (tonumber(existing.rating) or 0) == numericRating
     then
         existing.timestamp = time()
         return false
@@ -246,11 +253,39 @@ function KeystoneSync:StoreAccountKeystone(playerName, mapID, level)
     db[normalizedName] = {
         mapID = numericMapID,
         level = numericLevel,
+        rating = numericRating,
         timestamp = time(),
     }
 
     vesperTools:SendMessage("VESPERTOOLS_ACCOUNT_KEYSTONE_UPDATED", normalizedName)
     return true
+end
+
+function KeystoneSync:GetStoredKeystoneData(playerName)
+    if not vesperTools.db.global.keystones then
+        return nil
+    end
+
+    local normalizedName = vesperTools:NormalizePlayerFullName(playerName)
+    local data = normalizedName and vesperTools.db.global.keystones[normalizedName] or nil
+    if not data and type(playerName) == "string" then
+        data = vesperTools.db.global.keystones[playerName]
+    end
+    if not data then
+        return nil
+    end
+
+    if not data.timestamp or (time() - data.timestamp) > (48 * 3600) then
+        if normalizedName then
+            vesperTools.db.global.keystones[normalizedName] = nil
+        end
+        if type(playerName) == "string" then
+            vesperTools.db.global.keystones[playerName] = nil
+        end
+        return nil
+    end
+
+    return data
 end
 
 function KeystoneSync:GetStoredAccountKeystone(playerName)
@@ -310,7 +345,7 @@ function KeystoneSync:UpdateCurrentCharacterKeystoneSnapshot()
 
     if not level or level <= 0 or not mapID or mapID <= 0 then
         rosterChanged = self:StoreKeystone(playerName, 0, 0, rating)
-        local accountChanged = self:StoreAccountKeystone(playerName, 0, 0)
+        local accountChanged = self:StoreAccountKeystone(playerName, 0, 0, rating)
         if rosterChanged then
             vesperTools:SendMessage("VESPERTOOLS_KEYSTONE_UPDATE", playerName)
         end
@@ -318,7 +353,7 @@ function KeystoneSync:UpdateCurrentCharacterKeystoneSnapshot()
     end
 
     rosterChanged = self:StoreKeystone(playerName, mapID, level, rating)
-    local accountChanged = self:StoreAccountKeystone(playerName, mapID, level)
+    local accountChanged = self:StoreAccountKeystone(playerName, mapID, level, rating)
     if rosterChanged then
         vesperTools:SendMessage("VESPERTOOLS_KEYSTONE_UPDATE", playerName)
     end

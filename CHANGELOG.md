@@ -1,3 +1,12 @@
+## 6.4.0 - 2026-05-22
+
+### Added
+- Added a rating column to the alt keystone frame, showing each alt's stored Mythic+ rating with the same rating coloring used elsewhere.
+
+### Fixed
+- Hardened addon button labels by moving button caption font strings above button textures, adding locale-backed fallbacks for the remaining hard-coded button text, and covering the missing Best Keys rating fallback.
+- Opening a live bank no longer auto-opens the vesperTools bag frame when "Replace Blizzard Bags" is disabled, so players who prefer Blizzard's bags stay on the default bag UI at bankers.
+
 ## 6.3.1 - 2026-05-17
 
 ### Fixed

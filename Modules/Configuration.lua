@@ -813,7 +813,7 @@ function Configuration:CreateFlatDropdown(name, parent, anchor, yOffset, width, 
     borderRight:SetWidth(1)
     borderRight:SetColorTexture(1, 1, 1, 0.12)
 
-    local text = dropdown:CreateFontString(nil, "ARTWORK")
+    local text = dropdown:CreateFontString(nil, "OVERLAY")
     text:SetPoint("LEFT", dropdown, "LEFT", 8, 0)
     text:SetPoint("RIGHT", dropdown, "RIGHT", -24, 0)
     text:SetJustifyH("LEFT")
@@ -925,7 +925,7 @@ function Configuration:CreateFlatActionButton(name, parent, text, anchor, relati
     button:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.2)
     button:GetPushedTexture():SetVertexColor(0.12, 0.2, 0.3, 0.36)
 
-    local label = button:CreateFontString(nil, "ARTWORK")
+    local label = button:CreateFontString(nil, "OVERLAY")
     label:SetPoint("CENTER", 0, 0)
     setFontStringTextSafe(label, text or L["CONFIG_ADD_BUTTON"], 12, "", GameFontNormal)
     button.Label = label
@@ -949,7 +949,7 @@ function Configuration:CreateTabButton(parent, tabKey, label, anchor, xOffset, y
     highlight:SetVertexColor(0.2, 0.36, 0.58, 0.18)
     pushed:SetVertexColor(0.14, 0.22, 0.35, 0.42)
 
-    local labelText = button:CreateFontString(nil, "ARTWORK")
+    local labelText = button:CreateFontString(nil, "OVERLAY")
     labelText:SetPoint("CENTER", 0, 0)
     setFontStringTextSafe(labelText, label, 12, "OUTLINE", GameFontNormal)
     button._labelText = labelText
@@ -1260,7 +1260,7 @@ function Configuration:CreateFontMenuRow(parent)
     row:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.2)
     row:GetPushedTexture():SetVertexColor(0.12, 0.2, 0.3, 0.36)
 
-    local text = row:CreateFontString(nil, "ARTWORK")
+    local text = row:CreateFontString(nil, "OVERLAY")
     text:SetPoint("LEFT", row, "LEFT", 8, 0)
     text:SetPoint("RIGHT", row, "RIGHT", -24, 0)
     text:SetJustifyH("LEFT")
@@ -1289,7 +1289,7 @@ function Configuration:CreateRosterOnlineBlacklistMenuRow(parent)
     row:GetHighlightTexture():SetVertexColor(0.24, 0.46, 0.72, 0.2)
     row:GetPushedTexture():SetVertexColor(0.12, 0.2, 0.3, 0.36)
 
-    local text = row:CreateFontString(nil, "ARTWORK")
+    local text = row:CreateFontString(nil, "OVERLAY")
     text:SetPoint("LEFT", row, "LEFT", 8, 0)
     text:SetPoint("RIGHT", row, "RIGHT", -24, 0)
     text:SetJustifyH("LEFT")
@@ -1326,7 +1326,7 @@ function Configuration:CreateToyWhitelistMenuRow(parent)
     icon:SetVertexColor(1, 1, 1, 1)
     row.Icon = icon
 
-    local text = row:CreateFontString(nil, "ARTWORK")
+    local text = row:CreateFontString(nil, "OVERLAY")
     text:SetPoint("LEFT", icon, "RIGHT", 6, 0)
     text:SetPoint("RIGHT", row, "RIGHT", -24, 0)
     text:SetJustifyH("LEFT")
@@ -1362,7 +1362,7 @@ function Configuration:CreateCurrencyBarMenuRow(parent)
     icon:SetVertexColor(1, 1, 1, 1)
     row.Icon = icon
 
-    local text = row:CreateFontString(nil, "ARTWORK")
+    local text = row:CreateFontString(nil, "OVERLAY")
     text:SetPoint("LEFT", icon, "RIGHT", 6, 0)
     text:SetPoint("RIGHT", row, "RIGHT", -24, 0)
     text:SetJustifyH("LEFT")

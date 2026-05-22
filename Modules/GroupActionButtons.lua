@@ -98,7 +98,7 @@ function GroupActionButtons:CreateActionBar(parent, kind)
 
     local readyButton = createActionButton(
         bar,
-        READY_CHECK or "Ready",
+        READY_CHECK or L["GROUP_ACTION_READY"],
         READY_BACKGROUND_COLOR,
         READY_BORDER_COLOR,
         function()

@@ -641,6 +641,10 @@ end
 
 -- Open carried bags automatically during a live writable bank session.
 function BagsBridge:ShowBagsForLiveBankSession()
+    if not self:IsBackpackReplacementEnabled() then
+        return
+    end
+
     if not self:IsAnyWritableBankLive() then
         return
     end

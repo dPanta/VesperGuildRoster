@@ -145,7 +145,7 @@ local function createHeaderActionButton(parent, anchor, width, label, onClick)
         button:SetScript("OnClick", onClick)
     end
 
-    local text = button:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     text:SetPoint("CENTER", 0, 0)
     text:SetText(label)
     vesperTools:ApplyConfiguredFont(text, 11, "")

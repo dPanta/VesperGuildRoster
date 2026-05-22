@@ -587,7 +587,7 @@ function BankWindow:AcquireViewMenuButton(menu)
     selectedBackground:Hide()
     button.selectedBackground = selectedBackground
 
-    local text = button:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("LEFT", button, "LEFT", 10, 0)
     text:SetPoint("RIGHT", button, "RIGHT", -10, 0)
     text:SetJustifyH("LEFT")
@@ -621,7 +621,7 @@ function BankWindow:AcquireCharacterMenuButton(menu)
     selectedBackground:Hide()
     button.selectedBackground = selectedBackground
 
-    local text = button:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("LEFT", button, "LEFT", 10, 0)
     text:SetPoint("RIGHT", button, "RIGHT", -10, 0)
     text:SetJustifyH("LEFT")
@@ -630,7 +630,7 @@ function BankWindow:AcquireCharacterMenuButton(menu)
     vesperTools:ApplyConfiguredFont(text, 12, "")
     button.text = text
 
-    local matchText = button:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local matchText = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     matchText:SetPoint("LEFT", button, "CENTER", 8, 0)
     matchText:SetPoint("RIGHT", button, "RIGHT", -10, 0)
     matchText:SetJustifyH("RIGHT")
@@ -1470,7 +1470,7 @@ function BankWindow:CreateWindow()
     combineStacksButtonGlow:Hide()
     self.combineStacksButtonGlow = combineStacksButtonGlow
 
-    local combineStacksButtonText = combineStacksButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local combineStacksButtonText = combineStacksButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     combineStacksButtonText:SetPoint("CENTER", 0, 0)
     combineStacksButtonText:SetText(L["BAGS_COMBINE_BUTTON"])
     vesperTools:ApplyConfiguredFont(combineStacksButtonText, 11, "")
@@ -1501,7 +1501,7 @@ function BankWindow:CreateWindow()
     end)
     self.depositButton = depositButton
 
-    local depositButtonText = depositButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local depositButtonText = depositButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     depositButtonText:SetPoint("CENTER", 0, 0)
     depositButtonText:SetText(L["BANK_DEPOSIT_BUTTON"])
     vesperTools:ApplyConfiguredFont(depositButtonText, 11, "")
@@ -1526,7 +1526,7 @@ function BankWindow:CreateWindow()
     end)
     self.viewDropdown = viewDropdown
 
-    local viewDropdownText = viewDropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local viewDropdownText = viewDropdown:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     viewDropdownText:SetPoint("LEFT", viewDropdown, "LEFT", 8, 0)
     viewDropdownText:SetPoint("RIGHT", viewDropdown, "RIGHT", -24, 0)
     viewDropdownText:SetJustifyH("LEFT")
@@ -1561,7 +1561,7 @@ function BankWindow:CreateWindow()
     end)
     self.characterDropdown = characterDropdown
 
-    local characterDropdownText = characterDropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local characterDropdownText = characterDropdown:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     characterDropdownText:SetPoint("LEFT", characterDropdown, "LEFT", 8, 0)
     characterDropdownText:SetPoint("RIGHT", characterDropdown, "RIGHT", -24, 0)
     characterDropdownText:SetJustifyH("LEFT")
@@ -1577,7 +1577,7 @@ function BankWindow:CreateWindow()
     characterDropdownArrow:SetVertexColor(1, 1, 1, 0.98)
     self.characterDropdownArrow = characterDropdownArrow
 
-    local characterDropdownMatchText = characterDropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local characterDropdownMatchText = characterDropdown:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     characterDropdownMatchText:SetPoint("RIGHT", characterDropdownArrow, "LEFT", -4, 0)
     characterDropdownMatchText:SetJustifyH("RIGHT")
     characterDropdownMatchText:SetJustifyV("MIDDLE")

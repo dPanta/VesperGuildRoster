@@ -2506,10 +2506,19 @@ function Portals:BuildAccountKeystoneRows()
                     local abbrev = keystoneSync and type(keystoneSync.GetDungeonAbbrev) == "function"
                         and keystoneSync:GetDungeonAbbrev(mapID)
                         or L["KEYSTONE_UNKNOWN_ABBREV"]
+                    local rating = math.max(0, math.floor((tonumber(keyData.rating) or 0) + 0.5))
+                    if rating == 0 and keystoneSync and type(keystoneSync.GetStoredKeystoneData) == "function" then
+                        local storedKeyData = keystoneSync:GetStoredKeystoneData(fullName)
+                        rating = math.max(0, math.floor((tonumber(storedKeyData and storedKeyData.rating) or 0) + 0.5))
+                    end
+                    local ratingColor = dataHandle and type(dataHandle.GetRatingColor) == "function"
+                        and dataHandle:GetRatingColor(rating)
+                        or "|cff9d9d9d"
 
                     rows[#rows + 1] = {
                         displayName = displayName,
                         classID = character.classID,
+                        ratingText = rating > 0 and string.format("%s%d|r", ratingColor, rating) or "|cff9d9d9d-|r",
                         keyText = string.format("%s%s +%d|r", colorCode, abbrev, level),
                     }
                 end
@@ -2531,6 +2540,7 @@ function Portals:CreateAccountKeystoneFrame()
     local headerHeight = 22
     local padding = 10
     local keyColWidth = 80
+    local ratingColWidth = 48
     local gap = 10
     local frameHeight = headerHeight + (#rows * rowHeight) + (padding * 2)
 
@@ -2543,7 +2553,10 @@ function Portals:CreateAccountKeystoneFrame()
     end
     measure:Hide()
 
-    local frameWidth = math.max(180, math.ceil(maxNameWidth) + keyColWidth + gap + (padding * 2))
+    local frameWidth = math.max(
+        220,
+        math.ceil(maxNameWidth) + ratingColWidth + keyColWidth + (gap * 2) + (padding * 2)
+    )
     self.accountKeystoneFrame = CreateFrame("Frame", nil, self.VesperPortalsUI, "BackdropTemplate")
     self.accountKeystoneFrame:SetSize(frameWidth, frameHeight)
     if self.mplusProgFrame then
@@ -2557,6 +2570,7 @@ function Portals:CreateAccountKeystoneFrame()
     self.accountKeystoneFrame:SetBackdropBorderColor(self.classColor.r, self.classColor.g, self.classColor.b, 1)
 
     local keyColRight = -padding
+    local ratingColRight = keyColRight - keyColWidth - gap
 
     local nameHeader = self.accountKeystoneFrame:CreateFontString(nil, "OVERLAY")
     vesperTools:ApplyConfiguredFont(nameHeader, bestKeysFontSize, "")
@@ -2567,6 +2581,11 @@ function Portals:CreateAccountKeystoneFrame()
     vesperTools:ApplyConfiguredFont(keyHeader, bestKeysFontSize, "")
     keyHeader:SetPoint("TOPRIGHT", keyColRight, -padding)
     keyHeader:SetText("|cffFFFFFF" .. L["BEST_KEYS_HEADER_KEY"] .. "|r")
+
+    local ratingHeader = self.accountKeystoneFrame:CreateFontString(nil, "OVERLAY")
+    vesperTools:ApplyConfiguredFont(ratingHeader, bestKeysFontSize, "")
+    ratingHeader:SetPoint("TOPRIGHT", ratingColRight, -padding)
+    ratingHeader:SetText("|cffFFFFFF" .. L["ROSTER_COLUMN_RATING"] .. "|r")
 
     for index = 1, #rows do
         local rowTop = -(padding + headerHeight + (index - 1) * rowHeight)
@@ -2597,6 +2616,12 @@ function Portals:CreateAccountKeystoneFrame()
         keyText:SetPoint("RIGHT", self.accountKeystoneFrame, "TOPRIGHT", keyColRight, rowCenter)
         keyText:SetJustifyH("RIGHT")
         keyText:SetText(rows[index].keyText or "|cff9d9d9d-|r")
+
+        local ratingText = self.accountKeystoneFrame:CreateFontString(nil, "OVERLAY")
+        vesperTools:ApplyConfiguredFont(ratingText, bestKeysFontSize, "")
+        ratingText:SetPoint("RIGHT", self.accountKeystoneFrame, "TOPRIGHT", ratingColRight, rowCenter)
+        ratingText:SetJustifyH("RIGHT")
+        ratingText:SetText(rows[index].ratingText or "|cff9d9d9d-|r")
     end
 end
 

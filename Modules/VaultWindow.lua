@@ -901,7 +901,7 @@ function VaultWindow:AcquireCharacterMenuButton(menu)
     selectedBackground:Hide()
     button.selectedBackground = selectedBackground
 
-    local text = button:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("LEFT", button, "LEFT", 10, 0)
     text:SetPoint("RIGHT", button, "RIGHT", -10, 0)
     text:SetJustifyH("LEFT")
@@ -1154,7 +1154,7 @@ function VaultWindow:CreateWindow()
     end)
     self.characterDropdown = characterDropdown
 
-    local characterDropdownText = characterDropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local characterDropdownText = characterDropdown:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     characterDropdownText:SetPoint("LEFT", characterDropdown, "LEFT", 8, 0)
     characterDropdownText:SetPoint("RIGHT", characterDropdown, "RIGHT", -24, 0)
     characterDropdownText:SetJustifyH("LEFT")
@@ -1195,7 +1195,7 @@ function VaultWindow:CreateWindow()
     end)
     self.openLiveButton = openLiveButton
 
-    local openLiveButtonText = openLiveButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local openLiveButtonText = openLiveButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     openLiveButtonText:SetPoint("CENTER", 0, 0)
     openLiveButtonText:SetText(L["VAULT_OPEN_LIVE"])
     vesperTools:ApplyConfiguredFont(openLiveButtonText, 11, "")

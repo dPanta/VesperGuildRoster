@@ -639,7 +639,7 @@ function BagsWindow:AcquireCharacterMenuButton(menu)
     selectedBackground:Hide()
     button.selectedBackground = selectedBackground
 
-    local text = button:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local text = button:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     text:SetPoint("LEFT", button, "LEFT", 10, 0)
     text:SetPoint("RIGHT", button, "RIGHT", -10, 0)
     text:SetJustifyH("LEFT")
@@ -648,7 +648,7 @@ function BagsWindow:AcquireCharacterMenuButton(menu)
     vesperTools:ApplyConfiguredFont(text, 12, "")
     button.text = text
 
-    local matchText = button:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local matchText = button:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     matchText:SetPoint("LEFT", button, "CENTER", 8, 0)
     matchText:SetPoint("RIGHT", button, "RIGHT", -10, 0)
     matchText:SetJustifyH("RIGHT")
@@ -1051,7 +1051,7 @@ end
 
 function BagsWindow:ConfigureLayoutEditButtonTooltip(button)
     GameTooltip:SetOwner(button, "ANCHOR_RIGHT")
-    GameTooltip:SetText("Arrange Categories", 1, 1, 1)
+    GameTooltip:SetText(L["BAGS_LAYOUT_EDIT_TOOLTIP"], 1, 1, 1)
     GameTooltip:AddLine(self.layoutEditMode and "Layout edit mode is active." or "Left-click to edit the bag category layout.", 0.85, 0.85, 0.85, true)
     GameTooltip:AddLine("Drag a category header to move it. Dropping into a tighter spot will resize it to fit.", 0.62, 0.84, 1, true)
     GameTooltip:AddLine("Shift-right-click resets the custom layout.", 0.85, 0.82, 0.52, true)
@@ -2185,9 +2185,9 @@ function BagsWindow:CreateWindow()
     end)
     self.blizzBagsButton = blizzBagsButton
 
-    local blizzBagsButtonText = blizzBagsButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local blizzBagsButtonText = blizzBagsButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     blizzBagsButtonText:SetPoint("CENTER", 0, 0)
-    blizzBagsButtonText:SetText("Blizz")
+    blizzBagsButtonText:SetText(L["BAGS_BUTTON_BLIZZARD"])
     vesperTools:ApplyConfiguredFont(blizzBagsButtonText, 11, "")
     self.blizzBagsButtonText = blizzBagsButtonText
 
@@ -2375,7 +2375,7 @@ function BagsWindow:CreateWindow()
     end)
     self.bagSlotsButton = bagSlotsButton
 
-    local bagSlotsButtonText = bagSlotsButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local bagSlotsButtonText = bagSlotsButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     bagSlotsButtonText:SetPoint("CENTER", 0, 0)
     bagSlotsButtonText:SetText(L["BAGS_BAG_SLOTS"])
     vesperTools:ApplyConfiguredFont(bagSlotsButtonText, 11, "")
@@ -2406,7 +2406,7 @@ function BagsWindow:CreateWindow()
     end)
     self.cleanupButton = cleanupButton
 
-    local cleanupButtonText = cleanupButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local cleanupButtonText = cleanupButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     cleanupButtonText:SetPoint("CENTER", 0, 0)
     cleanupButtonText:SetText(L["BAGS_CLEAR_NEW_ITEMS"])
     vesperTools:ApplyConfiguredFont(cleanupButtonText, 11, "")
@@ -2449,7 +2449,7 @@ function BagsWindow:CreateWindow()
     combineStacksButtonGlow:Hide()
     self.combineStacksButtonGlow = combineStacksButtonGlow
 
-    local combineStacksButtonText = combineStacksButton:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local combineStacksButtonText = combineStacksButton:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     combineStacksButtonText:SetPoint("CENTER", 0, 0)
     combineStacksButtonText:SetText(L["BAGS_COMBINE_BUTTON"])
     vesperTools:ApplyConfiguredFont(combineStacksButtonText, 11, "")
@@ -2474,7 +2474,7 @@ function BagsWindow:CreateWindow()
     end)
     self.characterDropdown = characterDropdown
 
-    local characterDropdownText = characterDropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlight")
+    local characterDropdownText = characterDropdown:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     characterDropdownText:SetPoint("LEFT", characterDropdown, "LEFT", 8, 0)
     characterDropdownText:SetPoint("RIGHT", characterDropdown, "RIGHT", -24, 0)
     characterDropdownText:SetJustifyH("LEFT")
@@ -2490,7 +2490,7 @@ function BagsWindow:CreateWindow()
     characterDropdownArrow:SetVertexColor(1, 1, 1, 0.98)
     self.characterDropdownArrow = characterDropdownArrow
 
-    local characterDropdownMatchText = characterDropdown:CreateFontString(nil, "ARTWORK", "GameFontHighlightSmall")
+    local characterDropdownMatchText = characterDropdown:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     characterDropdownMatchText:SetPoint("RIGHT", characterDropdownArrow, "LEFT", -4, 0)
     characterDropdownMatchText:SetJustifyH("RIGHT")
     characterDropdownMatchText:SetJustifyV("MIDDLE")
