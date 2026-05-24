@@ -7,6 +7,10 @@ local WindowLifecycle = addonTable.WindowLifecycle
 
 -- Roster renders the guild list view and wires its action buttons, sorting, and menus.
 local HEADER_ACTION_BUTTON_GAP = 6
+local ROSTER_PARTY_KEY_BUTTON_PADDING = 10
+local ROSTER_PARTY_KEY_BUTTON_OFFSET_Y = 10
+local ROSTER_PARTY_KEY_BUTTON_DEFAULT_SIZE = 52
+local ROSTER_PARTY_KEY_BUTTON_ICON = "Interface\\Icons\\INV_Misc_Dice_01"
 local ROSTER_HEADER_BOTTOM_MARGIN = 5
 local ROSTER_SCROLLBAR_GUTTER = 27
 local ROSTER_MIN_CONTENT_WIDTH = 520
@@ -154,6 +158,128 @@ local function createHeaderActionButton(parent, anchor, width, label, onClick)
     return button
 end
 
+local function getRosterUtilityButtonSize()
+    if vesperTools and type(vesperTools.GetConfiguredTopUtilityButtonSize) == "function" then
+        return vesperTools:GetConfiguredTopUtilityButtonSize()
+    end
+
+    return ROSTER_PARTY_KEY_BUTTON_DEFAULT_SIZE
+end
+
+local function getPartyChatChannel()
+    if type(IsInGroup) ~= "function" or not IsInGroup() then
+        return nil
+    end
+
+    if type(IsInRaid) == "function" and IsInRaid() then
+        return nil
+    end
+
+    if LE_PARTY_CATEGORY_INSTANCE and IsInGroup(LE_PARTY_CATEGORY_INSTANCE) then
+        return "INSTANCE_CHAT"
+    end
+
+    return "PARTY"
+end
+
+local function isPlayerPartyLeader()
+    if type(UnitIsGroupLeader) ~= "function" then
+        return false
+    end
+
+    return UnitIsGroupLeader("player") and true or false
+end
+
+local function getPartyKeystoneUnavailableText()
+    if getPartyChatChannel() == nil then
+        return L["ROSTER_PARTY_KEY_NO_GROUP"]
+    end
+
+    if not isPlayerPartyLeader() then
+        return L["ROSTER_PARTY_KEY_LEADER_ONLY"]
+    end
+
+    return nil
+end
+
+local function getUnitFullName(unit)
+    if type(unit) ~= "string" or not UnitExists(unit) then
+        return nil
+    end
+
+    local name, realm
+    if type(UnitFullName) == "function" then
+        name, realm = UnitFullName(unit)
+    end
+    if not name and type(UnitName) == "function" then
+        name, realm = UnitName(unit)
+    end
+    if type(name) ~= "string" or name == "" then
+        return nil
+    end
+
+    if type(realm) == "string" and realm ~= "" then
+        return name .. "-" .. realm
+    end
+
+    return vesperTools:NormalizePlayerFullName(name)
+end
+
+local function getPartyDisplayName(fullName, unit)
+    if type(UnitIsUnit) == "function" and UnitIsUnit(unit, "player") then
+        return UnitName("player") or (fullName and fullName:match("([^-]+)")) or UNKNOWN
+    end
+
+    if Ambiguate and type(fullName) == "string" then
+        return Ambiguate(fullName, "short")
+    end
+
+    return (fullName and fullName:match("([^-]+)")) or UNKNOWN
+end
+
+local function isSamePartyKeystoneChoice(left, right)
+    if type(left) ~= "table" or type(right) ~= "table" then
+        return false
+    end
+
+    return left.fullName == right.fullName
+        and tonumber(left.mapID) == tonumber(right.mapID)
+        and tonumber(left.level) == tonumber(right.level)
+end
+
+local function createRosterIconUtilityButton(parent, iconTexture, onClick, onEnter)
+    local button = CreateFrame("Button", nil, parent)
+    button:RegisterForClicks("LeftButtonUp")
+    button:SetSize(getRosterUtilityButtonSize(), getRosterUtilityButtonSize())
+    if type(onClick) == "function" then
+        button:SetScript("OnClick", onClick)
+    end
+    if type(onEnter) == "function" then
+        button:SetScript("OnEnter", onEnter)
+    end
+    button:SetScript("OnLeave", GameTooltip_Hide)
+
+    local bg = button:CreateTexture(nil, "BACKGROUND")
+    bg:SetAllPoints()
+    bg:SetColorTexture(0, 0, 0, 0.8)
+    button.bg = bg
+
+    local icon = button:CreateTexture(nil, "ARTWORK", nil, 1)
+    icon:SetAllPoints()
+    icon:SetTexture(iconTexture)
+    icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    icon:SetVertexColor(1, 1, 1, 1)
+    icon:SetBlendMode("BLEND")
+    button.icon = icon
+
+    local highlight = button:CreateTexture(nil, "HIGHLIGHT")
+    highlight:SetAllPoints()
+    highlight:SetColorTexture(1, 1, 0, 0.4)
+    button:SetHighlightTexture(highlight)
+
+    return button
+end
+
 local function createRosterText(parent, template)
     local text = parent:CreateFontString(nil, "OVERLAY", template or "GameFontHighlightSmall")
     text:SetJustifyH("LEFT")
@@ -169,6 +295,10 @@ function Roster:OnInitialize()
     self.titleText = nil
     self.closeButton = nil
     self.syncButton = nil
+    self.partyKeystoneFrame = nil
+    self.partyKeystoneButton = nil
+    self.partyKeystoneChoiceGroupSignature = nil
+    self.partyKeystoneChoice = nil
     self.headerFrame = nil
     self.headerButtons = {}
     self.scrollFrame = nil
@@ -188,6 +318,7 @@ function Roster:OnEnable()
     self:RegisterMessage("VESPERTOOLS_ROSTER_REFRESH_REQUESTED", "OnRosterSourceChanged")
     self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "OnConfigChanged")
     self:RegisterEvent("GROUP_ROSTER_UPDATE", "OnRosterSourceChanged")
+    self:RegisterEvent("PARTY_LEADER_CHANGED", "OnRosterSourceChanged")
     self:RegisterEvent("GUILD_ROSTER_UPDATE", "OnRosterSourceChanged")
     self:RegisterEvent("PLAYER_GUILD_UPDATE", "OnRosterSourceChanged")
 end
@@ -222,6 +353,8 @@ function Roster:RestoreWindowReferences(frame)
     self.titleText = frame.vgTitleText or self.titleText
     self.closeButton = frame.vgCloseButton or self.closeButton
     self.syncButton = frame.vgSyncButton or self.syncButton
+    self.partyKeystoneFrame = frame.vgPartyKeystoneFrame or self.partyKeystoneFrame
+    self.partyKeystoneButton = frame.vgPartyKeystoneButton or self.partyKeystoneButton
     self.headerFrame = frame.vgHeaderFrame or self.headerFrame
     self.headerButtons = frame.vgHeaderButtons or self.headerButtons
     self.scrollFrame = frame.vgScrollFrame or self.scrollFrame
@@ -263,6 +396,273 @@ function Roster:ApplyTitlebarLayout()
     end
 end
 
+function Roster:ApplyPartyKeystoneFrameStyle()
+    local utilityFrame = self.partyKeystoneFrame
+    if not utilityFrame then
+        return
+    end
+
+    vesperTools:ApplyRoundedWindowBackdrop(utilityFrame)
+    utilityFrame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("roster"))
+
+    local _, englishClass = UnitClass("player")
+    local classColor = englishClass and C_ClassColor.GetClassColor(englishClass) or nil
+    if classColor then
+        utilityFrame:SetBackdropBorderColor(classColor.r, classColor.g, classColor.b, 1)
+    else
+        utilityFrame:SetBackdropBorderColor(1, 1, 1, 0.2)
+    end
+end
+
+function Roster:LayoutPartyKeystoneButton()
+    local frame = self.frame
+    local utilityFrame = self.partyKeystoneFrame
+    local button = self.partyKeystoneButton
+    if not (frame and utilityFrame and button) then
+        return
+    end
+
+    local buttonSize = getRosterUtilityButtonSize()
+    local frameSize = buttonSize + (ROSTER_PARTY_KEY_BUTTON_PADDING * 2)
+    utilityFrame:SetFrameStrata(frame:GetFrameStrata())
+    utilityFrame:SetFrameLevel((frame:GetFrameLevel() or 0) + 70)
+    utilityFrame:ClearAllPoints()
+    utilityFrame:SetPoint("BOTTOM", frame, "TOP", 0, ROSTER_PARTY_KEY_BUTTON_OFFSET_Y)
+    utilityFrame:SetSize(frameSize, frameSize)
+
+    button:SetSize(buttonSize, buttonSize)
+    button:ClearAllPoints()
+    button:SetPoint("CENTER", utilityFrame, "CENTER", 0, 0)
+end
+
+function Roster:RefreshPartyKeystoneButton()
+    local button = self.partyKeystoneButton
+    if not button or not button.icon then
+        return
+    end
+
+    local unavailableText = getPartyKeystoneUnavailableText()
+    local isAvailable = unavailableText == nil
+    button._isAvailable = isAvailable
+    button._unavailableText = unavailableText
+    button.icon:SetDesaturated(not isAvailable)
+    button.icon:SetAlpha(isAvailable and 1 or 0.45)
+    if button.SetEnabled then
+        button:SetEnabled(isAvailable)
+    elseif isAvailable and button.Enable then
+        button:Enable()
+    elseif button.Disable then
+        button:Disable()
+    end
+end
+
+function Roster:CreatePartyKeystoneFrame(parent)
+    if self.partyKeystoneFrame then
+        return self.partyKeystoneFrame
+    end
+
+    local utilityFrame = CreateFrame("Frame", "vesperToolsRosterPartyKeystoneFrame", parent, "BackdropTemplate")
+    vesperTools:ApplyAddonWindowLayer(utilityFrame)
+
+    local button = createRosterIconUtilityButton(
+        utilityFrame,
+        ROSTER_PARTY_KEY_BUTTON_ICON,
+        function()
+            self:ChoosePartyKeystone()
+        end,
+        function(selfButton)
+            GameTooltip:SetOwner(selfButton, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["ROSTER_PARTY_KEY_DECIDER"], 1, 1, 1)
+            GameTooltip:AddLine(L["ROSTER_PARTY_KEY_TOOLTIP"], 0.85, 0.85, 0.85)
+            if not selfButton._isAvailable then
+                GameTooltip:AddLine(selfButton._unavailableText or L["ROSTER_PARTY_KEY_NO_GROUP"], 1, 0.35, 0.35)
+            end
+            GameTooltip:Show()
+        end
+    )
+
+    self.partyKeystoneFrame = utilityFrame
+    self.partyKeystoneButton = button
+    self:ApplyPartyKeystoneFrameStyle()
+    self:LayoutPartyKeystoneButton()
+    self:RefreshPartyKeystoneButton()
+    return utilityFrame
+end
+
+function Roster:GetPartyKeystoneCandidates(keystoneSync)
+    local candidates = {}
+    if getPartyChatChannel() == nil then
+        return candidates, nil
+    end
+
+    if keystoneSync and type(keystoneSync.UpdateCurrentCharacterKeystoneSnapshot) == "function" then
+        keystoneSync:UpdateCurrentCharacterKeystoneSnapshot()
+    end
+
+    local seen = {}
+    local groupNames = {}
+    local function addUnit(unit)
+        local fullName = getUnitFullName(unit)
+        if not fullName or seen[fullName] then
+            return
+        end
+        seen[fullName] = true
+        groupNames[#groupNames + 1] = fullName
+
+        local keyData = keystoneSync
+            and type(keystoneSync.GetStoredKeystoneData) == "function"
+            and keystoneSync:GetStoredKeystoneData(fullName)
+            or nil
+        if type(keyData) ~= "table" then
+            return
+        end
+
+        local mapID = math.floor((tonumber(keyData.mapID) or 0) + 0.5)
+        local level = math.floor((tonumber(keyData.level) or 0) + 0.5)
+        if mapID <= 0 or level <= 0 then
+            return
+        end
+
+        local abbrev = keystoneSync
+            and type(keystoneSync.GetDungeonAbbrev) == "function"
+            and keystoneSync:GetDungeonAbbrev(mapID)
+            or L["KEYSTONE_UNKNOWN_ABBREV"]
+        candidates[#candidates + 1] = {
+            fullName = fullName,
+            ownerName = getPartyDisplayName(fullName, unit),
+            mapID = mapID,
+            level = level,
+            keyText = string.format("%s +%d", abbrev, level),
+        }
+    end
+
+    addUnit("player")
+
+    local partyCount = 0
+    if type(GetNumSubgroupMembers) == "function" then
+        partyCount = tonumber(GetNumSubgroupMembers()) or 0
+    elseif type(GetNumGroupMembers) == "function" then
+        partyCount = math.max(0, (tonumber(GetNumGroupMembers()) or 1) - 1)
+    end
+
+    for i = 1, partyCount do
+        addUnit("party" .. i)
+    end
+
+    table.sort(groupNames)
+    return candidates, table.concat(groupNames, "|")
+end
+
+function Roster:GetCachedPartyKeystoneChoice(candidates, groupSignature)
+    if type(groupSignature) ~= "string" or groupSignature == "" then
+        return nil
+    end
+    if self.partyKeystoneChoiceGroupSignature ~= groupSignature or type(self.partyKeystoneChoice) ~= "table" then
+        return nil
+    end
+
+    for i = 1, #(candidates or {}) do
+        local candidate = candidates[i]
+        if isSamePartyKeystoneChoice(candidate, self.partyKeystoneChoice) then
+            return candidate
+        end
+    end
+
+    return nil
+end
+
+function Roster:SetCachedPartyKeystoneChoice(choice, groupSignature)
+    if type(choice) ~= "table" or type(groupSignature) ~= "string" or groupSignature == "" then
+        self.partyKeystoneChoice = nil
+        self.partyKeystoneChoiceGroupSignature = nil
+        return
+    end
+
+    self.partyKeystoneChoiceGroupSignature = groupSignature
+    self.partyKeystoneChoice = {
+        fullName = choice.fullName,
+        ownerName = choice.ownerName,
+        mapID = choice.mapID,
+        level = choice.level,
+        keyText = choice.keyText,
+    }
+end
+
+function Roster:PickPartyKeystoneChoice(candidates, groupSignature, forceNew)
+    if type(candidates) ~= "table" or #candidates == 0 then
+        return nil
+    end
+
+    local pool = candidates
+    if forceNew and #candidates > 1 and self.partyKeystoneChoiceGroupSignature == groupSignature then
+        local rerollPool = {}
+        for i = 1, #candidates do
+            if not isSamePartyKeystoneChoice(candidates[i], self.partyKeystoneChoice) then
+                rerollPool[#rerollPool + 1] = candidates[i]
+            end
+        end
+        if #rerollPool > 0 then
+            pool = rerollPool
+        end
+    end
+
+    local choice = pool[math.random(#pool)]
+    self:SetCachedPartyKeystoneChoice(choice, groupSignature)
+    return choice
+end
+
+function Roster:AnnouncePartyKeystoneChoice(choice)
+    if type(choice) ~= "table" then
+        return false
+    end
+
+    local message = string.format(
+        L["ROSTER_PARTY_KEY_ANNOUNCE_FMT"],
+        choice.ownerName or UNKNOWN,
+        choice.keyText or L["KEYSTONE_UNKNOWN_ABBREV"]
+    )
+    local channel = getPartyChatChannel()
+    if channel and type(SendChatMessage) == "function" then
+        SendChatMessage(message, channel)
+        return true
+    end
+
+    vesperTools:Print(message)
+    return false
+end
+
+function Roster:ChoosePartyKeystone()
+    local unavailableText = getPartyKeystoneUnavailableText()
+    if unavailableText then
+        self:SetCachedPartyKeystoneChoice(nil, nil)
+        vesperTools:Print(unavailableText)
+        self:RefreshPartyKeystoneButton()
+        return false
+    end
+
+    local keystoneSync = vesperTools:GetModule("KeystoneSync", true)
+    if keystoneSync and type(keystoneSync.RequestPartyKeystones) == "function" then
+        keystoneSync:RequestPartyKeystones({ silent = true })
+    end
+
+    local candidates, groupSignature = self:GetPartyKeystoneCandidates(keystoneSync)
+    if #candidates == 0 then
+        self:SetCachedPartyKeystoneChoice(nil, nil)
+        vesperTools:Print(L["ROSTER_PARTY_KEY_NONE"])
+        self:RefreshPartyKeystoneButton()
+        return false
+    end
+
+    local forceNew = type(IsShiftKeyDown) == "function" and IsShiftKeyDown()
+    local choice = (not forceNew) and self:GetCachedPartyKeystoneChoice(candidates, groupSignature) or nil
+    if not choice then
+        choice = self:PickPartyKeystoneChoice(candidates, groupSignature, forceNew)
+    end
+
+    self:RefreshPartyKeystoneButton()
+    return self:AnnouncePartyKeystoneChoice(choice)
+end
+
 function Roster:ApplyRosterStyling()
     if not self.frame then
         return
@@ -276,6 +676,9 @@ function Roster:ApplyRosterStyling()
     self.titleBarHeight = rosterTitleBarHeight(baseFontSize)
 
     self.frame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("roster"))
+    self:ApplyPartyKeystoneFrameStyle()
+    self:LayoutPartyKeystoneButton()
+    self:RefreshPartyKeystoneButton()
 
     if self.titleBar then
         self.titleBar:SetHeight(self.titleBarHeight)
@@ -333,6 +736,7 @@ function Roster:PerformRosterRefresh()
     end
 
     self:UpdateRosterList()
+    self:RefreshPartyKeystoneButton()
 end
 
 function Roster:RequestRosterRefresh()
@@ -752,6 +1156,7 @@ function Roster:CreateWindow()
     vesperTools:RegisterEscapeFrame(frame, function()
         self:HandleCloseRequest()
     end)
+    self:CreatePartyKeystoneFrame(frame)
 
     -- Titlebar
     local initialFontSize = rosterFontSize()
@@ -993,6 +1398,8 @@ function Roster:CreateWindow()
     frame.vgTitleText = title
     frame.vgCloseButton = closeBtn
     frame.vgSyncButton = syncBtn
+    frame.vgPartyKeystoneFrame = self.partyKeystoneFrame
+    frame.vgPartyKeystoneButton = self.partyKeystoneButton
     frame.vgHeaderFrame = headerFrame
     frame.vgHeaderButtons = self.headerButtons
     frame.vgScrollFrame = scrollFrame

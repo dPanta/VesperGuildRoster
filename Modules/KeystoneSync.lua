@@ -82,6 +82,7 @@ function KeystoneSync:OnEnable()
     self:RegisterEvent("PLAYER_ENTERING_WORLD")
     self:RegisterEvent("BAG_UPDATE_DELAYED")
     self:RegisterEvent("CHALLENGE_MODE_COMPLETED")
+    self:RegisterEvent("GROUP_ROSTER_UPDATE")
 
     -- Clean up old entries on login
     self:CleanupStaleEntries()
@@ -120,8 +121,8 @@ end
 
 -- LibKeystone callback handler
 function KeystoneSync:OnLibKeystoneReceived(keyLevel, keyChallengeMapID, playerRating, sender, channel)
-    -- Only process guild messages (you can add PARTY if needed)
-    if channel ~= "GUILD" then
+    -- Process guild and party replies so roster tools can use current group keys.
+    if channel ~= "GUILD" and channel ~= "PARTY" then
         return
     end
 
@@ -140,6 +141,28 @@ function KeystoneSync:OnLibKeystoneReceived(keyLevel, keyChallengeMapID, playerR
 
     -- Notify UI listeners to repaint displayed key info.
     vesperTools:SendMessage("VESPERTOOLS_KEYSTONE_UPDATE", sender)
+end
+
+-- Request keystones from the current party using LibKeystone.
+function KeystoneSync:RequestPartyKeystones(options)
+    local silent = type(options) == "table" and options.silent
+
+    if not LibKeystone then
+        if not silent then
+            vesperTools:Print(L["LIBKEYSTONE_NOT_LOADED"])
+        end
+        return false
+    end
+
+    if not IsInGroup() or IsInRaid() then
+        if not silent then
+            vesperTools:Print(L["ROSTER_PARTY_KEY_NO_GROUP"])
+        end
+        return false
+    end
+
+    LibKeystone.Request("PARTY")
+    return true
 end
 
 -- Request keystones from guild using LibKeystone.
@@ -377,10 +400,16 @@ end
 
 function KeystoneSync:PLAYER_ENTERING_WORLD()
     self:UpdateCurrentCharacterKeystoneSnapshot()
+    self:RequestPartyKeystones({ silent = true })
 end
 
 function KeystoneSync:BAG_UPDATE_DELAYED()
     self:UpdateCurrentCharacterKeystoneSnapshot()
+end
+
+function KeystoneSync:GROUP_ROSTER_UPDATE()
+    self:UpdateCurrentCharacterKeystoneSnapshot()
+    self:RequestPartyKeystones({ silent = true })
 end
 
 function KeystoneSync:CHALLENGE_MODE_COMPLETED()

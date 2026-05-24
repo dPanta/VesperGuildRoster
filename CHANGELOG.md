@@ -1,3 +1,13 @@
+## 6.5.0 - 2026-05-24
+
+### Added
+- Added a dice-style Keystone Roulette button above the roster frame, sized to match the existing top utility buttons.
+- Clicking Keystone Roulette chooses a random current-party keystone and announces it to party chat as the group's selected run.
+- The selected keystone is remembered while the party roster is unchanged, so repeated clicks keep announcing the same pick.
+- Shift-clicking Keystone Roulette forces a fresh roll, choosing a different available keystone when possible.
+- Keystone Roulette is enabled only for the current party leader.
+- Party LibKeystone replies are now accepted and requested on group changes so the roulette can use current party key data, not only guild-cached entries.
+
 ## 6.4.0 - 2026-05-22
 
 ### Added
