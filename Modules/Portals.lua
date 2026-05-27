@@ -168,6 +168,60 @@ local function callAPI(apiFunc, ...)
     return pcall(apiFunc, ...)
 end
 
+local function isSecretValue(value)
+    local isSecret = _G and _G.issecretvalue
+    return type(isSecret) == "function" and isSecret(value)
+end
+
+local function getPublicNumber(value)
+    if isSecretValue(value) then
+        return nil
+    end
+
+    return tonumber(value)
+end
+
+local function getPublicCooldownEnabled(value, fallback)
+    if isSecretValue(value) then
+        return nil
+    end
+
+    if value == nil then
+        return fallback or 0
+    end
+    if value == true then
+        return 1
+    end
+    if value == false then
+        return 0
+    end
+
+    local numericValue = tonumber(value)
+    if numericValue then
+        return numericValue ~= 0 and 1 or 0
+    end
+
+    return value and 1 or 0
+end
+
+local function getDurationObjectNumber(durationObject, methodName)
+    if durationObject == nil or type(methodName) ~= "string" then
+        return nil
+    end
+
+    local method = durationObject[methodName]
+    if type(method) ~= "function" then
+        return nil
+    end
+
+    local ok, value = pcall(method, durationObject)
+    if not ok then
+        return nil
+    end
+
+    return getPublicNumber(value)
+end
+
 local function isInCombatLockdown()
     return type(InCombatLockdown) == "function" and InCombatLockdown()
 end
@@ -618,13 +672,25 @@ function Portals:GetItemCooldownInfo(itemID)
     end
 
     if C_Item and C_Item.GetItemCooldown then
-        local start, duration, enable = C_Item.GetItemCooldown(numericID)
-        return tonumber(start) or 0, tonumber(duration) or 0, (enable and enable ~= 0) and 1 or 0
+        local ok, start, duration, enable = callAPI(C_Item.GetItemCooldown, numericID)
+        if ok then
+            local publicStart = getPublicNumber(start) or 0
+            local publicDuration = getPublicNumber(duration) or 0
+            local publicEnabled = getPublicCooldownEnabled(enable, 0) or 0
+            return publicStart, publicDuration, publicEnabled
+        end
+        return 0, 0, 0
     end
 
     if GetItemCooldown then
-        local start, duration, enable = GetItemCooldown(numericID)
-        return tonumber(start) or 0, tonumber(duration) or 0, (enable and enable ~= 0) and 1 or 0
+        local ok, start, duration, enable = callAPI(GetItemCooldown, numericID)
+        if ok then
+            local publicStart = getPublicNumber(start) or 0
+            local publicDuration = getPublicNumber(duration) or 0
+            local publicEnabled = getPublicCooldownEnabled(enable, 0) or 0
+            return publicStart, publicDuration, publicEnabled
+        end
+        return 0, 0, 0
     end
 
     return 0, 0, 0
@@ -763,35 +829,41 @@ function Portals:GetButtonCooldownInfo(button)
     end
 
     if sourceType == "spell" then
-        -- Mainline 11.1+: DurationObject API
-        if C_Spell and C_Spell.GetSpellCooldownDuration then
-            local ok, dur = pcall(C_Spell.GetSpellCooldownDuration, sourceID, true)
-            if not ok then
-                dur = nil
-            end
-            if dur and not dur:IsZero() then
-                return tonumber(dur:GetStartTime()) or 0,
-                    tonumber(dur:GetTotalDuration()) or 0,
-                    1, 1
-            end
-            return 0, 0, 0, 1
-        end
-        -- Classic: SpellCooldownInfo table
+        -- Prefer the table API because DurationObject:IsZero() may return a secret
+        -- boolean on Midnight and cannot be tested in Lua.
         if C_Spell and C_Spell.GetSpellCooldown then
-            local info = C_Spell.GetSpellCooldown(sourceID)
-            if info then
-                local enabled = info.isEnabled and 1 or 0
-                return tonumber(info.startTime) or 0,
-                    tonumber(info.duration) or 0,
-                    enabled,
-                    tonumber(info.modRate) or 1
+            local ok, info = callAPI(C_Spell.GetSpellCooldown, sourceID)
+            if ok and type(info) == "table" then
+                local start = getPublicNumber(info.startTime)
+                local duration = getPublicNumber(info.duration)
+                local enabled = getPublicCooldownEnabled(info.isEnabled, 0)
+                local modRate = getPublicNumber(info.modRate) or 1
+                if start and duration and enabled ~= nil then
+                    return start, duration, enabled, modRate
+                end
+            end
+        end
+        -- Mainline 11.1+: DurationObject fallback. Never branch on IsZero().
+        if C_Spell and C_Spell.GetSpellCooldownDuration then
+            local ok, dur = callAPI(C_Spell.GetSpellCooldownDuration, sourceID, true)
+            if ok and dur ~= nil then
+                local start = getDurationObjectNumber(dur, "GetStartTime")
+                local duration = getDurationObjectNumber(dur, "GetTotalDuration")
+                if start and duration then
+                    return start, duration, 1, 1
+                end
             end
             return 0, 0, 0, 1
         end
         -- Legacy global (pre-11.x)
         if GetSpellCooldown then
-            local start, duration, enabled, modRate = GetSpellCooldown(sourceID)
-            return tonumber(start) or 0, tonumber(duration) or 0, (enabled and enabled ~= 0) and 1 or 0, tonumber(modRate) or 1
+            local ok, start, duration, enabled, modRate = callAPI(GetSpellCooldown, sourceID)
+            if ok then
+                return getPublicNumber(start) or 0,
+                    getPublicNumber(duration) or 0,
+                    getPublicCooldownEnabled(enabled, 0) or 0,
+                    getPublicNumber(modRate) or 1
+            end
         end
     elseif sourceType == "item" then
         local start, duration, enabled = self:GetItemCooldownInfo(sourceID)
