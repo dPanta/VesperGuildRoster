@@ -75,16 +75,6 @@ function MidnightLurePinMixin:OnLoad()
         highlight:Hide()
         self.vgHighlight = highlight
     end
-
-    self:SetScript("OnEnter", function(pin)
-        pin:OnMouseEnter()
-    end)
-    self:SetScript("OnLeave", function(pin)
-        pin:OnMouseLeave()
-    end)
-    self:SetScript("OnMouseUp", function(pin, mouseButton)
-        pin:TryHandlePointer(mouseButton)
-    end)
 end
 
 function MidnightLurePinMixin:OnAcquired(data)

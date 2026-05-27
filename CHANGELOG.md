@@ -1,3 +1,9 @@
+## 6.5.1 - 2026-05-27
+
+### Fixed
+- Fixed regular Great Vault snapshot capture so Blizzard reward `itemDBID` values are preserved exactly and protected before calling `C_WeeklyRewards.GetItemHyperlink`, preventing errors when opening the normal Great Vault with generated reward IDs.
+- Fixed Midnight lure world-map pins so Blizzard owns the map pin mouse-script wiring, preventing the `Blizzard_MapCanvas.lua:280` assertion when opening the map or navigating to parent maps.
+
 ## 6.5.0 - 2026-05-24
 
 ### Added

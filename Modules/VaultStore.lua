@@ -74,19 +74,27 @@ local function resolveRewardItemDBID(rewardInfo)
         or rewardInfo.itemDbID
         or rewardInfo.itemGUID
         or rewardInfo.itemGuid
-        or rewardInfo.id
 
-    if candidate == nil then
+    if candidate == nil or candidate == "" then
         return nil
     end
 
-    local numeric = tonumber(candidate)
-    if numeric then
-        return tostring(math.floor(numeric + 0.5))
+    local candidateType = type(candidate)
+    if candidateType == "string" or candidateType == "number" then
+        return candidate
     end
 
-    if type(candidate) == "string" and candidate ~= "" then
-        return candidate
+    return nil
+end
+
+local function getWeeklyRewardItemHyperlink(getItemHyperlink, itemDBID)
+    if type(getItemHyperlink) ~= "function" or itemDBID == nil then
+        return nil
+    end
+
+    local ok, hyperlink = pcall(getItemHyperlink, itemDBID)
+    if ok then
+        return normalizeLink(hyperlink)
     end
 
     return nil
@@ -116,8 +124,8 @@ local function resolveActualRewardLinks(rewards)
                 or nil
 
             local itemDBID = resolveRewardItemDBID(rewardInfo)
-            if itemDBID and type(getItemHyperlink) == "function" then
-                local hyperlink = normalizeLink(getItemHyperlink(itemDBID))
+            if itemDBID then
+                local hyperlink = getWeeklyRewardItemHyperlink(getItemHyperlink, itemDBID)
                 if hyperlink and not actualItemLink then
                     actualItemLink = hyperlink
                     rewardItemDBID = itemDBID
