@@ -1,3 +1,8 @@
+## 6.5.3 - 2026-06-01
+
+### Fixed
+- Fixed Midnight lure world-map pin refreshes so Blizzard's MapCanvas acquire path no longer calls protected mouse passthrough setup for addon-owned pins, preventing the `Frame:SetPassThroughButtons()` blocked-action warning.
+
 ## 6.5.2 - 2026-05-27
 
 ### Fixed

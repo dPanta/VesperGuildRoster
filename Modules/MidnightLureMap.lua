@@ -123,6 +123,10 @@ function MidnightLurePinMixin:OnClick(mouseButton)
     self:TryHandlePointer(mouseButton)
 end
 
+function MidnightLurePinMixin:CheckMouseButtonPassthrough()
+    -- Blizzard's default implementation calls protected SetPassThroughButtons.
+end
+
 function MidnightLurePinMixin:HandleClick()
     local data = self.data
     if not data then
