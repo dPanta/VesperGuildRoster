@@ -449,6 +449,8 @@ function BagsStore:OnEnable()
     self:RegisterEvent("BAG_UPDATE")
     self:RegisterEvent("BAG_UPDATE_DELAYED")
     self:RegisterEvent("BAG_CONTAINER_UPDATE")
+    self:RegisterEvent("CURRENCY_DISPLAY_UPDATE")
+    self:RegisterEvent("PLAYER_MONEY")
 end
 
 function BagsStore:GetDB()
@@ -589,6 +591,171 @@ function BagsStore:CreateOrUpdateCurrentCharacter()
     character.carried.categoryItems = character.carried.categoryItems or {}
 
     return characterKey, character
+end
+
+local function normalizeCurrencyID(currencyID)
+    local numericCurrencyID = tonumber(currencyID)
+    if not numericCurrencyID then
+        return nil
+    end
+
+    numericCurrencyID = math.floor(numericCurrencyID + 0.5)
+    if numericCurrencyID <= 0 then
+        return nil
+    end
+
+    return numericCurrencyID
+end
+
+local function normalizeCurrencyQuantity(quantity)
+    return math.max(0, math.floor((tonumber(quantity) or 0) + 0.5))
+end
+
+function BagsStore:AddCurrencySnapshotEntry(snapshot, seen, info)
+    if type(snapshot) ~= "table" or type(info) ~= "table" then
+        return false
+    end
+
+    local currencyID = normalizeCurrencyID(info.currencyID)
+    if not currencyID or seen[currencyID] then
+        return false
+    end
+
+    snapshot.currencies[currencyID] = {
+        name = normalizeName(info.name),
+        quantity = normalizeCurrencyQuantity(info.quantity),
+        iconFileID = info.iconFileID,
+        maxQuantity = normalizeCurrencyQuantity(info.maxQuantity),
+        maxWeeklyQuantity = normalizeCurrencyQuantity(info.maxWeeklyQuantity),
+        quantityEarnedThisWeek = normalizeCurrencyQuantity(info.quantityEarnedThisWeek),
+        totalEarned = tonumber(info.totalEarned) or nil,
+        discovered = info.discovered ~= false,
+    }
+    seen[currencyID] = true
+    return true
+end
+
+function BagsStore:BuildCurrentCurrencySnapshot()
+    local snapshot = {
+        money = GetMoney and normalizeCurrencyQuantity(GetMoney()) or 0,
+        currencies = {},
+        scannedAt = time(),
+    }
+    local seen = {}
+
+    if vesperTools.GetConfiguredBagCurrencyIDs and vesperTools.GetCurrencyInfoByID then
+        local selectedIDs = vesperTools:GetConfiguredBagCurrencyIDs()
+        for i = 1, #selectedIDs do
+            local info = vesperTools:GetCurrencyInfoByID(selectedIDs[i])
+            self:AddCurrencySnapshotEntry(snapshot, seen, info)
+        end
+    end
+
+    if vesperTools.GetTrackedBagCurrencyOptions then
+        local trackedOptions = vesperTools:GetTrackedBagCurrencyOptions()
+        for i = 1, #trackedOptions do
+            local option = trackedOptions[i]
+            if option and option.currencyID and not seen[option.currencyID] and vesperTools.GetCurrencyInfoByID then
+                option = vesperTools:GetCurrencyInfoByID(option.currencyID) or option
+            end
+            self:AddCurrencySnapshotEntry(snapshot, seen, option)
+        end
+    end
+
+    if vesperTools.GetCurrencyBarSelectionOptions and vesperTools.GetCurrencyInfoByID then
+        local selectionOptions = vesperTools:GetCurrencyBarSelectionOptions()
+        for i = 1, #selectionOptions do
+            local option = selectionOptions[i]
+            if option and option.currencyID and not seen[option.currencyID] then
+                self:AddCurrencySnapshotEntry(snapshot, seen, vesperTools:GetCurrencyInfoByID(option.currencyID) or option)
+            end
+        end
+    end
+
+    return snapshot
+end
+
+function BagsStore:CurrencySnapshotsEqual(a, b)
+    if a == b then
+        return true
+    end
+    if type(a) ~= "table" or type(b) ~= "table" then
+        return false
+    end
+    if normalizeCurrencyQuantity(a.money) ~= normalizeCurrencyQuantity(b.money) then
+        return false
+    end
+
+    local aCurrencies = type(a.currencies) == "table" and a.currencies or {}
+    local bCurrencies = type(b.currencies) == "table" and b.currencies or {}
+
+    for currencyID, aEntry in pairs(aCurrencies) do
+        local bEntry = bCurrencies[currencyID] or bCurrencies[tostring(currencyID)]
+        if type(aEntry) ~= "table" or type(bEntry) ~= "table" then
+            return false
+        end
+        if normalizeCurrencyQuantity(aEntry.quantity) ~= normalizeCurrencyQuantity(bEntry.quantity)
+            or normalizeCurrencyQuantity(aEntry.maxQuantity) ~= normalizeCurrencyQuantity(bEntry.maxQuantity)
+            or normalizeCurrencyQuantity(aEntry.maxWeeklyQuantity) ~= normalizeCurrencyQuantity(bEntry.maxWeeklyQuantity)
+            or normalizeCurrencyQuantity(aEntry.quantityEarnedThisWeek) ~= normalizeCurrencyQuantity(bEntry.quantityEarnedThisWeek)
+            or (tonumber(aEntry.totalEarned) or 0) ~= (tonumber(bEntry.totalEarned) or 0)
+            or aEntry.name ~= bEntry.name
+            or aEntry.iconFileID ~= bEntry.iconFileID
+            or (aEntry.discovered ~= false) ~= (bEntry.discovered ~= false) then
+            return false
+        end
+    end
+
+    for currencyID in pairs(bCurrencies) do
+        if aCurrencies[currencyID] == nil and aCurrencies[tonumber(currencyID) or currencyID] == nil then
+            return false
+        end
+    end
+
+    return true
+end
+
+function BagsStore:CommitCurrentCurrencySnapshot()
+    local characterKey, character = self:CreateOrUpdateCurrentCharacter()
+    if not characterKey or not character then
+        return false
+    end
+
+    local newSnapshot = self:BuildCurrentCurrencySnapshot()
+    if self:CurrencySnapshotsEqual(character.currency, newSnapshot) then
+        return true
+    end
+
+    character.currency = newSnapshot
+    vesperTools:SendMessage("VESPERTOOLS_BAGS_CHARACTER_UPDATED", characterKey)
+    return true
+end
+
+function BagsStore:GetCharacterCurrencyQuantity(characterKey, currencyID, isGold)
+    local snapshot = self:GetCharacterBagSnapshot(characterKey)
+    if not snapshot or type(snapshot.currency) ~= "table" then
+        return nil, false
+    end
+
+    if isGold then
+        return normalizeCurrencyQuantity(snapshot.currency.money), true
+    end
+
+    local normalizedCurrencyID = normalizeCurrencyID(currencyID)
+    if not normalizedCurrencyID then
+        return nil, false
+    end
+
+    local currencies = type(snapshot.currency.currencies) == "table" and snapshot.currency.currencies or {}
+    local entry = currencies[normalizedCurrencyID] or currencies[tostring(normalizedCurrencyID)]
+    if type(entry) == "table" then
+        return normalizeCurrencyQuantity(entry.quantity), true
+    end
+    if entry ~= nil then
+        return normalizeCurrencyQuantity(entry), true
+    end
+
+    return nil, false
 end
 
 -- Adjust nested aggregate counters while automatically cleaning up empty tables.
@@ -1214,6 +1381,14 @@ function BagsStore:PLAYER_ENTERING_WORLD()
     end)
 end
 
+function BagsStore:CURRENCY_DISPLAY_UPDATE()
+    self:CommitCurrentCurrencySnapshot()
+end
+
+function BagsStore:PLAYER_MONEY()
+    self:CommitCurrentCurrencySnapshot()
+end
+
 function BagsStore:BAG_UPDATE(_, bagID)
     if not self:IsTrackedBagID(bagID) then
         return
@@ -1260,6 +1435,7 @@ end
 function BagsStore:DoFullCarryRescan(characterKey, character)
     local newCarried = self:BuildFullCarriedSnapshot()
     character.carried = newCarried
+    character.currency = self:BuildCurrentCurrencySnapshot()
     character.lastSeen = time()
     self:RebuildAccountIndex()
     self:ClearPendingState()
@@ -1309,10 +1485,16 @@ function BagsStore:CommitPendingBagWork()
         end
     end
 
+    local newCurrencySnapshot = self:BuildCurrentCurrencySnapshot()
+    local currencyChanged = not self:CurrencySnapshotsEqual(character.currency, newCurrencySnapshot)
     self.pendingBagUpdate = false
     wipe(self.dirtyBagSet)
 
     if not changed then
+        if currencyChanged then
+            character.currency = newCurrencySnapshot
+            vesperTools:SendMessage("VESPERTOOLS_BAGS_CHARACTER_UPDATED", characterKey)
+        end
         character.lastSeen = time()
         return true
     end
@@ -1321,6 +1503,7 @@ function BagsStore:CommitPendingBagWork()
     character.carried.itemTotals = aggregate.itemTotals
     character.carried.categoryTotals = aggregate.categoryTotals
     character.carried.categoryItems = aggregate.categoryItems
+    character.currency = newCurrencySnapshot
     character.lastSeen = time()
     self.pendingRescanReason = nil
     self:RebuildAccountIndex()

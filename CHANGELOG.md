@@ -1,3 +1,12 @@
+## 6.6.0 - 2026-06-10
+
+### Added
+- Added account-wide bag currency tooltips: hovering a currency icon in the bags window now shows saved values for characters with known data.
+- Saved per-character money and selected/tracked currency snapshots on currency, money, and bag refreshes so alt values are available after each character has been seen.
+
+### Changed
+- Currency tooltip character rows now omit unknown values, while still showing real saved zeroes for characters that have captured data.
+
 ## 6.5.3 - 2026-06-01
 
 ### Fixed

@@ -466,6 +466,9 @@ function BagsWindow:SelectCurrentCharacterForOpen()
     if store.CreateOrUpdateCurrentCharacter then
         store:CreateOrUpdateCurrentCharacter()
     end
+    if store.CommitCurrentCurrencySnapshot then
+        store:CommitCurrentCurrencySnapshot()
+    end
 
     local currentCharacterKey = store.GetCurrentCharacterKey and store:GetCurrentCharacterKey() or nil
     if type(currentCharacterKey) ~= "string" or currentCharacterKey == "" then
@@ -3824,6 +3827,91 @@ function BagsWindow:HandleItemClick(button, mouseButton)
     end
 end
 
+function BagsWindow:GetCurrencyTooltipValueText(quantity, isGold)
+    if isGold then
+        if GetMoneyString then
+            return GetMoneyString(quantity or 0)
+        end
+        return formatGoldQuantity(quantity or 0)
+    end
+
+    return formatCurrencyQuantity(quantity or 0)
+end
+
+function BagsWindow:GetCurrencyTooltipCharacterQuantity(store, character, button)
+    if not character or not button then
+        return nil, false
+    end
+
+    if character.isCurrent then
+        if button.isGold and GetMoney then
+            return tonumber(GetMoney()) or 0, true
+        end
+        return tonumber(button.quantity) or 0, true
+    end
+
+    if store and type(store.GetCharacterCurrencyQuantity) == "function" then
+        return store:GetCharacterCurrencyQuantity(character.key, button.currencyID, button.isGold)
+    end
+
+    return nil, false
+end
+
+function BagsWindow:AddCurrencyAccountTooltipLines(button)
+    local store = self:GetStore()
+    if not store or type(store.GetDisplayCharacters) ~= "function" then
+        return
+    end
+
+    local characters = store:GetDisplayCharacters()
+    if #characters == 0 then
+        return
+    end
+
+    local rows = {}
+
+    for i = 1, #characters do
+        local character = characters[i]
+        local quantity, hasValue = self:GetCurrencyTooltipCharacterQuantity(store, character, button)
+        if hasValue then
+            rows[#rows + 1] = {
+                character = character,
+                valueText = self:GetCurrencyTooltipValueText(quantity, button.isGold),
+            }
+        end
+    end
+
+    if #rows == 0 then
+        return
+    end
+
+    GameTooltip:AddLine(" ")
+    GameTooltip:AddLine("Characters", 1, 0.82, 0.12)
+
+    for i = 1, #rows do
+        local row = rows[i]
+        local character = row.character
+        local nameR, nameG, nameB = 0.85, 0.85, 0.85
+        local valueR, valueG, valueB = 0.85, 0.85, 0.85
+
+        if character.isCurrent then
+            nameR, nameG, nameB = 1, 1, 1
+            valueR, valueG, valueB = 1, 0.82, 0.12
+        end
+
+        GameTooltip:AddDoubleLine(
+            character.fullName or UNKNOWN,
+            row.valueText,
+            nameR,
+            nameG,
+            nameB,
+            valueR,
+            valueG,
+            valueB
+        )
+    end
+end
+
 function BagsWindow:ConfigureCurrencyTooltip(button)
     GameTooltip:SetOwner(button, "ANCHOR_TOP")
 
@@ -3834,23 +3922,28 @@ function BagsWindow:ConfigureCurrencyTooltip(button)
         else
             GameTooltip:AddLine(formatGoldQuantity(button.quantity or 0), 1, 0.82, 0.12)
         end
+        self:AddCurrencyAccountTooltipLines(button)
         GameTooltip:Show()
         return
     end
 
+    local usedCurrencyLink = false
     if C_CurrencyInfo and type(C_CurrencyInfo.GetCurrencyLink) == "function" and GameTooltip.SetHyperlink then
         local ok, currencyLink = pcall(C_CurrencyInfo.GetCurrencyLink, button.currencyID)
         if ok and type(currencyLink) == "string" and currencyLink ~= "" then
             GameTooltip:SetHyperlink(currencyLink)
-            return
+            usedCurrencyLink = true
         end
     end
 
-    GameTooltip:SetText(button.currencyName or UNKNOWN, 1, 1, 1)
-    GameTooltip:AddLine(formatCurrencyQuantity(button.quantity or 0), 0.85, 0.85, 0.85)
-    if button.maxQuantity and button.maxQuantity > 0 then
-        GameTooltip:AddLine(string.format("%s / %s", formatCurrencyQuantity(button.quantity or 0), formatCurrencyQuantity(button.maxQuantity)), 0.62, 0.84, 1)
+    if not usedCurrencyLink then
+        GameTooltip:SetText(button.currencyName or UNKNOWN, 1, 1, 1)
+        GameTooltip:AddLine(formatCurrencyQuantity(button.quantity or 0), 0.85, 0.85, 0.85)
+        if button.maxQuantity and button.maxQuantity > 0 then
+            GameTooltip:AddLine(string.format("%s / %s", formatCurrencyQuantity(button.quantity or 0), formatCurrencyQuantity(button.maxQuantity)), 0.62, 0.84, 1)
+        end
     end
+    self:AddCurrencyAccountTooltipLines(button)
     GameTooltip:Show()
 end
 
