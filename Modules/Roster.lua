@@ -10,7 +10,11 @@ local HEADER_ACTION_BUTTON_GAP = 6
 local ROSTER_PARTY_KEY_BUTTON_PADDING = 10
 local ROSTER_PARTY_KEY_BUTTON_OFFSET_Y = 10
 local ROSTER_PARTY_KEY_BUTTON_DEFAULT_SIZE = 52
+local ROSTER_PARTY_UTILITY_BUTTON_GAP = 6
 local ROSTER_PARTY_KEY_BUTTON_ICON = "Interface\\Icons\\INV_Misc_Dice_01"
+local ROSTER_READY_CHECK_BUTTON_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"
+local ROSTER_PULL_TIMER_BUTTON_ICON = "Interface\\Icons\\INV_Misc_PocketWatch_01"
+local ROSTER_PULL_COUNTDOWN_SECONDS = 9
 local ROSTER_HEADER_BOTTOM_MARGIN = 5
 local ROSTER_SCROLLBAR_GUTTER = 27
 local ROSTER_MIN_CONTENT_WIDTH = 520
@@ -190,6 +194,14 @@ local function isPlayerPartyLeader()
     return UnitIsGroupLeader("player") and true or false
 end
 
+local function isPlayerInGroup()
+    return type(IsInGroup) == "function" and IsInGroup() and true or false
+end
+
+local function getUnavailableText()
+    return L["UTILITY_TOOLTIP_UNAVAILABLE"] or "Unavailable"
+end
+
 local function getPartyKeystoneUnavailableText()
     if getPartyChatChannel() == nil then
         return L["ROSTER_PARTY_KEY_NO_GROUP"]
@@ -200,6 +212,50 @@ local function getPartyKeystoneUnavailableText()
     end
 
     return nil
+end
+
+local function getReadyCheckUnavailableText()
+    if not isPlayerInGroup() or not isPlayerPartyLeader() then
+        return getUnavailableText()
+    end
+
+    return nil
+end
+
+local function getPullCountdownUnavailableText()
+    if not isPlayerInGroup() or not isPlayerPartyLeader() then
+        return getUnavailableText()
+    end
+
+    if not C_PartyInfo or type(C_PartyInfo.DoCountdown) ~= "function" then
+        return getUnavailableText()
+    end
+
+    return nil
+end
+
+local function startReadyCheck()
+    if getReadyCheckUnavailableText() ~= nil or type(DoReadyCheck) ~= "function" then
+        return false
+    end
+
+    local ok = pcall(DoReadyCheck)
+    return ok and true or false
+end
+
+local function startPullCountdown()
+    if getPullCountdownUnavailableText() ~= nil then
+        return false
+    end
+
+    if C_PartyInfo and type(C_PartyInfo.DoCountdown) == "function" then
+        local ok = pcall(C_PartyInfo.DoCountdown, ROSTER_PULL_COUNTDOWN_SECONDS)
+        if ok then
+            return true
+        end
+    end
+
+    return false
 end
 
 local function getUnitFullName(unit)
@@ -280,6 +336,24 @@ local function createRosterIconUtilityButton(parent, iconTexture, onClick, onEnt
     return button
 end
 
+local function applyRosterIconButtonAvailability(button, isAvailable, unavailableText)
+    if not button or not button.icon then
+        return
+    end
+
+    button._isAvailable = isAvailable and true or false
+    button._unavailableText = unavailableText
+    button.icon:SetDesaturated(not button._isAvailable)
+    button.icon:SetAlpha(button._isAvailable and 1 or 0.45)
+    if button.SetEnabled then
+        button:SetEnabled(button._isAvailable)
+    elseif button._isAvailable and button.Enable then
+        button:Enable()
+    elseif button.Disable then
+        button:Disable()
+    end
+end
+
 local function createRosterText(parent, template)
     local text = parent:CreateFontString(nil, "OVERLAY", template or "GameFontHighlightSmall")
     text:SetJustifyH("LEFT")
@@ -297,6 +371,8 @@ function Roster:OnInitialize()
     self.syncButton = nil
     self.partyKeystoneFrame = nil
     self.partyKeystoneButton = nil
+    self.partyReadyCheckButton = nil
+    self.partyPullButton = nil
     self.partyKeystoneChoiceGroupSignature = nil
     self.partyKeystoneChoice = nil
     self.headerFrame = nil
@@ -355,6 +431,8 @@ function Roster:RestoreWindowReferences(frame)
     self.syncButton = frame.vgSyncButton or self.syncButton
     self.partyKeystoneFrame = frame.vgPartyKeystoneFrame or self.partyKeystoneFrame
     self.partyKeystoneButton = frame.vgPartyKeystoneButton or self.partyKeystoneButton
+    self.partyReadyCheckButton = frame.vgPartyReadyCheckButton or self.partyReadyCheckButton
+    self.partyPullButton = frame.vgPartyPullButton or self.partyPullButton
     self.headerFrame = frame.vgHeaderFrame or self.headerFrame
     self.headerButtons = frame.vgHeaderButtons or self.headerButtons
     self.scrollFrame = frame.vgScrollFrame or self.scrollFrame
@@ -423,16 +501,43 @@ function Roster:LayoutPartyKeystoneButton()
     end
 
     local buttonSize = getRosterUtilityButtonSize()
-    local frameSize = buttonSize + (ROSTER_PARTY_KEY_BUTTON_PADDING * 2)
+    local buttonGap = ROSTER_PARTY_UTILITY_BUTTON_GAP
+    local buttonCount = 1
+    if self.partyReadyCheckButton then
+        buttonCount = buttonCount + 1
+    end
+    if self.partyPullButton then
+        buttonCount = buttonCount + 1
+    end
+
+    local rowWidth = (buttonSize * buttonCount) + (buttonGap * math.max(0, buttonCount - 1))
+    local frameWidth = rowWidth + (ROSTER_PARTY_KEY_BUTTON_PADDING * 2)
+    local frameHeight = buttonSize + (ROSTER_PARTY_KEY_BUTTON_PADDING * 2)
     utilityFrame:SetFrameStrata(frame:GetFrameStrata())
     utilityFrame:SetFrameLevel((frame:GetFrameLevel() or 0) + 70)
     utilityFrame:ClearAllPoints()
     utilityFrame:SetPoint("BOTTOM", frame, "TOP", 0, ROSTER_PARTY_KEY_BUTTON_OFFSET_Y)
-    utilityFrame:SetSize(frameSize, frameSize)
+    utilityFrame:SetSize(frameWidth, frameHeight)
 
-    button:SetSize(buttonSize, buttonSize)
-    button:ClearAllPoints()
-    button:SetPoint("CENTER", utilityFrame, "CENTER", 0, 0)
+    local previousButton = nil
+    local function layoutButton(rowButton)
+        if not rowButton then
+            return
+        end
+
+        rowButton:SetSize(buttonSize, buttonSize)
+        rowButton:ClearAllPoints()
+        if previousButton then
+            rowButton:SetPoint("LEFT", previousButton, "RIGHT", buttonGap, 0)
+        else
+            rowButton:SetPoint("LEFT", utilityFrame, "LEFT", ROSTER_PARTY_KEY_BUTTON_PADDING, 0)
+        end
+        previousButton = rowButton
+    end
+
+    layoutButton(button)
+    layoutButton(self.partyReadyCheckButton)
+    layoutButton(self.partyPullButton)
 end
 
 function Roster:RefreshPartyKeystoneButton()
@@ -443,17 +548,24 @@ function Roster:RefreshPartyKeystoneButton()
 
     local unavailableText = getPartyKeystoneUnavailableText()
     local isAvailable = unavailableText == nil
-    button._isAvailable = isAvailable
-    button._unavailableText = unavailableText
-    button.icon:SetDesaturated(not isAvailable)
-    button.icon:SetAlpha(isAvailable and 1 or 0.45)
-    if button.SetEnabled then
-        button:SetEnabled(isAvailable)
-    elseif isAvailable and button.Enable then
-        button:Enable()
-    elseif button.Disable then
-        button:Disable()
-    end
+    applyRosterIconButtonAvailability(button, isAvailable, unavailableText)
+    self:RefreshPartyGroupActionButtons()
+end
+
+function Roster:RefreshPartyGroupActionButtons()
+    local readyUnavailableText = getReadyCheckUnavailableText()
+    applyRosterIconButtonAvailability(
+        self.partyReadyCheckButton,
+        readyUnavailableText == nil,
+        readyUnavailableText
+    )
+
+    local pullUnavailableText = getPullCountdownUnavailableText()
+    applyRosterIconButtonAvailability(
+        self.partyPullButton,
+        pullUnavailableText == nil,
+        pullUnavailableText
+    )
 end
 
 function Roster:CreatePartyKeystoneFrame(parent)
@@ -481,8 +593,49 @@ function Roster:CreatePartyKeystoneFrame(parent)
         end
     )
 
+    local readyButton = createRosterIconUtilityButton(
+        utilityFrame,
+        ROSTER_READY_CHECK_BUTTON_ICON,
+        function()
+            if not startReadyCheck() then
+                vesperTools:Print(getUnavailableText())
+            end
+        end,
+        function(selfButton)
+            GameTooltip:SetOwner(selfButton, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["GROUP_ACTION_READY"] or READY_CHECK or "Ready", 1, 1, 1)
+            GameTooltip:AddLine(L["GROUP_ACTION_READY_TOOLTIP"] or "Start a ready check", 0.85, 0.85, 0.85)
+            if not selfButton._isAvailable then
+                GameTooltip:AddLine(selfButton._unavailableText or getUnavailableText(), 1, 0.35, 0.35)
+            end
+            GameTooltip:Show()
+        end
+    )
+
+    local pullButton = createRosterIconUtilityButton(
+        utilityFrame,
+        ROSTER_PULL_TIMER_BUTTON_ICON,
+        function()
+            if not startPullCountdown() then
+                vesperTools:Print(L["GROUP_ACTION_PULL_FAILED"])
+            end
+        end,
+        function(selfButton)
+            local tooltipFormat = L["GROUP_ACTION_PULL_TOOLTIP_FMT"] or "Start a %d second pull timer"
+            GameTooltip:SetOwner(selfButton, "ANCHOR_RIGHT")
+            GameTooltip:SetText(string.format("%s %d", L["GROUP_ACTION_PULL"] or "Pull", ROSTER_PULL_COUNTDOWN_SECONDS), 1, 1, 1)
+            GameTooltip:AddLine(string.format(tooltipFormat, ROSTER_PULL_COUNTDOWN_SECONDS), 0.85, 0.85, 0.85)
+            if not selfButton._isAvailable then
+                GameTooltip:AddLine(selfButton._unavailableText or getUnavailableText(), 1, 0.35, 0.35)
+            end
+            GameTooltip:Show()
+        end
+    )
+
     self.partyKeystoneFrame = utilityFrame
     self.partyKeystoneButton = button
+    self.partyReadyCheckButton = readyButton
+    self.partyPullButton = pullButton
     self:ApplyPartyKeystoneFrameStyle()
     self:LayoutPartyKeystoneButton()
     self:RefreshPartyKeystoneButton()
@@ -1400,6 +1553,8 @@ function Roster:CreateWindow()
     frame.vgSyncButton = syncBtn
     frame.vgPartyKeystoneFrame = self.partyKeystoneFrame
     frame.vgPartyKeystoneButton = self.partyKeystoneButton
+    frame.vgPartyReadyCheckButton = self.partyReadyCheckButton
+    frame.vgPartyPullButton = self.partyPullButton
     frame.vgHeaderFrame = headerFrame
     frame.vgHeaderButtons = self.headerButtons
     frame.vgScrollFrame = scrollFrame

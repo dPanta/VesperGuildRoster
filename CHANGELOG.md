@@ -1,3 +1,11 @@
+## 6.7.0 - 2026-06-20
+
+### Added
+- Added Ready Check and Pull 9 buttons beside the roster Keystone Roulette button; both are enabled only while the player is party leader.
+
+### Fixed
+- Fixed replacement-bag deposits into the warband bank by removing the secure `macrotext2` right-click path that caused retail to block vesperTools with a protected `RunMacroText()` warning.
+
 ## 6.6.0 - 2026-06-10
 
 ### Added

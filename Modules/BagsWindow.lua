@@ -316,12 +316,9 @@ function BagsWindow:GetItemInteraction()
 
             return nil
         end,
-        -- Disable Blizzard's native ContainerFrameItemButton overlay while a
-        -- writable bank is live. The native overlay routes right-click through
-        -- C_Container.UseContainerItem which honors BankFrame.activeBankType
-        -- (always character on retail), ignoring vesperTools' selected view.
-        -- Disabling it lets the secure overlay's macrotext2 (configured in
-        -- ConfigureSecureItemUse) deposit into the correct bank type.
+        -- Keep Blizzard/native secure item-use overlays out of writable bank
+        -- sessions so clicks land on vesperTools' item button and route
+        -- through the selected character/warband bank view.
         shouldUseNativeOverlay = function(window, button)
             if window:HasAnyWritableBankLive() then
                 return false
@@ -330,6 +327,9 @@ function BagsWindow:GetItemInteraction()
             local bagID = button and (button.bagID or button.actionBagID) or nil
             local slotID = button and (button.slotID or button.actionSlotID) or nil
             return button and button.isInteractive and bagID and slotID and true or false
+        end,
+        shouldUseSecureItemButton = function(window)
+            return not window:HasAnyWritableBankLive()
         end,
         afterConfigureButton = function(window, button, record, context)
             local isCurrentCharacter = context and context.isCurrentCharacter and true or false
@@ -3710,9 +3710,9 @@ function BagsWindow:FindDepositTargetSlot(sourceBagID, sourceSlotID, targetBagID
 end
 
 -- Variant of TryDepositItemIntoActiveBank that takes an explicit bag/slot
--- instead of inferring from a button. Used by the secure overlay's macrotext
--- pass-through so right-clicks while the warband view is selected route to the
--- warband bank instead of Blizzard's BankFrame.activeBankType-driven default.
+-- instead of inferring from a button. The replacement-bag click path uses this
+-- so right-clicks while the warband view is selected route to the warband bank
+-- instead of Blizzard's BankFrame.activeBankType-driven default.
 function BagsWindow:DepositBagItemToActiveBankAt(sourceBagID, sourceSlotID)
     if InCombatLockdown() then
         return false

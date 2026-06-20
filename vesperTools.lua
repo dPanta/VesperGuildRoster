@@ -3237,10 +3237,9 @@ function vesperTools:OpenConfig()
     self:Print(L["CONFIG_MODULE_NOT_FOUND"])
 end
 
--- Macrotext entry point used by the bag item secure overlay so right-clicks
--- while a writable bank is live route through vesperTools' selected view
--- (character/warband) instead of Blizzard's BankFrame.activeBankType. Must be
--- callable from a /run line — keep it simple and side-effect-free on failure.
+-- Public deposit entry point kept for slash/macro compatibility. The normal
+-- replacement-bag click path calls BagsWindow directly so bank deposits do not
+-- need a secure macro action.
 function vesperTools:DepositBagItemToActiveBank(bagID, slotID)
     local BagsWindow = self:GetModule("BagsWindow", true)
     if BagsWindow and type(BagsWindow.DepositBagItemToActiveBankAt) == "function" then
