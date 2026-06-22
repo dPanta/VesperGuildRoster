@@ -34,7 +34,7 @@ local MAGE_TELEPORT_SPELL_IDS = {
     3566,   -- Teleport: Thunder Bluff
     3567,   -- Teleport: Orgrimmar
     32271,  -- Teleport: Exodar
-    32272,  -- Teleport: Silvermoon
+    32272,  -- Teleport: Silvermoon (Burning Crusade)
     49358,  -- Teleport: Stonard
     49359,  -- Teleport: Theramore
     53140,  -- Teleport: Dalaran (Northrend)
@@ -50,6 +50,7 @@ local MAGE_TELEPORT_SPELL_IDS = {
     344587, -- Teleport: Oribos
     395277, -- Teleport: Valdrakken
     446540, -- Teleport: Dornogal
+    1259190, -- Teleport: Silvermoon City (Midnight)
 }
 
 local MAGE_PORTAL_SPELL_IDS = {
@@ -60,7 +61,7 @@ local MAGE_PORTAL_SPELL_IDS = {
     11419,  -- Portal: Darnassus
     11420,  -- Portal: Thunder Bluff
     32266,  -- Portal: Exodar
-    32267,  -- Portal: Silvermoon
+    32267,  -- Portal: Silvermoon (Burning Crusade)
     33691,  -- Portal: Shattrath
     49360,  -- Portal: Theramore
     49361,  -- Portal: Stonard
@@ -77,6 +78,7 @@ local MAGE_PORTAL_SPELL_IDS = {
     344597, -- Portal: Oribos
     395289, -- Portal: Valdrakken
     446534, -- Portal: Dornogal
+    1259194, -- Portal: Silvermoon City (Midnight)
 }
 
 local function normalizeTextureToken(textureValue)
@@ -493,10 +495,13 @@ function Portals:GetKnownMageTravelSpells(kind)
     -- Spellbook scan fallback picks up travel spells not yet in the local curated list.
     if vesperTools and type(vesperTools.ForEachPlayerSpellBookItem) == "function" then
         local spellType = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Spell or nil
+        local flyoutType = Enum and Enum.SpellBookItemType and Enum.SpellBookItemType.Flyout or nil
         vesperTools:ForEachPlayerSpellBookItem(function(itemInfo)
             local itemType = itemInfo and itemInfo.itemType or nil
             local spellID = itemInfo and (itemInfo.spellID or itemInfo.actionID) or nil
-            if spellID and not seen[spellID] and (spellType == nil or itemType == spellType) then
+            local isTravelSpellEntry = spellType == nil or itemType == nil
+                or itemType == spellType or (flyoutType ~= nil and itemType == flyoutType)
+            if spellID and not seen[spellID] and isTravelSpellEntry then
                 local spellInfo = vesperTools:GetSpellInfoSafe(spellID)
                 local spellName = spellInfo and spellInfo.name
                 if type(spellName) == "string" and spellName ~= "" then

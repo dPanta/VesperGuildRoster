@@ -1,3 +1,8 @@
+## 6.7.1 - 2026-06-22
+
+### Fixed
+- Fixed Midnight Mage travel menus not reliably showing Teleport: Silvermoon City and Portal: Silvermoon City by cataloging both spell IDs explicitly and accepting flyout entries during fallback spellbook discovery.
+
 ## 6.7.0 - 2026-06-20
 
 ### Added
