@@ -1108,6 +1108,7 @@ function Portals:ResetDungeonPortalButton(button)
     button.portalSpellID = nil
     button.portalSpellName = nil
     button.dungeonName = nil
+    button.portalUnlocked = nil
     button:EnableMouse(false)
     button:SetAttribute("type1", nil)
     button:SetAttribute("spell1", nil)
@@ -1391,6 +1392,9 @@ function Portals:RebuildDungeonPortalButtons()
         button:SetScript("OnEnter", function(portalButton)
             GameTooltip:SetOwner(portalButton, "ANCHOR_RIGHT")
             GameTooltip:SetText(portalButton.dungeonName, 1, 1, 1)
+            if portalButton.portalUnlocked == false then
+                GameTooltip:AddLine(L["PORTAL_NOT_UNLOCKED_YET"], 1, 0.2, 0.2)
+            end
             GameTooltip:Show()
         end)
         button:SetScript("OnLeave", function()
@@ -1428,7 +1432,8 @@ function Portals:ApplyDungeonPortalButtonState(button)
 
     local spellID = tonumber(button.portalSpellID)
     if not spellID then
-        button:EnableMouse(false)
+        button.portalUnlocked = false
+        button:EnableMouse(true)
         self:SetButtonCooldownSource(button, nil, nil)
         return false
     end
@@ -1458,6 +1463,8 @@ function Portals:ApplyDungeonPortalButtonState(button)
     local castName = spellName
 
     button.portalSpellName = spellName
+    button.portalUnlocked = known
+    button:EnableMouse(true)
     if button.icon then
         if iconFileID then
             button.icon:SetTexture(iconFileID)
@@ -1467,12 +1474,10 @@ function Portals:ApplyDungeonPortalButtonState(button)
     end
 
     if known and castName then
-        button:EnableMouse(true)
         button:SetAttribute("type1", "spell")
         button:SetAttribute("spell1", castName)
         self:SetButtonCooldownSource(button, "spell", spellID)
     else
-        button:EnableMouse(false)
         button:SetAttribute("type1", nil)
         button:SetAttribute("spell1", nil)
         self:SetButtonCooldownSource(button, nil, nil)

@@ -147,6 +147,7 @@ local EN_MISSING = {
     MIDNIGHT_LURE_SITE = "Skinning lure site",
     MIDNIGHT_LURE_WAYPOINT_UNAVAILABLE = "Waypoints are unavailable on this map.",
     NO_LIB_MODE_MESSAGE = "Running in No-Lib mode. Please install Ace3.",
+    PORTAL_NOT_UNLOCKED_YET = "Not Unlocked Yet",
     PORTALS_DATAHANDLE_MODULE_NOT_FOUND = "ERROR: DataHandle module not found!",
     PORTALS_MISSING_SEASON_DUNGEONS_FMT = "Missing portal metadata for current season dungeons: %s",
     PORTALS_MODULE_WARNING = "WARNING: Portals module not found!",

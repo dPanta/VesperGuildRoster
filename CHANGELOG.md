@@ -1,3 +1,8 @@
+## 6.8.0 - 2026-06-22
+
+### Added
+- Locked seasonal portal buttons now show the dungeon name and a "Not Unlocked Yet" message when hovered.
+
 ## 6.7.1 - 2026-06-22
 
 ### Fixed
