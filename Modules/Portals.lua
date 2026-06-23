@@ -256,6 +256,10 @@ local function getMageTravelSelectionKey(kind)
     return kind == "portal" and "_selectedMagePortalSpellID" or "_selectedMageTeleportSpellID"
 end
 
+local function getSavedMageTravelSelectionKey(kind)
+    return kind == "portal" and "lastMagePortalSpellID" or "lastMageTeleportSpellID"
+end
+
 local function findMageTravelSpell(spells, spellID)
     local numericSpellID = tonumber(spellID)
     if not numericSpellID or type(spells) ~= "table" then
@@ -312,6 +316,7 @@ function Portals:OnEnable()
     self:RegisterEvent("TOYS_UPDATED")
     self:RegisterEvent("SPELLS_CHANGED")
     self:RegisterEvent("SPELL_UPDATE_COOLDOWN")
+    self:RegisterEvent("UNIT_SPELLCAST_SUCCEEDED")
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
     self:RegisterEvent("PLAYER_ENTERING_WORLD")
     self:RegisterEvent("CHALLENGE_MODE_MAPS_UPDATE")
@@ -373,6 +378,25 @@ end
 
 function Portals:SPELL_UPDATE_COOLDOWN()
     self:RefreshActionCooldowns()
+end
+
+-- Keep each mage travel quick-cast button pointed at the most recently completed
+-- spell, including casts made from the spellbook or another action bar.
+function Portals:UNIT_SPELLCAST_SUCCEEDED(_, unitTarget, _, spellID)
+    if unitTarget ~= "player" or not self.isMage then
+        return
+    end
+
+    local numericSpellID = getPublicNumber(spellID)
+    if not numericSpellID then
+        return
+    end
+
+    if findMageTravelSpell(self.knownMagePortalSpells, numericSpellID) then
+        self:SelectMageTravelSpell("portal", numericSpellID)
+    elseif findMageTravelSpell(self.knownMageTeleportSpells, numericSpellID) then
+        self:SelectMageTravelSpell("teleport", numericSpellID)
+    end
 end
 
 -- Combat lockdown can block secure attribute writes; apply queued updates here.
@@ -2128,7 +2152,13 @@ end
 
 function Portals:SelectMageTravelSpell(kind, spellID)
     local selectionKey = getMageTravelSelectionKey(kind)
-    self[selectionKey] = tonumber(spellID)
+    local numericSpellID = tonumber(spellID)
+    self[selectionKey] = numericSpellID
+
+    local characterSettings = vesperTools:GetCharacterPortalSettings()
+    if characterSettings then
+        characterSettings[getSavedMageTravelSelectionKey(kind)] = numericSpellID
+    end
 
     if InCombatLockdown() then
         self.pendingUtilityRefresh = true
@@ -2155,6 +2185,18 @@ function Portals:RefreshMageTravelButtons()
 
     self.knownMageTeleportSpells = self:GetKnownMageTravelSpells("teleport")
     self.knownMagePortalSpells = self:GetKnownMageTravelSpells("portal")
+
+    local characterSettings = vesperTools:GetCharacterPortalSettings()
+    if characterSettings then
+        local teleportSelectionKey = getMageTravelSelectionKey("teleport")
+        local portalSelectionKey = getMageTravelSelectionKey("portal")
+        if self[teleportSelectionKey] == nil then
+            self[teleportSelectionKey] = tonumber(characterSettings[getSavedMageTravelSelectionKey("teleport")])
+        end
+        if self[portalSelectionKey] == nil then
+            self[portalSelectionKey] = tonumber(characterSettings[getSavedMageTravelSelectionKey("portal")])
+        end
+    end
 
     self.mageTeleportButton._mageTravelSelectionKey = getMageTravelSelectionKey("teleport")
     self.magePortalButton._mageTravelSelectionKey = getMageTravelSelectionKey("portal")

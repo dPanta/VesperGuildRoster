@@ -1,3 +1,9 @@
+## 6.8.1 - 2026-06-23
+
+### Changed
+- Mage portal and teleport quick-cast buttons now follow the last successfully cast travel spell, including casts made from the spellbook or another action bar.
+- The last portal and teleport choices are saved per character, keeping both one-click shortcuts ready after login or reload.
+
 ## 6.8.0 - 2026-06-22
 
 ### Added
