@@ -1,3 +1,8 @@
+## 6.8.2 - 2026-06-29
+
+### Fixed
+- Best Runs beside the portal window now shows the dungeon run contributing the player's Mythic+ rating for each dungeon instead of preferring a higher depleted completion.
+
 ## 6.8.1 - 2026-06-23
 
 ### Changed
