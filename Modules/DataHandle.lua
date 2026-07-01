@@ -5,13 +5,22 @@ local DataHandle = vesperTools:NewModule("DataHandle")
 -- 1) Static dungeon metadata lookup (mapID -> portal spell/name).
 -- 2) Shared color helpers for key level and rating text.
 -- 3) Persistent data accessors for ilvl sync + best-key sync stores.
--- Runtime mapID index built once from the static dungeon catalog below.
+-- Runtime indexes built once from the static dungeon catalog below.
 local dungListDB = nil
+local dungNameDB = nil
 local DUNGEON_PORTAL_SPELL_OPTIONS = {
     allowSessionCache = true,
     rememberSession = true,
     sessionScope = "dungeonPortal",
 }
+
+local function normalizeDungeonName(dungeonName)
+    if type(dungeonName) ~= "string" or dungeonName == "" then
+        return nil
+    end
+
+    return string.lower(dungeonName)
+end
 
 -- Canonical dungeon catalog used by portal and roster modules.
 -- Note: some dungeons intentionally appear twice with different portal spell IDs.
@@ -41,6 +50,8 @@ local dungList = {
         { exp = "BfA", mapID = 247, spellID = 467553, dungeonName = "The MOTHERLODE!!" },
         { exp = "BfA", mapID = 247, spellID = 467555, dungeonName = "The MOTHERLODE!!" },
         { exp = "BfA", mapID = 248, spellID = 424167, dungeonName = "Waycrest Manor" },
+        { exp = "BfA", mapID = 249, spellID = 1286831, dungeonName = "Kings' Rest" },
+        { exp = "BfA", mapID = 250, spellID = 1286828, dungeonName = "Temple of Sethraliss" },
         { exp = "BfA", mapID = 251, spellID = 410074, dungeonName = "The Underrot" },
         { exp = "BfA", mapID = 353, spellID = 464256, dungeonName = "Siege of Boralus" },
         { exp = "BfA", mapID = 353, spellID = 445418, dungeonName = "Siege of Boralus" },
@@ -89,11 +100,19 @@ local dungList = {
         { exp = "Mid", mapID = 558, spellID = 1254572, dungeonName = "Magisters' Terrace" },
         { exp = "Mid", mapID = 559, spellID = 1254563, dungeonName = "Nexus-Point Xenas" },
         { exp = "Mid", mapID = 560, spellID = 1254559, dungeonName = "Maisara Caverns" },
+
+        -- Midnight (Mid) - Season 2 portal catalog
+        { exp = "Mid", mapID = 584, spellID = 1286801, dungeonName = "The Blinding Vale" },
+        { exp = "Mid", mapID = 585, spellID = 1286804, dungeonName = "Voidscar Arena" },
+        { exp = "Mid", mapID = 586, spellID = 1286807, dungeonName = "Den of Nalorakk" },
+        { exp = "Mid", mapID = 587, spellID = 1286809, dungeonName = "Murder Row" },
+        { exp = "Mid", mapID = 588, spellID = 1286812, dungeonName = "Altar of Fangs" },
     }
 
 function DataHandle:OnInitialize()
     -- Initialize the local database
     dungListDB = {}
+    dungNameDB = {}
 
     -- Build mapID index for O(1) lookup in runtime UI code.
     for _, dungInfo in ipairs(dungList) do
@@ -102,6 +121,14 @@ function DataHandle:OnInitialize()
             dungListDB[dungInfo.mapID] = {}
         end
         table.insert(dungListDB[dungInfo.mapID], dungInfo)
+
+        local normalizedName = normalizeDungeonName(dungInfo.dungeonName)
+        if normalizedName then
+            if not dungNameDB[normalizedName] then
+                dungNameDB[normalizedName] = {}
+            end
+            table.insert(dungNameDB[normalizedName], dungInfo)
+        end
     end
 end
 
@@ -119,6 +146,19 @@ function DataHandle:GetDungeonsByMapID(mapID)
     end
 
     return nil
+end
+
+function DataHandle:GetDungeonsByDungeonName(dungeonName)
+    local normalizedName = normalizeDungeonName(dungeonName)
+    if normalizedName and dungNameDB and dungNameDB[normalizedName] then
+        return dungNameDB[normalizedName]
+    end
+
+    return nil
+end
+
+function DataHandle:GetDungeonsByMapIDOrDungeonName(mapID, dungeonName)
+    return self:GetDungeonsByMapID(mapID) or self:GetDungeonsByDungeonName(dungeonName)
 end
 
 function DataHandle:GetDefaultDungeonByMapID(mapID)

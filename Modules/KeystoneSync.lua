@@ -9,16 +9,24 @@ local L = vesperTools.L
 -- 3) Provide formatted display text for roster cells.
 local cachedRealmName = nil
 
--- Dungeon abbreviation lookup for the current Midnight Season 1 rotation.
+-- Dungeon abbreviation lookup for current and upcoming Midnight rotations.
 local DUNGEON_ABBREV = {
     [161] = "SR",                   -- Skyreach
     [239] = "SEAT",                 -- Seat of the Triumvirate
+    [249] = "KR",                   -- Kings' Rest
+    [250] = "TOS",                  -- Temple of Sethraliss
+    [399] = "RLP",                  -- Ruby Life Pools
     [402] = "AA",                   -- Algeth'ar Academy
     [556] = "POS",                  -- Pit of Saron
     [557] = "WS",                   -- Windrunner Spire
     [558] = "MGT",                  -- Magisters' Terrace
     [559] = "NPX",                  -- Nexus-Point Xenas
     [560] = "MAIS",                 -- Maisara Caverns
+    [584] = "TBV",                  -- The Blinding Vale
+    [585] = "VA",                   -- Voidscar Arena
+    [586] = "DON",                  -- Den of Nalorakk
+    [587] = "MR",                   -- Murder Row
+    [588] = "AOF",                  -- Altar of Fangs
 }
 
 local function getOwnedKeystoneLevel()

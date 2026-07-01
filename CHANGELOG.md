@@ -1,3 +1,12 @@
+## 6.9.0 - 2026-07-01
+
+### Added
+- Added the Midnight Season 2 Mythic+ portal catalog from the 12.1.0 PTR rotation: The Blinding Vale, Voidscar Arena, Den of Nalorakk, Murder Row, Altar of Fangs, Kings' Rest, and Temple of Sethraliss. Ruby Life Pools was already covered by the Dragonflight catalog.
+- Added Season 2 keystone abbreviations so roster and account-key displays stay compact on PTR and at launch.
+
+### Changed
+- Portal resolution can now fall back from a live Challenge Mode dungeon name to the static portal catalog when Blizzard introduces a new map ID for a known dungeon, reducing future PTR metadata misses.
+
 ## 6.8.2 - 2026-06-29
 
 ### Fixed

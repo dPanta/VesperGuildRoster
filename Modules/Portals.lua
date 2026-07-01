@@ -335,6 +335,49 @@ local function getSeasonBestForMapSafe(mapID)
     return nil, nil
 end
 
+local function getDungeonCatalogEntries(dataHandle, mapID, dungeonName)
+    if not dataHandle then
+        return nil, dungeonName
+    end
+
+    if type(dataHandle.GetDungeonsByMapID) == "function" then
+        local entries = dataHandle:GetDungeonsByMapID(mapID)
+        if type(entries) == "table" and #entries > 0 then
+            return entries, dungeonName
+        end
+    end
+
+    local resolvedDungeonName = dungeonName or getChallengeModeMapNameSafe(mapID)
+    if resolvedDungeonName and type(dataHandle.GetDungeonsByDungeonName) == "function" then
+        local entries = dataHandle:GetDungeonsByDungeonName(resolvedDungeonName)
+        if type(entries) == "table" and #entries > 0 then
+            return entries, resolvedDungeonName
+        end
+    end
+
+    return nil, resolvedDungeonName
+end
+
+local function buildCurrentSeasonDungeonRecord(dataHandle, mapID)
+    local entries, dungeonName = getDungeonCatalogEntries(dataHandle, mapID)
+    if type(entries) ~= "table" or #entries == 0 then
+        return nil
+    end
+
+    local entry = entries[1]
+    if type(entry) ~= "table" then
+        return nil
+    end
+
+    return {
+        exp = entry.exp,
+        mapID = mapID,
+        catalogMapID = entry.mapID,
+        spellID = entry.spellID,
+        dungeonName = dungeonName or entry.dungeonName,
+    }
+end
+
 local function getMageTravelSelectionKey(kind)
     return kind == "portal" and "_selectedMagePortalSpellID" or "_selectedMageTeleportSpellID"
 end
@@ -1312,7 +1355,7 @@ function Portals:GetCurrentSeasonDungeonRecords(dataHandle, shouldWarnMissing)
 
     for _, id in ipairs(curSeason) do
         local lookupID = tonumber(id) or id
-        local dungInfo = dataHandle:GetDungeonByMapID(lookupID)
+        local dungInfo = buildCurrentSeasonDungeonRecord(dataHandle, lookupID)
         if dungInfo then
             curSeasonDungs[#curSeasonDungs + 1] = dungInfo
         end
@@ -1355,7 +1398,8 @@ function Portals:GetCurrentSeasonDungeonMapSignature(dataHandle)
     local parts = {}
     for _, id in ipairs(curSeason) do
         local lookupID = tonumber(id) or id
-        if dataHandle:GetDungeonsByMapID(lookupID) then
+        local entries = getDungeonCatalogEntries(dataHandle, lookupID)
+        if type(entries) == "table" and #entries > 0 then
             parts[#parts + 1] = tostring(lookupID)
         end
     end
@@ -1387,16 +1431,13 @@ function Portals:ResolveDungeonPortalState(mapID, options)
         return nil
     end
 
+    options = type(options) == "table" and options or {}
     local dataHandle = vesperTools:GetModule("DataHandle", true)
-    local entries = dataHandle
-        and type(dataHandle.GetDungeonsByMapID) == "function"
-        and dataHandle:GetDungeonsByMapID(normalizedMapID)
-        or nil
+    local entries, resolvedDungeonName = getDungeonCatalogEntries(dataHandle, normalizedMapID, options.dungeonName)
     if type(entries) ~= "table" or #entries == 0 then
         return nil
     end
 
-    options = type(options) == "table" and options or {}
     local spellOptions = {
         allowSessionCache = options.allowSessionCache == true,
         rememberSession = options.rememberSession == true,
@@ -1411,7 +1452,8 @@ function Portals:ResolveDungeonPortalState(mapID, options)
             local spellInfo = vesperTools:GetSpellInfoSafe(spellID)
             local state = {
                 mapID = normalizedMapID,
-                dungeonName = entry.dungeonName,
+                catalogMapID = entry.mapID,
+                dungeonName = resolvedDungeonName or entry.dungeonName,
                 spellID = spellID,
                 spellName = spellInfo and spellInfo.name or nil,
                 icon = normalizeTextureToken(spellInfo and (spellInfo.iconID or spellInfo.originalIconID))
@@ -1467,6 +1509,7 @@ function Portals:RebuildDungeonPortalButtons()
         local resolved = self:ResolveDungeonPortalState(dungInfo.mapID, {
             allowSessionCache = true,
             rememberSession = true,
+            dungeonName = dungInfo.dungeonName,
         })
         local spellInfo = not resolved and vesperTools:GetSpellInfoSafe(dungInfo.spellID) or nil
         local spellName = resolved and resolved.spellName or (spellInfo and spellInfo.name)
@@ -1529,6 +1572,7 @@ function Portals:ApplyDungeonPortalButtonState(button)
         resolved = self:ResolveDungeonPortalState(mapID, {
             allowSessionCache = true,
             rememberSession = true,
+            dungeonName = button.dungeonName,
         })
         if resolved and tonumber(resolved.spellID) then
             button.portalSpellID = resolved.spellID
@@ -1655,14 +1699,14 @@ function Portals:DebugDumpDungeonPortalSpells()
 
     for index = 1, #curSeason do
         local mapID = tonumber(curSeason[index]) or curSeason[index]
-        local entries = dataHandle:GetDungeonsByMapID(mapID)
+        local entries, currentDungeonName = getDungeonCatalogEntries(dataHandle, mapID)
         if type(entries) == "table" and #entries > 0 then
             -- Iterate every catalog entry for this mapID so users with
             -- multi-variant dungeons (e.g. Skyreach Midnight + Warlords) can
             -- see which alternate spellIDs were tried and which API path
             -- detected each one. The per-mapID summary line below mirrors
             -- what the live UI uses.
-            local dungeonLabel = entries[1].dungeonName or tostring(mapID)
+            local dungeonLabel = currentDungeonName or entries[1].dungeonName or tostring(mapID)
             for _, dungInfo in ipairs(entries) do
                 local spellInfo = vesperTools:GetSpellInfoSafe(dungInfo.spellID)
                 local spellName = (spellInfo and spellInfo.name) or tostring(dungInfo.spellID)
@@ -1687,6 +1731,7 @@ function Portals:DebugDumpDungeonPortalSpells()
             local resolved = self:ResolveDungeonPortalState(mapID, {
                 allowSessionCache = true,
                 rememberSession = false,
+                dungeonName = dungeonLabel,
             })
             vesperTools:Print(string.format(
                 "%s (%d): UI uses %s",
@@ -2498,7 +2543,8 @@ function Portals:WarnMissingSeasonDungeonMetadata(curSeason, dataHandle)
     local unresolved = {}
     for i = 1, #missingMapIDs do
         local mapID = missingMapIDs[i]
-        if not self.reportedMissingSeasonDungeonMapIDs[mapID] then
+        local entries = getDungeonCatalogEntries(dataHandle, mapID)
+        if type(entries) ~= "table" and not self.reportedMissingSeasonDungeonMapIDs[mapID] then
             local dungeonName = getChallengeModeMapNameSafe(mapID) or L["UNKNOWN_DUNGEON"]
             unresolved[#unresolved + 1] = string.format("%s (%d)", dungeonName, mapID)
             self.reportedMissingSeasonDungeonMapIDs[mapID] = true
