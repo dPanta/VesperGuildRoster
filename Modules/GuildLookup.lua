@@ -48,25 +48,6 @@ local function normalizeSenderName(name)
 end
 
 -- Normalize bag text into a lowercase, markup-free search haystack.
-local function normalizeSearchText(text)
-    if type(text) ~= "string" then
-        return nil
-    end
-
-    local normalized = text
-    normalized = normalized:gsub("|c%x%x%x%x%x%x%x%x", "")
-    normalized = normalized:gsub("|r", "")
-    normalized = normalized:gsub("|T.-|t", " ")
-    normalized = normalized:gsub("|A.-|a", " ")
-    normalized = normalized:gsub("[%z\1-\31]", " ")
-    normalized = normalized:gsub("%s+", " ")
-    normalized = strtrim(normalized)
-    if normalized == "" then
-        return nil
-    end
-
-    return string.lower(normalized)
-end
 
 local function getEffectiveQueryLength(normalizedQuery)
     if type(normalizedQuery) ~= "string" then
@@ -90,10 +71,6 @@ local function buildSearchTokens(normalizedQuery)
     return #tokens > 0 and tokens or nil
 end
 
-local function buildFallbackItemName(itemID)
-    return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
-end
-
 local function recordMatchesQuery(record, searchTokens)
     if not searchTokens or #searchTokens == 0 then
         return false
@@ -101,7 +78,7 @@ local function recordMatchesQuery(record, searchTokens)
 
     local haystack = type(record) == "table" and record.searchText or nil
     if not haystack then
-        haystack = normalizeSearchText(table.concat({
+        haystack = vesperTools:NormalizeSearchText(table.concat({
             type(record) == "table" and (record.itemName or "") or "",
             type(record) == "table" and (record.itemDescription or "") or "",
         }, " "))
@@ -343,7 +320,7 @@ function GuildLookup:BuildCurrentCharacterMatches(normalizedQuery, maxItems)
                         entry = {
                             itemID = tonumber(record.itemID),
                             hyperlink = record.hyperlink,
-                            itemName = record.itemName or buildFallbackItemName(record.itemID),
+                            itemName = record.itemName or vesperTools:BuildFallbackItemName(record.itemID),
                             iconFileID = record.iconFileID or getItemIconFileID(record.itemID),
                             count = 0,
                         }
@@ -367,8 +344,8 @@ function GuildLookup:BuildCurrentCharacterMatches(normalizedQuery, maxItems)
     end
 
     table.sort(matches, function(a, b)
-        local aName = string.lower(a.itemName or buildFallbackItemName(a.itemID))
-        local bName = string.lower(b.itemName or buildFallbackItemName(b.itemID))
+        local aName = string.lower(a.itemName or vesperTools:BuildFallbackItemName(a.itemID))
+        local bName = string.lower(b.itemName or vesperTools:BuildFallbackItemName(b.itemID))
         if aName ~= bName then
             return aName < bName
         end
@@ -392,8 +369,8 @@ end
 -- Convert the active response table into stable UI row ordering.
 function GuildLookup:SortResults()
     table.sort(self.state.results, function(a, b)
-        local aName = string.lower(a.itemName or buildFallbackItemName(a.itemID))
-        local bName = string.lower(b.itemName or buildFallbackItemName(b.itemID))
+        local aName = string.lower(a.itemName or vesperTools:BuildFallbackItemName(a.itemID))
+        local bName = string.lower(b.itemName or vesperTools:BuildFallbackItemName(b.itemID))
         if aName ~= bName then
             return aName < bName
         end
@@ -432,7 +409,7 @@ end
 
 -- Start a new guild-wide query and reset all active response state.
 function GuildLookup:StartLookup(queryText)
-    local normalizedQuery = normalizeSearchText(queryText)
+    local normalizedQuery = vesperTools:NormalizeSearchText(queryText)
     local displayQueryText = type(queryText) == "string" and strtrim(queryText) or ""
 
     if not self:IsActive() then
@@ -556,7 +533,7 @@ function GuildLookup:OnLookupRequestReceived(prefix, message, distribution, send
         return
     end
 
-    local normalizedQuery = normalizeSearchText(queryText)
+    local normalizedQuery = vesperTools:NormalizeSearchText(queryText)
     if not normalizedQuery or getEffectiveQueryLength(normalizedQuery) < MIN_QUERY_LENGTH then
         return
     end
@@ -636,7 +613,7 @@ function GuildLookup:OnLookupResponseReceived(prefix, message, distribution, sen
         return
     end
 
-    local itemName = (type(hyperlink) == "string" and hyperlink ~= "" and hyperlink:match("%[(.-)%]")) or (GetItemInfo and GetItemInfo(itemID)) or buildFallbackItemName(itemID)
+    local itemName = (type(hyperlink) == "string" and hyperlink ~= "" and hyperlink:match("%[(.-)%]")) or (GetItemInfo and GetItemInfo(itemID)) or vesperTools:BuildFallbackItemName(itemID)
     local resultKey = string.format("%s|%d", senderName, itemID)
     local row = self.activeResultsByKey[resultKey]
     if not row then

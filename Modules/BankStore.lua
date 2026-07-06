@@ -94,30 +94,6 @@ local function normalizeName(text)
     return trimmed
 end
 
-local function normalizeSearchText(text)
-    if type(text) ~= "string" then
-        return nil
-    end
-
-    local normalized = text
-    normalized = normalized:gsub("|c%x%x%x%x%x%x%x%x", "")
-    normalized = normalized:gsub("|r", "")
-    normalized = normalized:gsub("|T.-|t", " ")
-    normalized = normalized:gsub("|A.-|a", " ")
-    normalized = normalized:gsub("[%z\1-\31]", " ")
-    normalized = normalized:gsub("%s+", " ")
-    normalized = strtrim(normalized)
-    if normalized == "" then
-        return nil
-    end
-
-    return string.lower(normalized)
-end
-
-local function buildFallbackItemName(itemID)
-    return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
-end
-
 local function getEmptySlotCountForBag(bag)
     if type(bag) ~= "table" then
         return 0
@@ -391,13 +367,13 @@ function BankStore:GetItemDescription(itemID, hyperlink, bagID, slotID, itemName
         return nil
     end
 
-    local normalizedItemName = normalizeSearchText(itemName)
+    local normalizedItemName = vesperTools:NormalizeSearchText(itemName)
     local descriptionParts = {}
     local skippedName = false
 
     for i = 1, #parts do
         local part = parts[i]
-        local normalizedPart = normalizeSearchText(part)
+        local normalizedPart = vesperTools:NormalizeSearchText(part)
         if normalizedPart then
             if not skippedName and normalizedItemName and normalizedPart == normalizedItemName then
                 skippedName = true
@@ -444,7 +420,7 @@ function BankStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
     if itemName then
         meta.itemName = itemName
     elseif not meta.itemName then
-        meta.itemName = buildFallbackItemName(itemID)
+        meta.itemName = vesperTools:BuildFallbackItemName(itemID)
     end
 
     local shouldRefreshDescription = not meta.itemDescription
@@ -463,8 +439,8 @@ function BankStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
         meta.hyperlink = hyperlink
     end
 
-    meta.searchText = normalizeSearchText(table.concat({
-        meta.itemName or buildFallbackItemName(itemID),
+    meta.searchText = vesperTools:NormalizeSearchText(table.concat({
+        meta.itemName or vesperTools:BuildFallbackItemName(itemID),
         meta.itemDescription or "",
     }, " ")) or meta.searchText
     meta.lastResolved = time()
@@ -547,7 +523,7 @@ function BankStore:BuildSlotRecord(bagID, slotID)
         slotID = slotID,
         itemID = itemID,
         itemGUID = itemGUID,
-        itemName = itemName or buildFallbackItemName(itemID),
+        itemName = itemName or vesperTools:BuildFallbackItemName(itemID),
         itemDescription = itemDescription,
         hyperlink = info.hyperlink,
         iconFileID = info.iconFileID or (meta and meta.iconFileID) or "Interface\\Icons\\INV_Misc_QuestionMark",
@@ -557,9 +533,9 @@ function BankStore:BuildSlotRecord(bagID, slotID)
         isQuestItem = questInfo.isQuestItem and true or false,
         isCraftingReagent = info.isCraftingReagent and true or false,
         categoryKey = categoryKey,
-        sortKey = string.lower(itemName or buildFallbackItemName(itemID)),
-        searchText = meta and meta.searchText or normalizeSearchText(table.concat({
-            itemName or buildFallbackItemName(itemID),
+        sortKey = string.lower(itemName or vesperTools:BuildFallbackItemName(itemID)),
+        searchText = meta and meta.searchText or vesperTools:NormalizeSearchText(table.concat({
+            itemName or vesperTools:BuildFallbackItemName(itemID),
             itemDescription or "",
         }, " ")),
     }

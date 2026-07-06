@@ -3800,6 +3800,31 @@ function vesperTools:GetCurrentCharacterFullName()
     return string.format("%s-%s", name, realm)
 end
 
+-- Shared text helpers used by the bag/bank/search modules.
+function vesperTools:NormalizeSearchText(text)
+    if type(text) ~= "string" then
+        return nil
+    end
+
+    local normalized = text
+    normalized = normalized:gsub("|c%x%x%x%x%x%x%x%x", "")
+    normalized = normalized:gsub("|r", "")
+    normalized = normalized:gsub("|T.-|t", " ")
+    normalized = normalized:gsub("|A.-|a", " ")
+    normalized = normalized:gsub("[%z\1-\31]", " ")
+    normalized = normalized:gsub("%s+", " ")
+    normalized = strtrim(normalized)
+    if normalized == "" then
+        return nil
+    end
+
+    return string.lower(normalized)
+end
+
+function vesperTools:BuildFallbackItemName(itemID)
+    return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
+end
+
 function vesperTools:NormalizePlayerFullName(name)
     if type(name) ~= "string" then
         return nil

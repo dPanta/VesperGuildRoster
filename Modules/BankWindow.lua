@@ -67,30 +67,6 @@ local function applyConfiguredFontIfPresent(fontString, size, flags)
     end
 end
 
-local function buildFallbackItemName(itemID)
-    return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
-end
-
-local function normalizeSearchText(text)
-    if type(text) ~= "string" then
-        return nil
-    end
-
-    local normalized = text
-    normalized = normalized:gsub("|c%x%x%x%x%x%x%x%x", "")
-    normalized = normalized:gsub("|r", "")
-    normalized = normalized:gsub("|T.-|t", " ")
-    normalized = normalized:gsub("|A.-|a", " ")
-    normalized = normalized:gsub("[%z\1-\31]", " ")
-    normalized = normalized:gsub("%s+", " ")
-    normalized = strtrim(normalized)
-    if normalized == "" then
-        return nil
-    end
-
-    return string.lower(normalized)
-end
-
 local function suppressNativeOverlayVisuals(overlay)
     if not overlay then
         return
@@ -1012,7 +988,7 @@ end
 
 function BankWindow:SetSearchQuery(text)
     self.focusedSearchLocator = nil
-    self.searchQuery = normalizeSearchText(text)
+    self.searchQuery = vesperTools:NormalizeSearchText(text)
     self:UpdateSearchPlaceholder()
     if self.frame and self.frame:IsShown() then
         self:RefreshWindow()
@@ -1053,7 +1029,7 @@ function BankWindow:RecordMatchesSearch(record, searchTokens)
 
     local haystack = record and record.searchText
     if not haystack then
-        haystack = normalizeSearchText(table.concat({
+        haystack = vesperTools:NormalizeSearchText(table.concat({
             record and record.itemName or "",
             record and record.itemDescription or "",
         }, " "))
@@ -1171,7 +1147,7 @@ function BankWindow:OpenSearchResult(locator)
     end
 
     local queryText = type(locator.queryText) == "string" and locator.queryText or locator.itemName or ""
-    self.searchQuery = normalizeSearchText(queryText)
+    self.searchQuery = vesperTools:NormalizeSearchText(queryText)
 
     if self.searchBox and self.searchBox:GetText() ~= queryText then
         self.searchBox:SetText(queryText)

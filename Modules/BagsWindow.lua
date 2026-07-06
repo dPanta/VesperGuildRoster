@@ -110,10 +110,6 @@ local function formatGoldQuantity(copperAmount)
     return string.format("%sg", formatCurrencyQuantity(gold))
 end
 
-local function buildFallbackItemName(itemID)
-    return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
-end
-
 local function bitBand(a, b)
     if bit and bit.band then
         return bit.band(a, b)
@@ -124,26 +120,6 @@ local function bitBand(a, b)
     end
 
     return 0
-end
-
-local function normalizeSearchText(text)
-    if type(text) ~= "string" then
-        return nil
-    end
-
-    local normalized = text
-    normalized = normalized:gsub("|c%x%x%x%x%x%x%x%x", "")
-    normalized = normalized:gsub("|r", "")
-    normalized = normalized:gsub("|T.-|t", " ")
-    normalized = normalized:gsub("|A.-|a", " ")
-    normalized = normalized:gsub("[%z\1-\31]", " ")
-    normalized = normalized:gsub("%s+", " ")
-    normalized = strtrim(normalized)
-    if normalized == "" then
-        return nil
-    end
-
-    return string.lower(normalized)
 end
 
 local function getNewItemGlowAtlas(quality)
@@ -1570,7 +1546,7 @@ function BagsWindow:ConfigureGuildLookupResultRowTooltip(row)
     if type(row.hyperlink) == "string" and row.hyperlink ~= "" then
         GameTooltip:SetHyperlink(row.hyperlink)
     else
-        GameTooltip:SetText(row.itemName or buildFallbackItemName(row.itemID), 1, 1, 1)
+        GameTooltip:SetText(row.itemName or vesperTools:BuildFallbackItemName(row.itemID), 1, 1, 1)
     end
     GameTooltip:AddLine(" ")
     GameTooltip:AddDoubleLine(L["BAGS_GUILD_LOOKUP_PLAYER"], row.playerName or UNKNOWN, 0.85, 0.85, 0.85, 1, 1, 1)
@@ -1587,7 +1563,7 @@ function BagsWindow:ConfigureGuildLookupResultRow(row, entry, availableWidth)
     row.playerName = entry.sender
     row.itemCount = tonumber(entry.count) or 0
     row.icon:SetTexture(entry.iconFileID or "Interface\\Icons\\INV_Misc_QuestionMark")
-    row.itemText:SetText(entry.itemName or buildFallbackItemName(entry.itemID))
+    row.itemText:SetText(entry.itemName or vesperTools:BuildFallbackItemName(entry.itemID))
     row.playerText:SetWidth(playerColumnWidth)
     row.playerText:SetText(entry.sender or UNKNOWN)
     row.countText:SetText(tostring(row.itemCount))
@@ -1853,7 +1829,7 @@ end
 
 function BagsWindow:SetSearchQuery(text)
     self.focusedSearchLocator = nil
-    self.searchQuery = normalizeSearchText(text)
+    self.searchQuery = vesperTools:NormalizeSearchText(text)
     self:UpdateSearchPlaceholder()
     if self.frame and self.frame:IsShown() then
         self:RefreshWindow()
@@ -1898,7 +1874,7 @@ function BagsWindow:RecordMatchesSearch(record, searchTokens)
 
     local haystack = record and record.searchText
     if not haystack then
-        haystack = normalizeSearchText(table.concat({
+        haystack = vesperTools:NormalizeSearchText(table.concat({
             record and record.itemName or "",
             record and record.itemDescription or "",
         }, " "))
@@ -2002,7 +1978,7 @@ function BagsWindow:OpenSearchResult(locator)
     end
 
     local queryText = type(locator.queryText) == "string" and locator.queryText or locator.itemName or ""
-    self.searchQuery = normalizeSearchText(queryText)
+    self.searchQuery = vesperTools:NormalizeSearchText(queryText)
 
     local guildLookup = self:GetGuildLookup()
     if guildLookup then

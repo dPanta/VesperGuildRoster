@@ -8,10 +8,6 @@ local STACK_SPLIT_FRAME_STRATA = "TOOLTIP"
 local stackSplitFrameLayerHooked = false
 local lastStackSplitOwner = nil
 
-local function buildFallbackItemName(itemID)
-    return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
-end
-
 local function safeColorForQuality(quality)
     if quality == nil then
         return 0.18, 0.18, 0.18
@@ -549,7 +545,7 @@ function vesperTools:CreateContainerItemController(host, config)
             if type(button.hyperlink) == "string" and button.hyperlink ~= "" then
                 GameTooltip:SetHyperlink(button.hyperlink)
             else
-                GameTooltip:SetText(button.itemName or buildFallbackItemName(button.itemID), 1, 1, 1)
+                GameTooltip:SetText(button.itemName or vesperTools:BuildFallbackItemName(button.itemID), 1, 1, 1)
             end
         end
 

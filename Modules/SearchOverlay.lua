@@ -309,26 +309,6 @@ local CONFIG_DEFS = {
     },
 }
 
-local function normalizeSearchText(text)
-    if type(text) ~= "string" then
-        return nil
-    end
-
-    local normalized = text
-    normalized = normalized:gsub("|c%x%x%x%x%x%x%x%x", "")
-    normalized = normalized:gsub("|r", "")
-    normalized = normalized:gsub("|T.-|t", " ")
-    normalized = normalized:gsub("|A.-|a", " ")
-    normalized = normalized:gsub("[%z\1-\31]", " ")
-    normalized = normalized:gsub("%s+", " ")
-    normalized = strtrim(normalized)
-    if normalized == "" then
-        return nil
-    end
-
-    return string.lower(normalized)
-end
-
 local function addTextPart(parts, value)
     if type(value) ~= "string" or value == "" then
         return
@@ -349,7 +329,7 @@ local function buildSubtitle(prefix, ownerName, count)
 end
 
 local function tokenizeSearch(text)
-    local normalized = normalizeSearchText(text)
+    local normalized = vesperTools:NormalizeSearchText(text)
     if not normalized then
         return nil
     end
@@ -672,8 +652,8 @@ function SearchOverlay:CreateIndexEntry(spec)
     addTextPart(parts, entry.subtitle)
     addTextPart(parts, entry.searchText)
     addTextPart(parts, entry.searchTags)
-    entry.normalizedTitle = normalizeSearchText(entry.title) or ""
-    entry.searchText = normalizeSearchText(table.concat(parts, " ")) or entry.normalizedTitle
+    entry.normalizedTitle = vesperTools:NormalizeSearchText(entry.title) or ""
+    entry.searchText = vesperTools:NormalizeSearchText(table.concat(parts, " ")) or entry.normalizedTitle
     entry.icon = entry.icon or FALLBACK_ICON_TEXTURE
     entry.kind = entry.kind or "action"
     entry.priority = tonumber(entry.priority) or 0
@@ -1793,7 +1773,7 @@ function SearchOverlay:RefreshResults()
     end
 
     local query = self.searchBox and self.searchBox:GetText() or ""
-    local normalizedQuery = normalizeSearchText(query)
+    local normalizedQuery = vesperTools:NormalizeSearchText(query)
     if not normalizedQuery or string.len(normalizedQuery) < MIN_SEARCH_QUERY_CHARACTERS then
         wipe(self.visibleResults)
         self.selectedResultIndex = 0

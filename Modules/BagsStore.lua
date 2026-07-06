@@ -147,30 +147,6 @@ local function normalizeName(text)
     return trimmed
 end
 
-local function normalizeSearchText(text)
-    if type(text) ~= "string" then
-        return nil
-    end
-
-    local normalized = text
-    normalized = normalized:gsub("|c%x%x%x%x%x%x%x%x", "")
-    normalized = normalized:gsub("|r", "")
-    normalized = normalized:gsub("|T.-|t", " ")
-    normalized = normalized:gsub("|A.-|a", " ")
-    normalized = normalized:gsub("[%z\1-\31]", " ")
-    normalized = normalized:gsub("%s+", " ")
-    normalized = strtrim(normalized)
-    if normalized == "" then
-        return nil
-    end
-
-    return string.lower(normalized)
-end
-
-local function buildFallbackItemName(itemID)
-    return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
-end
-
 local function textContainsAnyMarker(text, markers)
     if type(text) ~= "string" or text == "" then
         return false
@@ -215,7 +191,7 @@ local function isSeasonSparkItem(meta, info)
         return false
     end
 
-    local itemName = normalizeSearchText((meta and meta.itemName) or (info and info.itemName) or "")
+    local itemName = vesperTools:NormalizeSearchText((meta and meta.itemName) or (info and info.itemName) or "")
     return textStartsWithAnyMarker(itemName, SEASON_SPARK_NAME_PREFIXES)
 end
 
@@ -530,7 +506,7 @@ function BagsStore:UpdateCurrentScaledLegacyEquipmentFlag(meta)
     local expansionID = normalizeExpansionID(meta.expansionID)
     local currentExpansionID = getCurrentExpansionID()
     local classID = meta.classID
-    local searchText = meta.searchText or normalizeSearchText(meta.itemDescription or "")
+    local searchText = meta.searchText or vesperTools:NormalizeSearchText(meta.itemDescription or "")
     local requiredLevel = normalizeRequiredLevel(meta.requiredLevel) or extractRequiredLevel(searchText)
     local currentExpansionMaxLevel = getCurrentExpansionMaxLevel()
     local isLegacySeasonalDungeonEquipment = expansionID ~= nil
@@ -865,13 +841,13 @@ function BagsStore:GetItemDescription(itemID, hyperlink, bagID, slotID, itemName
         return nil
     end
 
-    local normalizedItemName = normalizeSearchText(itemName)
+    local normalizedItemName = vesperTools:NormalizeSearchText(itemName)
     local descriptionParts = {}
     local skippedName = false
 
     for i = 1, #parts do
         local part = parts[i]
-        local normalizedPart = normalizeSearchText(part)
+        local normalizedPart = vesperTools:NormalizeSearchText(part)
         if normalizedPart then
             if not skippedName and normalizedItemName and normalizedPart == normalizedItemName then
                 skippedName = true
@@ -938,7 +914,7 @@ function BagsStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
     if itemName then
         meta.itemName = itemName
     elseif not meta.itemName then
-        meta.itemName = buildFallbackItemName(itemID)
+        meta.itemName = vesperTools:BuildFallbackItemName(itemID)
     end
 
     local shouldRefreshDescription = not meta.itemDescription
@@ -957,8 +933,8 @@ function BagsStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
         meta.hyperlink = hyperlink
     end
 
-    meta.searchText = normalizeSearchText(table.concat({
-        meta.itemName or buildFallbackItemName(itemID),
+    meta.searchText = vesperTools:NormalizeSearchText(table.concat({
+        meta.itemName or vesperTools:BuildFallbackItemName(itemID),
         meta.itemDescription or "",
     }, " ")) or meta.searchText
     meta.requiredLevel = extractRequiredLevel(meta.searchText) or meta.requiredLevel
@@ -984,7 +960,7 @@ function BagsStore:ResolveCategoryKey(meta, info, questInfo)
 
     local searchText = (meta and meta.searchText)
         or (info and info.searchText)
-        or normalizeSearchText((info and info.itemName) or "")
+        or vesperTools:NormalizeSearchText((info and info.itemName) or "")
     if isKnownSeasonItemID(info and info.itemID)
         or textContainsAnyMarker(searchText, SEASON_NAME_MARKERS)
         or isSeasonSparkItem(meta, info)
@@ -1062,7 +1038,7 @@ function BagsStore:BuildSlotRecord(bagID, slotID)
         slotID = slotID,
         itemID = itemID,
         itemGUID = itemGUID,
-        itemName = itemName or buildFallbackItemName(itemID),
+        itemName = itemName or vesperTools:BuildFallbackItemName(itemID),
         itemDescription = itemDescription,
         hyperlink = info.hyperlink,
         iconFileID = info.iconFileID or (meta and meta.iconFileID) or "Interface\\Icons\\INV_Misc_QuestionMark",
@@ -1073,9 +1049,9 @@ function BagsStore:BuildSlotRecord(bagID, slotID)
         isQuestItem = questInfo.isQuestItem and true or false,
         isCraftingReagent = (info.isCraftingReagent or (meta and meta.isCraftingReagent)) and true or false,
         categoryKey = categoryKey,
-        sortKey = string.lower(itemName or buildFallbackItemName(itemID)),
-        searchText = meta and meta.searchText or normalizeSearchText(table.concat({
-            itemName or buildFallbackItemName(itemID),
+        sortKey = string.lower(itemName or vesperTools:BuildFallbackItemName(itemID)),
+        searchText = meta and meta.searchText or vesperTools:NormalizeSearchText(table.concat({
+            itemName or vesperTools:BuildFallbackItemName(itemID),
             itemDescription or "",
         }, " ")),
     }
