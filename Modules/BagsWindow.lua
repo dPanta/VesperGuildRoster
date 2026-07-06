@@ -200,6 +200,7 @@ function BagsWindow:OnInitialize()
     self.newItemGlowKeysSeen = {}
     self.pendingSecureItemRefresh = false
     self.focusedSearchLocator = nil
+    self.newItemExpiryTimer = nil
 end
 
 function BagsWindow:OnEnable()
@@ -208,7 +209,6 @@ function BagsWindow:OnEnable()
     self:RegisterMessage("VESPERTOOLS_BAGS_INDEX_UPDATED", "OnBagDataChanged")
     self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "OnConfigChanged")
     self:RegisterMessage("VESPERTOOLS_GUILD_LOOKUP_UPDATED", "OnGuildLookupUpdated")
-    self:RegisterEvent("PLAYER_ENTERING_WORLD")
     self:RegisterEvent("PLAYER_REGEN_ENABLED")
     self:RegisterEvent("CURRENCY_DISPLAY_UPDATE", "OnCurrencyDataChanged")
 end
@@ -254,9 +254,7 @@ function BagsWindow:GetItemInteraction()
             return not window:HasAnyWritableBankLive()
         end,
         afterConfigureButton = function(window, button, record, context)
-            local isCurrentCharacter = context and context.isCurrentCharacter and true or false
-
-            if window:ShouldShowNewItemGlow(record, isCurrentCharacter) then
+            if window:ShouldShowNewItemGlow(record, context and context.characterKey or nil) then
                 button.newGlow:SetAtlas(getNewItemGlowAtlas(record.quality), false)
                 button.newGlow:Show()
                 if not button.newGlowAnim:IsPlaying() then
@@ -307,18 +305,6 @@ function BagsWindow:PLAYER_REGEN_ENABLED()
         self.pendingSecureItemRefresh = false
         self:RefreshWindow()
     end
-end
-
-function BagsWindow:PLAYER_ENTERING_WORLD(_, isInitialLogin, isReloadingUI)
-    if not isInitialLogin or isReloadingUI then
-        return
-    end
-
-    C_Timer.After(0, function()
-        if self:IsEnabled() then
-            self:ClearCurrentCharacterNewItemMarkers(false)
-        end
-    end)
 end
 
 -- Window open/selection flow.
@@ -1671,13 +1657,19 @@ function BagsWindow:CanClearCurrentCharacterNewItems()
 end
 
 function BagsWindow:CanClearNewItemsForSelectedCharacter()
-    if not self:CanClearCurrentCharacterNewItems() then
+    local store = self:GetStore()
+    if not store then
         return false
     end
 
-    local store = self:GetStore()
-    local currentCharacterKey = store and store.GetCurrentCharacterKey and store:GetCurrentCharacterKey() or nil
-    return currentCharacterKey == self.selectedCharacterKey
+    if type(store.HasActiveNewItems) == "function" and store:HasActiveNewItems(self.selectedCharacterKey) then
+        return true
+    end
+
+    local currentCharacterKey = store.GetCurrentCharacterKey and store:GetCurrentCharacterKey() or nil
+    return currentCharacterKey ~= nil
+        and currentCharacterKey == self.selectedCharacterKey
+        and self:CanClearCurrentCharacterNewItems()
 end
 
 function BagsWindow:ClearCurrentCharacterNewItemMarkers(shouldRefreshWindow)
@@ -1722,11 +1714,47 @@ function BagsWindow:ClearCurrentCharacterNewItemMarkers(shouldRefreshWindow)
 end
 
 function BagsWindow:ClearNewItemMarkers()
-    if not self:CanClearNewItemsForSelectedCharacter() then
+    local store = self:GetStore()
+    if not store then
         return
     end
 
-    self:ClearCurrentCharacterNewItemMarkers(true)
+    local currentCharacterKey = store.GetCurrentCharacterKey and store:GetCurrentCharacterKey() or nil
+    if currentCharacterKey and currentCharacterKey == self.selectedCharacterKey then
+        self:ClearCurrentCharacterNewItemMarkers(false)
+    end
+
+    if type(store.ClearNewItems) == "function" then
+        store:ClearNewItems(self.selectedCharacterKey)
+    end
+end
+
+function BagsWindow:CancelNewItemExpiryTimer()
+    if self.newItemExpiryTimer then
+        self.newItemExpiryTimer:Cancel()
+        self.newItemExpiryTimer = nil
+    end
+end
+
+-- Re-render once the oldest active new item crosses the timeout so it slides
+-- back into its natural category while the window is open.
+function BagsWindow:ScheduleNewItemExpiryRefresh(characterKey)
+    self:CancelNewItemExpiryTimer()
+
+    local store = self:GetStore()
+    local expiresAt = store and type(store.GetNextNewItemExpiry) == "function"
+        and store:GetNextNewItemExpiry(characterKey) or nil
+    if not expiresAt then
+        return
+    end
+
+    local delay = math.max(1, (expiresAt - time()) + 1)
+    self.newItemExpiryTimer = C_Timer.NewTimer(delay, function()
+        self.newItemExpiryTimer = nil
+        if self:IsEnabled() and self.frame and self.frame:IsShown() then
+            self:RefreshWindow()
+        end
+    end)
 end
 
 -- Search tokenization and local filtering.
@@ -2469,6 +2497,7 @@ function BagsWindow:CreateWindow()
         self:HandleCloseRequest()
     end)
     frame:SetScript("OnHide", function()
+        self:CancelNewItemExpiryTimer()
         self.layoutEditMode = false
         self:StopCategoryDrag(false)
         self:HideCharacterMenu()
@@ -2568,8 +2597,13 @@ function BagsWindow:PrepareLayoutGroups(groups, columns, viewSettings)
     for i = 1, #groups do
         local group = groups[i]
         group.sourceOrder = i
+        group.isPinnedNewSection = group.category and group.category.key == "new" or false
 
-        local layoutEntry = group.category and self:GetCategoryLayoutEntry(group.category.key, false) or nil
+        local layoutEntry = nil
+        if not group.isPinnedNewSection and group.category then
+            layoutEntry = self:GetCategoryLayoutEntry(group.category.key, false)
+        end
+
         local minimumSpan = self:GetMinimumSectionSpan(group, columns, viewSettings)
         group.minSpan = minimumSpan
         group.defaultSpan = self:GetDefaultSectionSpan(group, columns, viewSettings, minimumSpan)
@@ -2578,6 +2612,10 @@ function BagsWindow:PrepareLayoutGroups(groups, columns, viewSettings)
         local savedSpan = layoutEntry and math.floor((tonumber(layoutEntry.span) or 0) + 0.5) or nil
         group.layoutOrder = savedOrder and savedOrder > 0 and savedOrder or nil
         group.savedSpan = savedSpan and savedSpan > 0 and savedSpan or nil
+
+        if group.isPinnedNewSection then
+            group.layoutOrder = -1
+        end
     end
 
     table.sort(groups, function(a, b)
@@ -2593,6 +2631,9 @@ function BagsWindow:PrepareLayoutGroups(groups, columns, viewSettings)
     for i = 1, #groups do
         local group = groups[i]
         group.span = clamp(group.savedSpan or group.defaultSpan or 1, group.minSpan or 1, math.max(1, columns or 1))
+        if group.isPinnedNewSection then
+            group.span = math.max(1, columns or 1)
+        end
     end
 
     return groups
@@ -2923,11 +2964,14 @@ function BagsWindow:BuildBestLayoutDropCandidate(cursorX, cursorY)
     end
 
     local draggedGroup = nil
+    local pinnedGroups = {}
     local baseGroups = {}
     for i = 1, #groups do
         local group = groups[i]
         if group.category and group.category.key == dragState.categoryKey then
             draggedGroup = self:CloneLayoutGroup(group)
+        elseif group.isPinnedNewSection then
+            pinnedGroups[#pinnedGroups + 1] = self:CloneLayoutGroup(group)
         else
             baseGroups[#baseGroups + 1] = self:CloneLayoutGroup(group)
         end
@@ -2944,8 +2988,11 @@ function BagsWindow:BuildBestLayoutDropCandidate(cursorX, cursorY)
     for insertIndex = 1, (#baseGroups + 1) do
         for span = minimumSpan, columns do
             local candidateGroups = self:BuildCandidateGroupList(baseGroups, draggedGroup, insertIndex, span)
+            for pinnedIndex = #pinnedGroups, 1, -1 do
+                table.insert(candidateGroups, 1, pinnedGroups[pinnedIndex])
+            end
             local sectionLayout, sectionsHeight = self:BuildSectionLayout(candidateGroups, self.currentContentWidth, columns, viewSettings)
-            local placement = sectionLayout[insertIndex]
+            local placement = sectionLayout[#pinnedGroups + insertIndex]
             local score = self:GetLayoutCandidateScore(placement, cursorX, cursorY)
             if not bestScore or score < bestScore then
                 bestScore = score
@@ -2972,7 +3019,7 @@ function BagsWindow:ApplyCategoryLayoutCandidate(candidate)
     local columns = math.max(1, math.floor((tonumber(candidate.columns) or 1) + 0.5))
     for i = 1, #candidate.groups do
         local group = candidate.groups[i]
-        if group and group.category and group.category.key then
+        if group and not group.isPinnedNewSection and group.category and group.category.key then
             local entry = self:GetCategoryLayoutEntry(group.category.key, true)
             if entry then
                 entry.order = i
@@ -2987,7 +3034,7 @@ function BagsWindow:ApplyCategoryLayoutCandidate(candidate)
 end
 
 function BagsWindow:StartCategoryDrag(categoryKey)
-    if not self.layoutEditMode or type(categoryKey) ~= "string" or categoryKey == "" then
+    if not self.layoutEditMode or type(categoryKey) ~= "string" or categoryKey == "" or categoryKey == "new" then
         return
     end
 
@@ -3891,31 +3938,30 @@ function BagsWindow:GetItemLevelForRecord(record)
     return itemInteraction and itemInteraction:GetItemLevelForRecord(record) or nil
 end
 
-function BagsWindow:IsNewItem(record, isCurrentCharacter)
-    if type(record) == "table" and type(record.combinedRecords) == "table" then
-        for i = 1, #record.combinedRecords do
-            if self:IsNewItem(record.combinedRecords[i], isCurrentCharacter) then
-                return true
-            end
-        end
-    end
-
-    if not isCurrentCharacter or not record or not record.bagID or not record.slotID then
+function BagsWindow:IsNewItem(record, characterKey)
+    if type(record) ~= "table" then
         return false
     end
 
-    if C_NewItems and C_NewItems.IsNewItem then
-        local ok, isNewItem = pcall(C_NewItems.IsNewItem, record.bagID, record.slotID)
-        if ok and isNewItem then
-            return true
+    if type(record.combinedRecords) == "table" then
+        for i = 1, #record.combinedRecords do
+            if self:IsNewItem(record.combinedRecords[i], characterKey) then
+                return true
+            end
         end
+        return false
     end
 
-    return record.isNewItem and true or false
+    local store = self:GetStore()
+    if not store or type(store.IsNewItemGUID) ~= "function" then
+        return false
+    end
+
+    return store:IsNewItemGUID(characterKey, record.itemGUID)
 end
 
-function BagsWindow:ShouldShowNewItemGlow(record, isCurrentCharacter)
-    if not self:IsNewItem(record, isCurrentCharacter) then
+function BagsWindow:ShouldShowNewItemGlow(record, characterKey)
+    if not self:IsNewItem(record, characterKey) then
         return false
     end
 
@@ -3974,6 +4020,8 @@ function BagsWindow:RefreshWindow()
     if not self.frame then
         return
     end
+
+    self:CancelNewItemExpiryTimer()
 
     if self.layoutDragState then
         self:StopCategoryDrag(false)
@@ -4044,7 +4092,7 @@ function BagsWindow:RefreshWindow()
     if self.characterMenu and self.characterMenu:IsShown() then
         self:RefreshCharacterMenu()
     end
-    self:UpdateCleanupButtonVisual(selectedCharacter.isCurrent)
+    self:UpdateCleanupButtonVisual(self:CanClearNewItemsForSelectedCharacter())
     self.modeText:SetText(selectedCharacter.isCurrent and L["BAGS_LIVE"] or L["BAGS_READ_ONLY"])
 
     local snapshot = store:GetCharacterBagSnapshot(selectedCharacter.key)
@@ -4144,8 +4192,9 @@ function BagsWindow:RefreshWindow()
                 self:ToggleCategoryCollapsed(selectedCharacter.key, category.key)
             end)
             if section.dragOverlay then
-                section.dragOverlay:EnableMouse(self.layoutEditMode)
-                section.dragOverlay:SetShown(self.layoutEditMode)
+                local dragEnabled = self.layoutEditMode and category.key ~= "new"
+                section.dragOverlay:EnableMouse(dragEnabled)
+                section.dragOverlay:SetShown(dragEnabled)
             end
             if self.layoutEditMode then
                 section:SetBackdropColor(0.12, 0.18, 0.26, LAYOUT_EDIT_SECTION_BACKGROUND_ALPHA)
@@ -4219,4 +4268,5 @@ function BagsWindow:RefreshWindow()
 
     self.content:SetSize(contentWidth, layout.contentHeight)
     self:RefreshGuildLookupPresentation()
+    self:ScheduleNewItemExpiryRefresh(selectedCharacter.key)
 end
