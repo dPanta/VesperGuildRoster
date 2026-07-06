@@ -129,60 +129,6 @@ local function getNewItemGlowAtlas(quality)
     return "bags-glow-white"
 end
 
-local function suppressNativeOverlayVisuals(overlay)
-    if not overlay then
-        return
-    end
-
-    overlay:SetAlpha(0)
-
-    local normalTexture = overlay.GetNormalTexture and overlay:GetNormalTexture() or nil
-    if normalTexture then
-        normalTexture:SetAlpha(0)
-        normalTexture:Hide()
-    end
-
-    local pushedTexture = overlay.GetPushedTexture and overlay:GetPushedTexture() or nil
-    if pushedTexture then
-        pushedTexture:SetAlpha(0)
-        pushedTexture:Hide()
-    end
-
-    local highlightTexture = overlay.GetHighlightTexture and overlay:GetHighlightTexture() or nil
-    if highlightTexture then
-        highlightTexture:SetAlpha(0)
-        highlightTexture:Hide()
-    end
-
-    local checkedTexture = overlay.GetCheckedTexture and overlay:GetCheckedTexture() or nil
-    if checkedTexture then
-        checkedTexture:SetAlpha(0)
-        checkedTexture:Hide()
-    end
-
-    local regions = { overlay:GetRegions() }
-    for i = 1, #regions do
-        local region = regions[i]
-        if region and region.SetAlpha then
-            region:SetAlpha(0)
-        end
-        if region and region.Hide then
-            region:Hide()
-        end
-    end
-
-    local children = { overlay:GetChildren() }
-    for i = 1, #children do
-        local child = children[i]
-        if child and child.SetAlpha then
-            child:SetAlpha(0)
-        end
-        if child and child.Hide then
-            child:Hide()
-        end
-    end
-end
-
 -- Module lifecycle and refresh entry points.
 function BagsWindow:OnInitialize()
     self.frame = nil
@@ -426,7 +372,6 @@ function BagsWindow:ShowWindow()
         self:CreateWindow()
     end
 
-    self:CleanupLegacyScrollArtifacts()
     self:SelectCurrentCharacterForOpen()
     self:RefreshWindow()
     self.frame:Show()
@@ -2539,26 +2484,20 @@ end
 
 function BagsWindow:BuildLayoutGroups(store, characterKey, categories, viewSettings)
     local groups = {}
-    local maxItemCount = 0
 
     for i = 1, #categories do
         local category = categories[i]
         local items = store:GetCharacterCategoryItems(characterKey, category.key)
         if #items > 0 then
-            local displayItems = self:BuildDisplayItems(items, viewSettings)
-            local hidden = self:IsCategoryCollapsed(characterKey, category.key)
-            if not hidden and #displayItems > maxItemCount then
-                maxItemCount = #displayItems
-            end
             groups[#groups + 1] = {
                 category = category,
-                items = displayItems,
-                hidden = hidden,
+                items = self:BuildDisplayItems(items, viewSettings),
+                hidden = self:IsCategoryCollapsed(characterKey, category.key),
             }
         end
     end
 
-    return groups, maxItemCount
+    return groups
 end
 
 function BagsWindow:GetSlotPitch(viewSettings)
@@ -2746,7 +2685,7 @@ function BagsWindow:MeasureContentHeight(groups, sectionsHeight, viewSettings, h
     return height + 12
 end
 
-function BagsWindow:ResolveAutoLayout(groups, maxItemCount, viewSettings, currencyEntries)
+function BagsWindow:ResolveAutoLayout(groups, viewSettings, currencyEntries)
     local screenWidth = UIParent:GetWidth() or 1920
     local maxFrameWidth = math.max(MIN_WINDOW_WIDTH, math.floor(screenWidth - WINDOW_SCREEN_MARGIN))
     local maxContentWidth = math.max(MIN_WINDOW_WIDTH - 32, maxFrameWidth - 32)
@@ -4040,7 +3979,6 @@ function BagsWindow:RefreshWindow()
         self:StopCategoryDrag(false)
     end
 
-    self:CleanupLegacyScrollArtifacts()
     self:ApplyConfiguredFonts()
     wipe(self.newItemGlowKeysSeen)
     self.currentLayoutGroups = nil
@@ -4136,9 +4074,9 @@ function BagsWindow:RefreshWindow()
     local itemIndex = 0
     local summaryIndex = 0
     local currencyIndex = 0
-    local groups, maxItemCount = self:BuildLayoutGroups(store, selectedCharacter.key, categories, viewSettings)
+    local groups = self:BuildLayoutGroups(store, selectedCharacter.key, categories, viewSettings)
     local currencyEntries = self:GetCurrencyBarEntries(selectedCharacter)
-    local layout = self:ResolveAutoLayout(groups, maxItemCount, viewSettings, currencyEntries)
+    local layout = self:ResolveAutoLayout(groups, viewSettings, currencyEntries)
     groups = layout.groups or groups
     local contentWidth = layout.contentWidth
     local columns = layout.columns
