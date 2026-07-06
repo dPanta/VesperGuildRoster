@@ -618,18 +618,9 @@ function BagsBridge:ResolvePreferredBankViewKey()
 
     local characterIsLive = type(store.IsCharacterBankLive) == "function" and store:IsCharacterBankLive() or false
     local warbandIsLive = type(store.IsWarbandBankLive) == "function" and store:IsWarbandBankLive() or false
-    local interactionType = self.activeBankInteractionType
 
     if characterIsLive then
         return "character"
-    end
-
-    if Enum and Enum.PlayerInteractionType and interactionType == Enum.PlayerInteractionType.AccountBanker and warbandIsLive then
-        return "warband"
-    end
-
-    if warbandIsLive and not characterIsLive then
-        return "warband"
     end
 
     if warbandIsLive then
@@ -662,29 +653,13 @@ function BagsBridge:ShowBagsForLiveBankSession()
     self.bankSessionOpenedBags = not wasShown
 end
 
--- Close only the bags that were auto-opened by the current merchant session.
-function BagsBridge:HideBagsOpenedForMerchantSession()
-    if not self.merchantSessionOpenedBags then
+-- Close only the bags that were auto-opened by the given session type.
+function BagsBridge:HideBagsOpenedForSession(openedFlagKey)
+    if not self[openedFlagKey] then
         return
     end
 
-    self.merchantSessionOpenedBags = false
-
-    local BagsWindow = vesperTools:GetModule("BagsWindow", true)
-    if not BagsWindow or not BagsWindow.frame or not BagsWindow.frame:IsShown() then
-        return
-    end
-
-    BagsWindow.frame:Hide()
-end
-
--- Close only the bags that were auto-opened by the current bank session.
-function BagsBridge:HideBagsOpenedForBankSession()
-    if not self.bankSessionOpenedBags then
-        return
-    end
-
-    self.bankSessionOpenedBags = false
+    self[openedFlagKey] = false
 
     local BagsWindow = vesperTools:GetModule("BagsWindow", true)
     if not BagsWindow or not BagsWindow.frame or not BagsWindow.frame:IsShown() then
@@ -698,7 +673,7 @@ end
 function BagsBridge:HandleBankSessionClosed()
     self.activeBankInteractionType = nil
     self:HideBankReplacementWindow()
-    self:HideBagsOpenedForBankSession()
+    self:HideBagsOpenedForSession("bankSessionOpenedBags")
     self:HideInactiveBlizzardBankPanel()
 end
 
@@ -718,7 +693,7 @@ end
 function BagsBridge:HandleMerchantSessionClosed()
     self.merchantSessionActive = false
     self.pendingMerchantBagOpenAt = nil
-    self:HideBagsOpenedForMerchantSession()
+    self:HideBagsOpenedForSession("merchantSessionOpenedBags")
 end
 
 -- Delay bank UI opening slightly so bag/bank live state is ready before rendering.

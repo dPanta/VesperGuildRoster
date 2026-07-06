@@ -231,15 +231,6 @@ local function extractRequiredLevel(text)
     return normalizeRequiredLevel(text:match("requires level (%d+)"))
 end
 
-local function getExpansionCategoryKey(expansionID)
-    local normalizedID = normalizeExpansionID(expansionID)
-    if not normalizedID then
-        return nil
-    end
-
-    return PAST_EXPANSIONS_CATEGORY_KEY
-end
-
 local function getExpansionIDFromCategoryKey(categoryKey)
     if type(categoryKey) ~= "string" then
         return nil
@@ -251,20 +242,6 @@ local function getExpansionIDFromCategoryKey(categoryKey)
     end
 
     return normalizeExpansionID(suffix)
-end
-
-local function getExpansionDisplayName(expansionID)
-    local normalizedID = normalizeExpansionID(expansionID)
-    if normalizedID == nil then
-        return nil
-    end
-
-    local globalName = _G["EXPANSION_NAME" .. normalizedID]
-    if type(globalName) == "string" and globalName ~= "" then
-        return globalName
-    end
-
-    return string.format("Expansion %s", tostring(normalizedID))
 end
 
 local function canonicalizeCategoryKey(categoryKey)
@@ -480,21 +457,11 @@ function BagsStore:GetCategoryDisplayName(categoryKey)
         return L[labelKey]
     end
 
-    local expansionID = getExpansionIDFromCategoryKey(categoryKey)
-    if expansionID ~= nil then
-        return getExpansionDisplayName(expansionID)
-    end
-
     return L["BAGS_CATEGORY_MISC"]
 end
 
 function BagsStore:GetCategoryOrder(categoryKey)
     categoryKey = canonicalizeCategoryKey(categoryKey)
-    local expansionID = getExpansionIDFromCategoryKey(categoryKey)
-    if expansionID ~= nil then
-        return 100
-    end
-
     return CATEGORY_PRIORITY_BY_ID[categoryKey] or 999
 end
 
@@ -951,7 +918,7 @@ function BagsStore:ResolveCategoryKey(meta, info, questInfo)
         if meta and self:UpdateCurrentScaledLegacyEquipmentFlag(meta) then
             return "equipment"
         end
-        return getExpansionCategoryKey(expansionID)
+        return PAST_EXPANSIONS_CATEGORY_KEY
     end
 
     if questInfo and questInfo.isQuestItem then
@@ -1631,7 +1598,6 @@ function BagsStore:GetCharacterCategoryList(characterKey)
                 count = count,
                 label = self:GetCategoryDisplayName(categoryKey),
                 order = self:GetCategoryOrder(categoryKey),
-                expansionID = getExpansionIDFromCategoryKey(categoryKey),
             }
         end
     end
