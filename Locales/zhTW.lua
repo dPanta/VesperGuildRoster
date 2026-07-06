@@ -32,6 +32,7 @@ local translations = {
     BAGS_CATEGORY_EQUIPMENT = "裝備",
     BAGS_CATEGORY_JUNK = "垃圾",
     BAGS_CATEGORY_MISC = "其他",
+    BAGS_CATEGORY_NEW = "新物品",
     BAGS_CATEGORY_PAST_EXPANSIONS = "舊資料片",
     BAGS_CATEGORY_QUEST = "任務",
     BAGS_CATEGORY_REAGENT = "專業材料",

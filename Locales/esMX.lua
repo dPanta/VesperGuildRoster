@@ -32,6 +32,7 @@ local translations = {
     BAGS_CATEGORY_EQUIPMENT = "Equipo",
     BAGS_CATEGORY_JUNK = "Basura",
     BAGS_CATEGORY_MISC = "Varios",
+    BAGS_CATEGORY_NEW = "Objetos nuevos",
     BAGS_CATEGORY_PAST_EXPANSIONS = "Expansiones pasadas",
     BAGS_CATEGORY_QUEST = "Mision",
     BAGS_CATEGORY_REAGENT = "Reactivos de profesiones",

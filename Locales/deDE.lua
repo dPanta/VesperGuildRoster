@@ -32,6 +32,7 @@ local translations = {
     BAGS_CATEGORY_EQUIPMENT = "Ausruestung",
     BAGS_CATEGORY_JUNK = "Plunder",
     BAGS_CATEGORY_MISC = "Verschiedenes",
+    BAGS_CATEGORY_NEW = "Neue Gegenstände",
     BAGS_CATEGORY_PAST_EXPANSIONS = "Vergangene Erweiterungen",
     BAGS_CATEGORY_QUEST = "Quest",
     BAGS_CATEGORY_REAGENT = "Herstellungsreagenzien",

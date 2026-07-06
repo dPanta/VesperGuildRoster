@@ -32,6 +32,7 @@ local translations = {
     BAGS_CATEGORY_EQUIPMENT = "Снаряжение",
     BAGS_CATEGORY_JUNK = "Хлам",
     BAGS_CATEGORY_MISC = "Разное",
+    BAGS_CATEGORY_NEW = "Новые предметы",
     BAGS_CATEGORY_PAST_EXPANSIONS = "Прошлые дополнения",
     BAGS_CATEGORY_QUEST = "Задания",
     BAGS_CATEGORY_REAGENT = "Материалы для профессий",

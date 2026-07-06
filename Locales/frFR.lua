@@ -32,6 +32,7 @@ local translations = {
     BAGS_CATEGORY_EQUIPMENT = "Equipement",
     BAGS_CATEGORY_JUNK = "Camelote",
     BAGS_CATEGORY_MISC = "Divers",
+    BAGS_CATEGORY_NEW = "Nouveaux objets",
     BAGS_CATEGORY_PAST_EXPANSIONS = "Anciennes extensions",
     BAGS_CATEGORY_QUEST = "Quete",
     BAGS_CATEGORY_REAGENT = "Composants d'artisanat",

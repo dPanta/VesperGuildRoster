@@ -32,6 +32,7 @@ local translations = {
     BAGS_CATEGORY_EQUIPMENT = "장비",
     BAGS_CATEGORY_JUNK = "잡동사니",
     BAGS_CATEGORY_MISC = "기타",
+    BAGS_CATEGORY_NEW = "새로운 아이템",
     BAGS_CATEGORY_PAST_EXPANSIONS = "이전 확장팩",
     BAGS_CATEGORY_QUEST = "퀘스트",
     BAGS_CATEGORY_REAGENT = "전문기술 재료",

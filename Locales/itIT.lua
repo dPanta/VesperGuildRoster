@@ -32,6 +32,7 @@ local translations = {
     BAGS_CATEGORY_EQUIPMENT = "Equipaggiamento",
     BAGS_CATEGORY_JUNK = "Cianfrusaglie",
     BAGS_CATEGORY_MISC = "Varie",
+    BAGS_CATEGORY_NEW = "Oggetti nuovi",
     BAGS_CATEGORY_PAST_EXPANSIONS = "Espansioni passate",
     BAGS_CATEGORY_QUEST = "Missione",
     BAGS_CATEGORY_REAGENT = "Reagenti di creazione",
