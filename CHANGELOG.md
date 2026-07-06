@@ -1,3 +1,15 @@
+## 6.10.0 - 2026-07-06
+
+### Added
+- New "New Items" bag category pinned to the top of the bags window on its own full-width row, showing items looted within the last hour sorted newest first. Items return to their normal category after the hour or when cleared with the Cleanup button, which now also works while viewing other characters.
+
+### Changed
+- The new-item glow now follows the same recently-looted tracking as the New Items category, so glow and section membership always agree.
+- On a fresh login, leftover client "new item" flags are cleared before the first bag scan, preventing whole bags from lighting up as new.
+
+### Fixed
+- Removed dead code and duplicated helpers across the bag, bank, and search modules (shared text normalization now lives in one place).
+
 ## 6.9.0 - 2026-07-01
 
 ### Added
