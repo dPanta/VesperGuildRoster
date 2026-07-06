@@ -1,9 +1,4 @@
-## 6.10.1 - 2026-07-06
-
-### Fixed
-- Roster dungeon tooltips now show the run contributing each player's Mythic+ rating, matching the Best Runs frame beside portals. The best-keys broadcast previously preferred a higher depleted completion over the score-contributing run; the rating-run selection now lives in one shared place used by both surfaces. Guild members appear corrected once they broadcast with an updated addon.
-
-## 6.10.0 - 2026-07-06
+## 6.11.0 - 2026-07-06
 
 ### Added
 - New "New Items" bag category pinned to the top of the bags window on its own full-width row, showing items looted within the last hour sorted newest first. Items return to their normal category after the hour or when cleared with the Cleanup button, which now also works while viewing other characters.
@@ -11,8 +6,10 @@
 ### Changed
 - The new-item glow now follows the same recently-looted tracking as the New Items category, so glow and section membership always agree.
 - On a fresh login, leftover client "new item" flags are cleared before the first bag scan, preventing whole bags from lighting up as new.
+- Search jumps that land on a recently looted item now expand the New Items section instead of only the item's natural category.
 
 ### Fixed
+- Roster dungeon tooltips now show the run contributing each player's Mythic+ rating, matching the Best Runs frame beside portals. The best-keys broadcast previously preferred a higher depleted completion over the score-contributing run; the rating-run selection now lives in one shared place used by both surfaces. Guild members appear corrected once they broadcast with an updated addon.
 - Removed dead code and duplicated helpers across the bag, bank, and search modules (shared text normalization now lives in one place).
 
 ## 6.9.0 - 2026-07-01
