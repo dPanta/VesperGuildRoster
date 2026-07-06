@@ -910,6 +910,7 @@ function BagsStore:BuildItemMeta(itemID, hyperlink, info, bagID, slotID)
     meta.searchText = vesperTools:NormalizeSearchText(table.concat({
         meta.itemName or vesperTools:BuildFallbackItemName(itemID),
         meta.itemDescription or "",
+        vesperTools:GetEquipLocSearchTerms(meta.equipLoc) or "",
     }, " ")) or meta.searchText
     meta.requiredLevel = extractRequiredLevel(meta.searchText) or meta.requiredLevel
     self:UpdateCurrentScaledLegacyEquipmentFlag(meta)

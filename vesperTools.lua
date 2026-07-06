@@ -3825,6 +3825,54 @@ function vesperTools:BuildFallbackItemName(itemID)
     return string.format(L["ITEM_FALLBACK_FMT"], tostring(itemID))
 end
 
+-- Friendly equip-slot keywords appended to item search text so queries like
+-- "belt" or "waist" match every item for that slot even when neither word
+-- appears in the item name or tooltip.
+local EQUIP_LOC_SEARCH_ALIASES = {
+    INVTYPE_HEAD = "helm helmet",
+    INVTYPE_NECK = "neck necklace amulet",
+    INVTYPE_SHOULDER = "shoulders spaulders pauldrons",
+    INVTYPE_CLOAK = "back cloak cape",
+    INVTYPE_BODY = "shirt",
+    INVTYPE_CHEST = "chestpiece tunic",
+    INVTYPE_ROBE = "chest chestpiece robe",
+    INVTYPE_WRIST = "wrists bracers bracer",
+    INVTYPE_HAND = "hands gloves gauntlets",
+    INVTYPE_WAIST = "belt girdle",
+    INVTYPE_LEGS = "legs pants leggings",
+    INVTYPE_FEET = "feet boots",
+    INVTYPE_FINGER = "finger ring",
+    INVTYPE_TRINKET = "trinket",
+    INVTYPE_WEAPON = "weapon one-hand",
+    INVTYPE_2HWEAPON = "weapon two-hand",
+    INVTYPE_WEAPONMAINHAND = "weapon main hand",
+    INVTYPE_WEAPONOFFHAND = "weapon off hand offhand",
+    INVTYPE_HOLDABLE = "offhand off-hand held",
+    INVTYPE_SHIELD = "shield offhand",
+    INVTYPE_RANGED = "weapon ranged bow",
+    INVTYPE_RANGEDRIGHT = "weapon ranged gun wand crossbow",
+    INVTYPE_TABARD = "tabard",
+    INVTYPE_BAG = "bag container",
+}
+
+function vesperTools:GetEquipLocSearchTerms(equipLoc)
+    if type(equipLoc) ~= "string" or equipLoc == "" then
+        return nil
+    end
+
+    local localizedSlotName = _G[equipLoc]
+    if type(localizedSlotName) ~= "string" or localizedSlotName == "" then
+        localizedSlotName = nil
+    end
+
+    local aliases = EQUIP_LOC_SEARCH_ALIASES[equipLoc]
+    if localizedSlotName and aliases then
+        return localizedSlotName .. " " .. aliases
+    end
+
+    return localizedSlotName or aliases
+end
+
 function vesperTools:NormalizePlayerFullName(name)
     if type(name) ~= "string" then
         return nil
