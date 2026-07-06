@@ -1,3 +1,8 @@
+## 6.10.1 - 2026-07-06
+
+### Fixed
+- Roster dungeon tooltips now show the run contributing each player's Mythic+ rating, matching the Best Runs frame beside portals. The best-keys broadcast previously preferred a higher depleted completion over the score-contributing run; the rating-run selection now lives in one shared place used by both surfaces. Guild members appear corrected once they broadcast with an updated addon.
+
 ## 6.10.0 - 2026-07-06
 
 ### Added

@@ -303,6 +303,96 @@ function DataHandle:CleanupStaleIlvl(maxAge)
     end
 end
 
+-- Mythic+ rating-run selection shared by the portals Best Runs frame and the
+-- best-keys broadcast, so every surface shows the score-contributing run.
+local function getRatingRunDurationSeconds(run)
+    local durationSec = tonumber(run and run.durationSec)
+    if durationSec then
+        return math.max(0, math.floor(durationSec + 0.5))
+    end
+
+    local durationMS = tonumber(run and (run.bestRunDurationMS or run.durationMS))
+    if durationMS then
+        return math.max(0, math.floor((durationMS / 1000) + 0.5))
+    end
+
+    return 0
+end
+
+local function normalizeRatingRun(run)
+    if type(run) ~= "table" then
+        return nil
+    end
+
+    local mapID = tonumber(run.challengeModeID or run.mapChallengeModeID or run.mapID)
+    local level = tonumber(run.bestRunLevel or run.level)
+    if not mapID or mapID <= 0 or not level or level <= 0 then
+        return nil
+    end
+
+    return {
+        mapID = math.floor(mapID + 0.5),
+        level = math.floor(level + 0.5),
+        duration = getRatingRunDurationSeconds(run),
+        inTime = run.finishedSuccess == true or run.inTime == true or run.onTime == true,
+        score = tonumber(run.mapScore or run.runScore or run.dungeonScore or run.score) or 0,
+    }
+end
+
+local function isBetterRatingRun(left, right)
+    if not right then
+        return true
+    end
+
+    if left.score ~= right.score then
+        return left.score > right.score
+    end
+    if left.level ~= right.level then
+        return left.level > right.level
+    end
+
+    local leftTimed = left.inTime and 1 or 0
+    local rightTimed = right.inTime and 1 or 0
+    if leftTimed ~= rightTimed then
+        return leftTimed > rightTimed
+    end
+
+    local leftDuration = tonumber(left.duration) or math.huge
+    local rightDuration = tonumber(right.duration) or math.huge
+    return leftDuration < rightDuration
+end
+
+function DataHandle:GetPlayerMythicPlusRatingSummary()
+    if C_PlayerInfo and type(C_PlayerInfo.GetPlayerMythicPlusRatingSummary) == "function" then
+        local ok, summary = pcall(C_PlayerInfo.GetPlayerMythicPlusRatingSummary, "player")
+        if ok and type(summary) == "table" then
+            return summary
+        end
+    end
+
+    return nil
+end
+
+-- Per-map run that contributes the player's Mythic+ rating (score first, then
+-- level, timed, duration as tiebreaks).
+function DataHandle:GetBestRatingRunsByMap(summary)
+    summary = summary or self:GetPlayerMythicPlusRatingSummary()
+    local runs = type(summary) == "table" and summary.runs or nil
+    if type(runs) ~= "table" then
+        return {}
+    end
+
+    local bestRuns = {}
+    for _, run in ipairs(runs) do
+        local normalized = normalizeRatingRun(run)
+        if normalized and isBetterRatingRun(normalized, bestRuns[normalized.mapID]) then
+            bestRuns[normalized.mapID] = normalized
+        end
+    end
+
+    return bestRuns
+end
+
 -- Best Keys Sync DB accessors (persistent via AceDB global)
 function DataHandle:GetBestKeysDB()
     return vesperTools.db.global.bestKeys

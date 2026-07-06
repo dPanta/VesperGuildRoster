@@ -320,28 +320,42 @@ function Automation:BroadcastBestKeys()
     if not curSeason or #curSeason == 0 then return end
 
     local _, _, classID = UnitClass("player")
+    local DataHandle = vesperTools:GetModule("DataHandle", true)
+    -- Rating-summary runs reflect the per-dungeon score contributor, matching
+    -- the portals Best Runs frame; season bests can prefer a higher depleted key.
+    local ratingSummary = DataHandle and type(DataHandle.GetPlayerMythicPlusRatingSummary) == "function"
+        and DataHandle:GetPlayerMythicPlusRatingSummary() or nil
+    local bestRatingRunByMap = DataHandle and type(DataHandle.GetBestRatingRunsByMap) == "function"
+        and DataHandle:GetBestRatingRunsByMap(ratingSummary) or {}
     -- `parts` holds serialized payload entries, `localBestKeys` is persisted locally.
     local parts = {}
     local localBestKeys = {}
     for _, mapID in ipairs(curSeason) do
-        local okBest, inTimeInfo, overTimeInfo = false, nil, nil
-        if C_MythicPlus and type(C_MythicPlus.GetSeasonBestForMap) == "function" then
-            okBest, inTimeInfo, overTimeInfo = pcall(C_MythicPlus.GetSeasonBestForMap, mapID)
-        end
-        if not okBest then
-            inTimeInfo, overTimeInfo = nil, nil
-        end
         local bestLevel, bestDuration, wasInTime = 0, 0, false
-        if inTimeInfo and inTimeInfo.level then
-            bestLevel = inTimeInfo.level
-            bestDuration = inTimeInfo.durationSec
-            wasInTime = true
-        end
-        -- If overtime run has higher level, prefer it for "best level" display.
-        if overTimeInfo and overTimeInfo.level and overTimeInfo.level > bestLevel then
-            bestLevel = overTimeInfo.level
-            bestDuration = overTimeInfo.durationSec
-            wasInTime = false
+        local ratingRun = bestRatingRunByMap[mapID]
+        if ratingRun then
+            bestLevel = ratingRun.level
+            bestDuration = ratingRun.duration
+            wasInTime = ratingRun.inTime
+        else
+            local okBest, inTimeInfo, overTimeInfo = false, nil, nil
+            if C_MythicPlus and type(C_MythicPlus.GetSeasonBestForMap) == "function" then
+                okBest, inTimeInfo, overTimeInfo = pcall(C_MythicPlus.GetSeasonBestForMap, mapID)
+            end
+            if not okBest then
+                inTimeInfo, overTimeInfo = nil, nil
+            end
+            if inTimeInfo and inTimeInfo.level then
+                bestLevel = inTimeInfo.level
+                bestDuration = inTimeInfo.durationSec
+                wasInTime = true
+            end
+            -- If overtime run has higher level, prefer it for "best level" display.
+            if overTimeInfo and overTimeInfo.level and overTimeInfo.level > bestLevel then
+                bestLevel = overTimeInfo.level
+                bestDuration = overTimeInfo.durationSec
+                wasInTime = false
+            end
         end
         -- Entry format per dungeon: "mapID:level:duration:inTime(0/1)".
         table.insert(parts, string.format("%d:%d:%d:%d", mapID, bestLevel, bestDuration, wasInTime and 1 or 0))
@@ -353,7 +367,6 @@ function Automation:BroadcastBestKeys()
     -- Persist own data immediately (guild echo is not guaranteed/timely).
     cachedRealmName = cachedRealmName or GetNormalizedRealmName()
     local playerName = UnitName("player") .. "-" .. cachedRealmName
-    local DataHandle = vesperTools:GetModule("DataHandle", true)
     if DataHandle then
         DataHandle:StoreBestKeys(playerName, localBestKeys, classID)
     end
