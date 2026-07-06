@@ -398,6 +398,9 @@ function BagsStore:OnInitialize()
     self.pendingBagUpdate = false
     self.pendingRescanReason = nil
     self.pendingInitialScan = false
+    -- Ingesting C_NewItems flags before the login-noise clear has run would
+    -- stamp the whole inventory as new; hold ingestion until then.
+    self.suppressNewItemIngestion = true
 end
 
 function BagsStore:OnEnable()
@@ -1318,16 +1321,18 @@ end
 
 -- Login performs a deferred full scan so bag APIs are ready before reading them.
 -- On a fresh login the client marks whole bags as "new"; clear that noise
--- BEFORE the first scan so it never enters the new-item overlay map.
+-- synchronously — before any scan can run — so it never enters the new-item
+-- overlay map, then release the ingestion hold set at initialize.
 function BagsStore:PLAYER_ENTERING_WORLD(_, isInitialLogin, isReloadingUI)
+    if isInitialLogin and not isReloadingUI and C_NewItems and C_NewItems.ClearAll then
+        pcall(C_NewItems.ClearAll)
+    end
+    self.suppressNewItemIngestion = false
+
     self.pendingInitialScan = true
-    local shouldClearLoginMarkers = isInitialLogin and not isReloadingUI
     C_Timer.After(0, function()
         if not self:IsEnabled() then
             return
-        end
-        if shouldClearLoginMarkers and C_NewItems and C_NewItems.ClearAll then
-            pcall(C_NewItems.ClearAll)
         end
         self:MarkFullCarryRescan("initial")
         self:CommitPendingBagWork()
@@ -1747,7 +1752,8 @@ function BagsStore:UpdateNewItemTracking(character)
 
     local now = time()
     local presentGUIDs = {}
-    local canQueryLiveMarkers = C_NewItems and type(C_NewItems.IsNewItem) == "function"
+    local canQueryLiveMarkers = not self.suppressNewItemIngestion
+        and C_NewItems and type(C_NewItems.IsNewItem) == "function"
 
     for i = 1, #TRACKED_BAG_IDS do
         local bag = bags[TRACKED_BAG_IDS[i]]

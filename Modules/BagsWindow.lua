@@ -1923,6 +1923,55 @@ function BagsWindow:ApplyFocusedSearchState(button, record)
     highlight:Hide()
 end
 
+-- A located item renders under "New Items" while its GUID is active-new, so
+-- search jumps must expand that section instead of only the natural category.
+function BagsWindow:IsLocatorInNewItemsSection(characterKey, locator)
+    local store = self:GetStore()
+    if not store
+        or type(store.IsNewItemGUID) ~= "function"
+        or type(store.GetCharacterBagSnapshot) ~= "function"
+        or type(locator) ~= "table"
+    then
+        return false
+    end
+
+    local snapshot = store:GetCharacterBagSnapshot(characterKey)
+    local carried = type(snapshot) == "table" and snapshot.carried or nil
+    local bags = type(carried) == "table" and carried.bags or nil
+    if type(bags) ~= "table" then
+        return false
+    end
+
+    local bagID = tonumber(locator.bagID)
+    local slotID = tonumber(locator.slotID)
+    if bagID and slotID then
+        local bag = bags[bagID]
+        local record = type(bag) == "table" and type(bag.slots) == "table" and bag.slots[slotID] or nil
+        return type(record) == "table" and store:IsNewItemGUID(characterKey, record.itemGUID) or false
+    end
+
+    local itemID = tonumber(locator.itemID)
+    if not itemID then
+        return false
+    end
+
+    for _, bag in pairs(bags) do
+        if type(bag) == "table" and type(bag.slots) == "table" then
+            for slotIndex = 1, tonumber(bag.size) or 0 do
+                local record = bag.slots[slotIndex]
+                if type(record) == "table"
+                    and tonumber(record.itemID) == itemID
+                    and store:IsNewItemGUID(characterKey, record.itemGUID)
+                then
+                    return true
+                end
+            end
+        end
+    end
+
+    return false
+end
+
 function BagsWindow:OpenSearchResult(locator)
     if type(locator) ~= "table" then
         return
@@ -1948,6 +1997,9 @@ function BagsWindow:OpenSearchResult(locator)
 
     if characterKey and type(locator.categoryKey) == "string" and locator.categoryKey ~= "" then
         self:SetCategoryCollapsed(characterKey, locator.categoryKey, false)
+    end
+    if characterKey and self:IsLocatorInNewItemsSection(characterKey, locator) then
+        self:SetCategoryCollapsed(characterKey, "new", false)
     end
 
     local queryText = type(locator.queryText) == "string" and locator.queryText or locator.itemName or ""
