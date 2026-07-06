@@ -6,7 +6,10 @@ local L = vesperTools.L
 -- account-wide aggregate index used by the replacement inventory views.
 local ITEM_CLASS = Enum and Enum.ItemClass or {}
 local CURRENT_BAGS_SCHEMA_VERSION = 6
+local NEW_CATEGORY_KEY = "new"
+local NEW_ITEM_TIMEOUT_SECONDS = 3600
 local BAG_CATEGORY_DEFS = {
+    { key = "new", labelKey = "BAGS_CATEGORY_NEW", order = 0 },
     { key = "quest", labelKey = "BAGS_CATEGORY_QUEST", order = 1 },
     { key = "season", labelKey = "BAGS_CATEGORY_SEASON", order = 2 },
     { key = "junk", labelKey = "BAGS_CATEGORY_JUNK", order = 3 },
@@ -532,6 +535,7 @@ function BagsStore:CreateOrUpdateCurrentCharacter()
     character.carried.itemTotals = character.carried.itemTotals or {}
     character.carried.categoryTotals = character.carried.categoryTotals or {}
     character.carried.categoryItems = character.carried.categoryItems or {}
+    character.newItems = character.newItems or {}
 
     return characterKey, character
 end
@@ -1313,11 +1317,17 @@ function BagsStore:ApplyCharacterAggregateReplacement(characterKey, oldAggregate
 end
 
 -- Login performs a deferred full scan so bag APIs are ready before reading them.
-function BagsStore:PLAYER_ENTERING_WORLD()
+-- On a fresh login the client marks whole bags as "new"; clear that noise
+-- BEFORE the first scan so it never enters the new-item overlay map.
+function BagsStore:PLAYER_ENTERING_WORLD(_, isInitialLogin, isReloadingUI)
     self.pendingInitialScan = true
+    local shouldClearLoginMarkers = isInitialLogin and not isReloadingUI
     C_Timer.After(0, function()
         if not self:IsEnabled() then
             return
+        end
+        if shouldClearLoginMarkers and C_NewItems and C_NewItems.ClearAll then
+            pcall(C_NewItems.ClearAll)
         end
         self:MarkFullCarryRescan("initial")
         self:CommitPendingBagWork()
@@ -1380,6 +1390,7 @@ function BagsStore:DoFullCarryRescan(characterKey, character)
     character.carried = newCarried
     character.currency = self:BuildCurrentCurrencySnapshot()
     character.lastSeen = time()
+    self:UpdateNewItemTracking(character)
     self:RebuildAccountIndex()
     self:ClearPendingState()
     self:BroadcastBagChange(characterKey)
@@ -1449,6 +1460,7 @@ function BagsStore:CommitPendingBagWork()
     character.currency = newCurrencySnapshot
     character.lastSeen = time()
     self.pendingRescanReason = nil
+    self:UpdateNewItemTracking(character)
     self:RebuildAccountIndex()
     self:BroadcastBagChange(characterKey)
     return true
@@ -1521,22 +1533,43 @@ function BagsStore:GetCharacterCategoryItems(characterKey, categoryKey)
         return {}
     end
 
-    local items = {}
+    local newItems = self:GetNewItemsMap(snapshot, false)
+    local now = time()
+    local wantsNewCategory = categoryKey == NEW_CATEGORY_KEY
     local targetCategoryKey = canonicalizeCategoryKey(categoryKey)
+    local items = {}
+
     for i = 1, #TRACKED_BAG_IDS do
         local bagID = TRACKED_BAG_IDS[i]
         local bag = snapshot.carried.bags[bagID]
         if type(bag) == "table" and type(bag.slots) == "table" then
             for slotID = 1, tonumber(bag.size) or 0 do
                 local record = bag.slots[slotID]
-                if type(record) == "table" and canonicalizeCategoryKey(record.categoryKey) == targetCategoryKey then
-                    items[#items + 1] = record
+                if type(record) == "table" then
+                    local isNewRecord = newItems ~= nil
+                        and record.itemGUID ~= nil
+                        and self:IsNewItemEntryActive(newItems[record.itemGUID], now)
+
+                    if wantsNewCategory then
+                        if isNewRecord then
+                            items[#items + 1] = record
+                        end
+                    elseif not isNewRecord and canonicalizeCategoryKey(record.categoryKey) == targetCategoryKey then
+                        items[#items + 1] = record
+                    end
                 end
             end
         end
     end
 
     table.sort(items, function(a, b)
+        if wantsNewCategory then
+            local aSeenAt = tonumber(newItems and newItems[a.itemGUID]) or 0
+            local bSeenAt = tonumber(newItems and newItems[b.itemGUID]) or 0
+            if aSeenAt ~= bSeenAt then
+                return aSeenAt > bSeenAt
+            end
+        end
         if a.sortKey ~= b.sortKey then
             return a.sortKey < b.sortKey
         end
@@ -1587,6 +1620,28 @@ function BagsStore:GetCharacterCategoryList(characterKey)
         if count > 0 then
             local canonicalCategoryKey = canonicalizeCategoryKey(categoryKey)
             self:AdjustCount(mergedCounts, canonicalCategoryKey, count)
+        end
+    end
+
+    -- Pull active new items out of their natural categories into the pinned
+    -- "new" overlay category.
+    local newItems = self:GetNewItemsMap(snapshot, false)
+    if newItems and next(newItems) and type(snapshot.carried.bags) == "table" then
+        local now = time()
+        for i = 1, #TRACKED_BAG_IDS do
+            local bag = snapshot.carried.bags[TRACKED_BAG_IDS[i]]
+            if type(bag) == "table" and type(bag.slots) == "table" then
+                for slotID = 1, tonumber(bag.size) or 0 do
+                    local record = bag.slots[slotID]
+                    if type(record) == "table" and record.itemGUID
+                        and self:IsNewItemEntryActive(newItems[record.itemGUID], now)
+                    then
+                        local count = math.max(1, tonumber(record.stackCount) or 1)
+                        self:AdjustCount(mergedCounts, canonicalizeCategoryKey(record.categoryKey), -count)
+                        self:AdjustCount(mergedCounts, NEW_CATEGORY_KEY, count)
+                    end
+                end
+            end
         end
     end
 
@@ -1655,6 +1710,124 @@ function BagsStore:GetCharacterEmptySlotSummary(characterKey)
     end
 
     return summary
+end
+
+-- New-item overlay: BagsStore stamps recently looted item GUIDs and serves the
+-- transient "new" category without ever writing it into stored slot records.
+function BagsStore:GetNewItemsMap(character, create)
+    if type(character) ~= "table" then
+        return nil
+    end
+    if create and type(character.newItems) ~= "table" then
+        character.newItems = {}
+    end
+    return type(character.newItems) == "table" and character.newItems or nil
+end
+
+function BagsStore:IsNewItemEntryActive(firstSeenAt, now)
+    local seenAt = tonumber(firstSeenAt)
+    if not seenAt then
+        return false
+    end
+    return ((now or time()) - seenAt) < NEW_ITEM_TIMEOUT_SECONDS
+end
+
+-- Stamp newly looted item GUIDs and drop stale/departed entries after a scan commit.
+function BagsStore:UpdateNewItemTracking(character)
+    local carried = type(character) == "table" and character.carried or nil
+    local bags = type(carried) == "table" and carried.bags or nil
+    if type(bags) ~= "table" then
+        return
+    end
+
+    local newItems = self:GetNewItemsMap(character, true)
+    if not newItems then
+        return
+    end
+
+    local now = time()
+    local presentGUIDs = {}
+    local canQueryLiveMarkers = C_NewItems and type(C_NewItems.IsNewItem) == "function"
+
+    for i = 1, #TRACKED_BAG_IDS do
+        local bag = bags[TRACKED_BAG_IDS[i]]
+        if type(bag) == "table" and type(bag.slots) == "table" then
+            for slotID = 1, tonumber(bag.size) or 0 do
+                local record = bag.slots[slotID]
+                if type(record) == "table" and record.itemGUID then
+                    presentGUIDs[record.itemGUID] = true
+                    if canQueryLiveMarkers and newItems[record.itemGUID] == nil then
+                        local ok, isNewItem = pcall(C_NewItems.IsNewItem, record.bagID, record.slotID)
+                        if ok and isNewItem then
+                            newItems[record.itemGUID] = now
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    for itemGUID, firstSeenAt in pairs(newItems) do
+        if not presentGUIDs[itemGUID] or not self:IsNewItemEntryActive(firstSeenAt, now) then
+            newItems[itemGUID] = nil
+        end
+    end
+end
+
+function BagsStore:IsNewItemGUID(characterKey, itemGUID)
+    if not itemGUID then
+        return false
+    end
+
+    local newItems = self:GetNewItemsMap(self:GetCharacterBagSnapshot(characterKey), false)
+    if not newItems then
+        return false
+    end
+
+    return self:IsNewItemEntryActive(newItems[itemGUID])
+end
+
+function BagsStore:GetNextNewItemExpiry(characterKey)
+    local newItems = self:GetNewItemsMap(self:GetCharacterBagSnapshot(characterKey), false)
+    if not newItems then
+        return nil
+    end
+
+    local now = time()
+    local earliestSeenAt = nil
+    for _, firstSeenAt in pairs(newItems) do
+        if self:IsNewItemEntryActive(firstSeenAt, now) then
+            local seenAt = tonumber(firstSeenAt)
+            if not earliestSeenAt or seenAt < earliestSeenAt then
+                earliestSeenAt = seenAt
+            end
+        end
+    end
+
+    if not earliestSeenAt then
+        return nil
+    end
+
+    return earliestSeenAt + NEW_ITEM_TIMEOUT_SECONDS
+end
+
+function BagsStore:HasActiveNewItems(characterKey)
+    return self:GetNextNewItemExpiry(characterKey) ~= nil
+end
+
+function BagsStore:ClearNewItems(characterKey)
+    local character = self:GetCharacterBagSnapshot(characterKey)
+    if not character then
+        return false
+    end
+
+    local newItems = self:GetNewItemsMap(character, false)
+    if newItems and next(newItems) then
+        wipe(newItems)
+    end
+
+    vesperTools:SendMessage("VESPERTOOLS_BAGS_SNAPSHOT_UPDATED", characterKey)
+    return true
 end
 
 function BagsStore:GetDisplayCharacters()
