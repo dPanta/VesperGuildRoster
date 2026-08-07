@@ -12,6 +12,7 @@ local ROSTER_PARTY_KEY_BUTTON_OFFSET_Y = 10
 local ROSTER_PARTY_KEY_BUTTON_DEFAULT_SIZE = 52
 local ROSTER_PARTY_UTILITY_BUTTON_GAP = 6
 local ROSTER_PARTY_KEY_BUTTON_ICON = "Interface\\Icons\\INV_Misc_Dice_01"
+local ROSTER_PARTY_SPEC_ROLE_BUTTON_ICON = "Interface\\AddOns\\vesperTools\\Media\\RoleTarot-64"
 local ROSTER_READY_CHECK_BUTTON_ICON = "Interface\\RaidFrame\\ReadyCheck-Ready"
 local ROSTER_PULL_TIMER_BUTTON_ICON = "Interface\\Icons\\INV_Misc_PocketWatch_01"
 local ROSTER_PULL_COUNTDOWN_SECONDS = 9
@@ -214,6 +215,14 @@ local function getPartyKeystoneUnavailableText()
     return nil
 end
 
+local function getPartySpecRoleUnavailableText()
+    if getPartyChatChannel() == nil then
+        return L["ROSTER_PARTY_SPEC_ROLE_NO_GROUP"]
+    end
+
+    return nil
+end
+
 local function getReadyCheckUnavailableText()
     if not isPlayerInGroup() or not isPlayerPartyLeader() then
         return getUnavailableText()
@@ -303,6 +312,29 @@ local function isSamePartyKeystoneChoice(left, right)
         and tonumber(left.level) == tonumber(right.level)
 end
 
+local function isSamePartySpecRoleChoice(left, right)
+    if type(left) ~= "table" or type(right) ~= "table" then
+        return false
+    end
+
+    return tonumber(left.classID) == tonumber(right.classID)
+        and tonumber(left.specID) == tonumber(right.specID)
+end
+
+local function getPartySpecRoleLabel(role)
+    if role == "TANK" then
+        return L["ROSTER_PARTY_SPEC_ROLE_TANK"]
+    end
+    if role == "HEALER" then
+        return L["ROSTER_PARTY_SPEC_ROLE_HEALER"]
+    end
+    if role == "DAMAGER" then
+        return L["ROSTER_PARTY_SPEC_ROLE_DPS"]
+    end
+
+    return tostring(role or UNKNOWN)
+end
+
 local function createRosterIconUtilityButton(parent, iconTexture, onClick, onEnter)
     local button = CreateFrame("Button", nil, parent)
     button:RegisterForClicks("LeftButtonUp")
@@ -371,10 +403,13 @@ function Roster:OnInitialize()
     self.syncButton = nil
     self.partyKeystoneFrame = nil
     self.partyKeystoneButton = nil
+    self.partySpecRoleButton = nil
     self.partyReadyCheckButton = nil
     self.partyPullButton = nil
     self.partyKeystoneChoiceGroupSignature = nil
     self.partyKeystoneChoice = nil
+    self.partySpecRoleChoiceClassID = nil
+    self.partySpecRoleChoice = nil
     self.headerFrame = nil
     self.headerButtons = {}
     self.scrollFrame = nil
@@ -431,6 +466,7 @@ function Roster:RestoreWindowReferences(frame)
     self.syncButton = frame.vgSyncButton or self.syncButton
     self.partyKeystoneFrame = frame.vgPartyKeystoneFrame or self.partyKeystoneFrame
     self.partyKeystoneButton = frame.vgPartyKeystoneButton or self.partyKeystoneButton
+    self.partySpecRoleButton = frame.vgPartySpecRoleButton or self.partySpecRoleButton
     self.partyReadyCheckButton = frame.vgPartyReadyCheckButton or self.partyReadyCheckButton
     self.partyPullButton = frame.vgPartyPullButton or self.partyPullButton
     self.headerFrame = frame.vgHeaderFrame or self.headerFrame
@@ -503,6 +539,9 @@ function Roster:LayoutPartyKeystoneButton()
     local buttonSize = getRosterUtilityButtonSize()
     local buttonGap = ROSTER_PARTY_UTILITY_BUTTON_GAP
     local buttonCount = 1
+    if self.partySpecRoleButton then
+        buttonCount = buttonCount + 1
+    end
     if self.partyReadyCheckButton then
         buttonCount = buttonCount + 1
     end
@@ -536,6 +575,7 @@ function Roster:LayoutPartyKeystoneButton()
     end
 
     layoutButton(button)
+    layoutButton(self.partySpecRoleButton)
     layoutButton(self.partyReadyCheckButton)
     layoutButton(self.partyPullButton)
 end
@@ -549,7 +589,17 @@ function Roster:RefreshPartyKeystoneButton()
     local unavailableText = getPartyKeystoneUnavailableText()
     local isAvailable = unavailableText == nil
     applyRosterIconButtonAvailability(button, isAvailable, unavailableText)
+    self:RefreshPartySpecRoleButton()
     self:RefreshPartyGroupActionButtons()
+end
+
+function Roster:RefreshPartySpecRoleButton()
+    local unavailableText = getPartySpecRoleUnavailableText()
+    applyRosterIconButtonAvailability(
+        self.partySpecRoleButton,
+        unavailableText == nil,
+        unavailableText
+    )
 end
 
 function Roster:RefreshPartyGroupActionButtons()
@@ -588,6 +638,23 @@ function Roster:CreatePartyKeystoneFrame(parent)
             GameTooltip:AddLine(L["ROSTER_PARTY_KEY_TOOLTIP"], 0.85, 0.85, 0.85)
             if not selfButton._isAvailable then
                 GameTooltip:AddLine(selfButton._unavailableText or L["ROSTER_PARTY_KEY_NO_GROUP"], 1, 0.35, 0.35)
+            end
+            GameTooltip:Show()
+        end
+    )
+
+    local specRoleButton = createRosterIconUtilityButton(
+        utilityFrame,
+        ROSTER_PARTY_SPEC_ROLE_BUTTON_ICON,
+        function()
+            self:ChoosePartySpecRole()
+        end,
+        function(selfButton)
+            GameTooltip:SetOwner(selfButton, "ANCHOR_RIGHT")
+            GameTooltip:SetText(L["ROSTER_PARTY_SPEC_ROLE_DECIDER"], 1, 1, 1)
+            GameTooltip:AddLine(L["ROSTER_PARTY_SPEC_ROLE_TOOLTIP"], 0.85, 0.85, 0.85)
+            if not selfButton._isAvailable then
+                GameTooltip:AddLine(selfButton._unavailableText or L["ROSTER_PARTY_SPEC_ROLE_NO_GROUP"], 1, 0.35, 0.35)
             end
             GameTooltip:Show()
         end
@@ -634,6 +701,7 @@ function Roster:CreatePartyKeystoneFrame(parent)
 
     self.partyKeystoneFrame = utilityFrame
     self.partyKeystoneButton = button
+    self.partySpecRoleButton = specRoleButton
     self.partyReadyCheckButton = readyButton
     self.partyPullButton = pullButton
     self:ApplyPartyKeystoneFrameStyle()
@@ -814,6 +882,159 @@ function Roster:ChoosePartyKeystone()
 
     self:RefreshPartyKeystoneButton()
     return self:AnnouncePartyKeystoneChoice(choice)
+end
+
+function Roster:GetPartySpecRoleCandidates()
+    local candidates = {}
+    local _, _, classID = UnitClass("player")
+    classID = tonumber(classID)
+    if not classID then
+        return candidates, nil
+    end
+
+    if not C_SpecializationInfo
+        or type(C_SpecializationInfo.GetNumSpecializationsForClassID) ~= "function"
+        or type(GetSpecializationInfoForClassID) ~= "function" then
+        return candidates, classID
+    end
+
+    local ok, specializationCount = pcall(C_SpecializationInfo.GetNumSpecializationsForClassID, classID)
+    if not ok then
+        return candidates, classID
+    end
+
+    specializationCount = math.max(0, math.floor(tonumber(specializationCount) or 0))
+    local sex = type(UnitSex) == "function" and UnitSex("player") or nil
+    for index = 1, specializationCount do
+        local infoOK, specID, specName, _specDescription, _specIcon, role = pcall(
+            GetSpecializationInfoForClassID,
+            classID,
+            index,
+            sex
+        )
+        if infoOK
+            and tonumber(specID)
+            and type(specName) == "string"
+            and specName ~= ""
+            and (role == "TANK" or role == "HEALER" or role == "DAMAGER") then
+            candidates[#candidates + 1] = {
+                classID = classID,
+                specID = tonumber(specID),
+                specName = specName,
+                role = role,
+            }
+        end
+    end
+
+    return candidates, classID
+end
+
+function Roster:GetCachedPartySpecRoleChoice(candidates, classID)
+    classID = tonumber(classID)
+    if not classID
+        or tonumber(self.partySpecRoleChoiceClassID) ~= classID
+        or type(self.partySpecRoleChoice) ~= "table" then
+        return nil
+    end
+
+    for i = 1, #(candidates or {}) do
+        local candidate = candidates[i]
+        if isSamePartySpecRoleChoice(candidate, self.partySpecRoleChoice) then
+            return candidate
+        end
+    end
+
+    return nil
+end
+
+function Roster:SetCachedPartySpecRoleChoice(choice, classID)
+    classID = tonumber(classID)
+    if type(choice) ~= "table" or not classID then
+        self.partySpecRoleChoice = nil
+        self.partySpecRoleChoiceClassID = nil
+        return
+    end
+
+    self.partySpecRoleChoiceClassID = classID
+    self.partySpecRoleChoice = {
+        classID = classID,
+        specID = choice.specID,
+        specName = choice.specName,
+        role = choice.role,
+    }
+end
+
+function Roster:PickPartySpecRoleChoice(candidates, classID, forceNew)
+    if type(candidates) ~= "table" or #candidates == 0 then
+        return nil
+    end
+
+    local pool = candidates
+    if forceNew
+        and #candidates > 1
+        and tonumber(self.partySpecRoleChoiceClassID) == tonumber(classID)
+        and type(self.partySpecRoleChoice) == "table" then
+        local rerollPool = {}
+        for i = 1, #candidates do
+            if not isSamePartySpecRoleChoice(candidates[i], self.partySpecRoleChoice) then
+                rerollPool[#rerollPool + 1] = candidates[i]
+            end
+        end
+        if #rerollPool > 0 then
+            pool = rerollPool
+        end
+    end
+
+    local choice = pool[math.random(#pool)]
+    self:SetCachedPartySpecRoleChoice(choice, classID)
+    return choice
+end
+
+function Roster:AnnouncePartySpecRoleChoice(choice)
+    if type(choice) ~= "table" then
+        return false
+    end
+
+    local message = string.format(
+        L["ROSTER_PARTY_SPEC_ROLE_ANNOUNCE_FMT"],
+        getPartySpecRoleLabel(choice.role),
+        choice.specName or UNKNOWN
+    )
+    local channel = getPartyChatChannel()
+    if channel and type(SendChatMessage) == "function" then
+        SendChatMessage(message, channel)
+        return true
+    end
+
+    vesperTools:Print(message)
+    return false
+end
+
+function Roster:ChoosePartySpecRole()
+    local unavailableText = getPartySpecRoleUnavailableText()
+    if unavailableText then
+        self:SetCachedPartySpecRoleChoice(nil, nil)
+        vesperTools:Print(unavailableText)
+        self:RefreshPartySpecRoleButton()
+        return false
+    end
+
+    local candidates, classID = self:GetPartySpecRoleCandidates()
+    if #candidates == 0 then
+        self:SetCachedPartySpecRoleChoice(nil, nil)
+        vesperTools:Print(L["ROSTER_PARTY_SPEC_ROLE_NONE"])
+        self:RefreshPartySpecRoleButton()
+        return false
+    end
+
+    local forceNew = type(IsShiftKeyDown) == "function" and IsShiftKeyDown()
+    local choice = (not forceNew) and self:GetCachedPartySpecRoleChoice(candidates, classID) or nil
+    if not choice then
+        choice = self:PickPartySpecRoleChoice(candidates, classID, forceNew)
+    end
+
+    self:RefreshPartySpecRoleButton()
+    return self:AnnouncePartySpecRoleChoice(choice)
 end
 
 function Roster:ApplyRosterStyling()
@@ -1553,6 +1774,7 @@ function Roster:CreateWindow()
     frame.vgSyncButton = syncBtn
     frame.vgPartyKeystoneFrame = self.partyKeystoneFrame
     frame.vgPartyKeystoneButton = self.partyKeystoneButton
+    frame.vgPartySpecRoleButton = self.partySpecRoleButton
     frame.vgPartyReadyCheckButton = self.partyReadyCheckButton
     frame.vgPartyPullButton = self.partyPullButton
     frame.vgHeaderFrame = headerFrame

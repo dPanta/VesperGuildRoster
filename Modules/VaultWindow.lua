@@ -49,29 +49,30 @@ local UPGRADE_TRACK_COLORS = {
     Myth = "ffff9a2e",
 }
 local TRACK_MAX_STEP = 6
--- Midnight Season 1 Great Vault preview mappings.
+-- Midnight Season 2 fallbacks. Blizzard's example reward hyperlinks are the
+-- authoritative source below; these values only cover an unavailable/uncached API.
 local DUNGEON_VAULT_PREVIEW_BY_LEVEL = {
-    heroic = { trackName = "Veteran", step = 4, itemLevel = 243 },
-    mythic0 = { trackName = "Champion", step = 4, itemLevel = 256 },
-    [2] = { trackName = "Hero", step = 1, itemLevel = 259 },
-    [3] = { trackName = "Hero", step = 1, itemLevel = 259 },
-    [4] = { trackName = "Hero", step = 2, itemLevel = 263 },
-    [5] = { trackName = "Hero", step = 2, itemLevel = 263 },
-    [6] = { trackName = "Hero", step = 3, itemLevel = 266 },
-    [7] = { trackName = "Hero", step = 4, itemLevel = 269 },
-    [8] = { trackName = "Hero", step = 4, itemLevel = 269 },
-    [9] = { trackName = "Hero", step = 4, itemLevel = 269 },
-    [10] = { trackName = "Myth", step = 1, itemLevel = 272 },
+    heroic = { trackName = "Veteran", step = 4, itemLevel = 289 },
+    mythic0 = { trackName = "Champion", step = 4, itemLevel = 302 },
+    [2] = { trackName = "Hero", step = 1, itemLevel = 305 },
+    [3] = { trackName = "Hero", step = 1, itemLevel = 305 },
+    [4] = { trackName = "Hero", step = 2, itemLevel = 308 },
+    [5] = { trackName = "Hero", step = 2, itemLevel = 308 },
+    [6] = { trackName = "Hero", step = 3, itemLevel = 311 },
+    [7] = { trackName = "Hero", step = 4, itemLevel = 315 },
+    [8] = { trackName = "Hero", step = 4, itemLevel = 315 },
+    [9] = { trackName = "Hero", step = 4, itemLevel = 315 },
+    [10] = { trackName = "Myth", step = 1, itemLevel = 318 },
 }
 local DELVE_VAULT_PREVIEW_BY_LEVEL = {
-    [1] = { trackName = "Veteran", step = 1, itemLevel = 233 },
-    [2] = { trackName = "Veteran", step = 2, itemLevel = 237 },
-    [3] = { trackName = "Veteran", step = 3, itemLevel = 240 },
-    [4] = { trackName = "Veteran", step = 4, itemLevel = 243 },
-    [5] = { trackName = "Champion", step = 1, itemLevel = 246 },
-    [6] = { trackName = "Champion", step = 3, itemLevel = 253 },
-    [7] = { trackName = "Champion", step = 4, itemLevel = 256 },
-    [8] = { trackName = "Hero", step = 1, itemLevel = 259 },
+    [1] = { trackName = "Veteran", step = 1, itemLevel = 279 },
+    [2] = { trackName = "Veteran", step = 2, itemLevel = 282 },
+    [3] = { trackName = "Veteran", step = 3, itemLevel = 285 },
+    [4] = { trackName = "Veteran", step = 4, itemLevel = 289 },
+    [5] = { trackName = "Champion", step = 1, itemLevel = 292 },
+    [6] = { trackName = "Champion", step = 3, itemLevel = 298 },
+    [7] = { trackName = "Champion", step = 4, itemLevel = 302 },
+    [8] = { trackName = "Hero", step = 1, itemLevel = 305 },
 }
 local RAID_DIFFICULTY_PREVIEW = {
     [17] = { trackName = "Veteran" },
@@ -405,6 +406,10 @@ local function getPreviewLinkItemLevel(activity)
     return getDetailedItemLevel(getRewardDisplayLink(activity))
 end
 
+local function getPreviewTrackInfo(activity)
+    return getUpgradeTrackInfo(getRewardDisplayLink(activity))
+end
+
 local function getRaidSourceLabel(sourceDifficultyID)
     local difficultyID = tonumber(sourceDifficultyID)
     if not difficultyID or difficultyID <= 0 then
@@ -438,6 +443,7 @@ end
 local function getDungeonPreviewInfo(activity)
     local level = math.max(0, tonumber(activity and activity.level) or 0)
     local previewItemLevel = getPreviewLinkItemLevel(activity)
+    local previewTrackName, previewTrackText = getPreviewTrackInfo(activity)
     local entry
     local sourceLabel
 
@@ -459,9 +465,9 @@ local function getDungeonPreviewInfo(activity)
     end
 
     return {
-        trackName = entry and entry.trackName or nil,
-        trackText = entry and buildTrackDisplayText(entry.trackName, entry.step) or nil,
-        itemLevel = entry and entry.itemLevel or previewItemLevel,
+        trackName = previewTrackName or (entry and entry.trackName) or nil,
+        trackText = previewTrackText or (entry and buildTrackDisplayText(entry.trackName, entry.step)) or nil,
+        itemLevel = previewItemLevel or (entry and entry.itemLevel) or nil,
         sourceLabel = sourceLabel,
     }
 end
@@ -469,11 +475,13 @@ end
 local function getDelvePreviewInfo(activity)
     local level = math.max(1, tonumber(activity and activity.level) or 1)
     local entry = DELVE_VAULT_PREVIEW_BY_LEVEL[math.min(level, 8)] or DELVE_VAULT_PREVIEW_BY_LEVEL[8]
+    local previewItemLevel = getPreviewLinkItemLevel(activity)
+    local previewTrackName, previewTrackText = getPreviewTrackInfo(activity)
 
     return {
-        trackName = entry and entry.trackName or nil,
-        trackText = entry and buildTrackDisplayText(entry.trackName, entry.step) or nil,
-        itemLevel = entry and entry.itemLevel or getPreviewLinkItemLevel(activity),
+        trackName = previewTrackName or (entry and entry.trackName) or nil,
+        trackText = previewTrackText or (entry and buildTrackDisplayText(entry.trackName, entry.step)) or nil,
+        itemLevel = previewItemLevel or (entry and entry.itemLevel) or nil,
         sourceLabel = string.format(L["VAULT_SOURCE_DELVE_FMT"], level),
     }
 end
@@ -481,11 +489,13 @@ end
 local function getRaidPreviewInfo(activity)
     local difficultyID = tonumber(activity and activity.sourceDifficultyID)
     local preview = difficultyID and RAID_DIFFICULTY_PREVIEW[math.floor(difficultyID + 0.5)] or nil
+    local previewItemLevel = getPreviewLinkItemLevel(activity)
+    local previewTrackName, previewTrackText = getPreviewTrackInfo(activity)
 
     return {
-        trackName = preview and preview.trackName or nil,
-        trackText = preview and buildTrackDisplayText(preview.trackName) or nil,
-        itemLevel = nil,
+        trackName = previewTrackName or (preview and preview.trackName) or nil,
+        trackText = previewTrackText or (preview and buildTrackDisplayText(preview.trackName)) or nil,
+        itemLevel = previewItemLevel,
         sourceLabel = getRaidSourceLabel(difficultyID),
     }
 end

@@ -1,3 +1,17 @@
+## 7.0.0 - 2026-08-07
+
+### Added
+- Added a tarot-style Mythic Fate button above the roster. It draws a random specialization and Mythic dungeon role available to the player's current class and announces the result in party chat.
+- Mythic Fate remembers its result so a normal left-click announces the same choice again; Shift-left-click draws a different specialization when another choice is available.
+
+### Changed
+- Updated addon compatibility metadata for the 12.0.7 retail client and the 12.1.0 Midnight Season 2 client.
+- Great Vault previews now prefer Blizzard's live example reward hyperlinks for item level and upgrade-track information, with updated Midnight Season 2 dungeon and delve values as fallbacks when reward data is unavailable or uncached.
+- Bag and bank searches now recognize localized equipment-slot names and common English aliases, so searches such as `belt` and `waist` match every item for that slot.
+
+### Notes
+- Major release aligned with Midnight Season 2. The Season 2 dungeon portal catalog and compact keystone abbreviations introduced during PTR preparation remain included.
+
 ## 6.11.0 - 2026-07-06
 
 ### Added
