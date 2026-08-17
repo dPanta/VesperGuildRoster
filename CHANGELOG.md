@@ -1,4 +1,4 @@
-## 7.2.0 - 2026-08-17
+## 7.2.1 - 2026-08-17
 
 ### Added
 - The Best Runs panel next to the portals window now shows a tooltip when hovering a dungeon row, listing your five best recorded runs of the season (key level, run time colored by timed/over, and completion date), best first. Dungeons without a recorded run show "No runs so far".
