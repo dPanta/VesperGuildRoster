@@ -865,6 +865,7 @@ function VaultWindow:OnInitialize()
     self.frame = nil
     self.titleText = nil
     self.modeText = nil
+    self.closeButton = nil
     self.characterDropdown = nil
     self.characterDropdownText = nil
     self.characterDropdownArrow = nil
@@ -1350,6 +1351,8 @@ function VaultWindow:CreateWindow()
         pressedAlpha = 0.18,
     })
     closeButton:SetPoint("RIGHT", -6, 0)
+    self.closeButton = closeButton
+    self:ApplyTitlebarLayout()
 
     local navFrame = CreateFrame("Frame", nil, frame)
     navFrame:SetHeight(28)
@@ -1762,10 +1765,31 @@ function VaultWindow:RefreshMapStatus(selectedCharacter, delveMapState)
     self.mapStatusText:SetText(string.format("%s %s", L["VAULT_DELVE_MAP_USED_LABEL"], wrapColorCode(colorCode, valueText)))
 end
 
+function VaultWindow:ApplyTitlebarLayout()
+    local closeButton = self.closeButton
+    local titleText = self.titleText
+    if not (closeButton and titleText) then
+        return
+    end
+
+    closeButton:ClearAllPoints()
+    titleText:ClearAllPoints()
+
+    if vesperTools:UseRoundedWindowCorners() then
+        closeButton:SetPoint("LEFT", 6, 0)
+        titleText:SetPoint("LEFT", closeButton, "RIGHT", 8, 0)
+    else
+        closeButton:SetPoint("RIGHT", -6, 0)
+        titleText:SetPoint("LEFT", 10, 0)
+    end
+end
+
 function VaultWindow:RefreshWindow()
     if not self.frame then
         return
     end
+
+    self:ApplyTitlebarLayout()
 
     local store = self:GetStore()
     if store and type(store.CreateOrUpdateCurrentCharacter) == "function" then

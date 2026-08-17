@@ -72,6 +72,7 @@ function BankWindow:OnInitialize()
     self.frame = nil
     self.itemInteraction = nil
     self.titleText = nil
+    self.closeButton = nil
     self.modeText = nil
     self.searchBox = nil
     self.searchClearButton = nil
@@ -815,6 +816,25 @@ function BankWindow:GetViewSettings()
     }
 end
 
+function BankWindow:ApplyTitlebarLayout()
+    local closeButton = self.closeButton
+    local titleText = self.titleText
+    if not (closeButton and titleText) then
+        return
+    end
+
+    closeButton:ClearAllPoints()
+    titleText:ClearAllPoints()
+
+    if vesperTools:UseRoundedWindowCorners() then
+        closeButton:SetPoint("LEFT", 6, 0)
+        titleText:SetPoint("LEFT", closeButton, "RIGHT", 8, 0)
+    else
+        closeButton:SetPoint("RIGHT", -6, 0)
+        titleText:SetPoint("LEFT", 10, 0)
+    end
+end
+
 function BankWindow:ToggleCombineStacks()
     local bagsProfile = vesperTools:GetBagsProfile()
     if not bagsProfile then
@@ -824,6 +844,10 @@ function BankWindow:ToggleCombineStacks()
     bagsProfile.bankDisplay = bagsProfile.bankDisplay or {}
     bagsProfile.bankDisplay.combineStacks = not (bagsProfile.bankDisplay.combineStacks and true or false)
     self:RefreshWindow()
+
+    if self.combineStacksButton and GameTooltip:IsOwned(self.combineStacksButton) then
+        self:ConfigureCombineStacksButtonTooltip(self.combineStacksButton, bagsProfile.bankDisplay.combineStacks)
+    end
 end
 
 function BankWindow:UpdateCombineStacksButtonVisual(isActive)
@@ -1349,6 +1373,8 @@ function BankWindow:CreateWindow()
         pressedAlpha = 0.18,
     })
     closeButton:SetPoint("RIGHT", -6, 0)
+    self.closeButton = closeButton
+    self:ApplyTitlebarLayout()
 
     local navFrame = CreateFrame("Frame", nil, frame)
     navFrame:SetHeight(28)
@@ -2021,6 +2047,7 @@ function BankWindow:RefreshWindow()
     end
 
     self:ApplyConfiguredFonts()
+    self:ApplyTitlebarLayout()
     local viewSettings = self:GetViewSettings()
     local selectedView = self:ResolveSelectedView()
     local selectedCharacter = selectedView and selectedView.key == "character" and self:ResolveSelectedCharacter() or nil

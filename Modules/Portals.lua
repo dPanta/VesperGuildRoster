@@ -2789,6 +2789,9 @@ function Portals:CreateMPlusProgFrame(curSeason)
     self.mplusProgFrame = CreateFrame("Frame", nil, self.VesperPortalsUI, "BackdropTemplate")
     self.mplusProgFrame:SetSize(frameWidth, frameHeight)
     self.mplusProgFrame:SetPoint("LEFT", self.VesperPortalsUI, "RIGHT", 10, 0)
+    -- Swallow mouse input so windows underneath (e.g. bags) never show their
+    -- tooltips while hovering this panel.
+    self.mplusProgFrame:EnableMouse(true)
     vesperTools:ApplyAddonWindowLayer(self.mplusProgFrame)
 
     vesperTools:ApplyRoundedWindowBackdrop(self.mplusProgFrame)
@@ -2893,7 +2896,54 @@ function Portals:CreateMPlusProgFrame(curSeason)
             levelText:SetText("|cff9d9d9d-|r")
             timeText:SetText("|cff9d9d9d-|r")
         end
+
+        -- Invisible hover target for the per-dungeon best-runs tooltip.
+        local rowHover = CreateFrame("Frame", nil, self.mplusProgFrame)
+        rowHover:SetPoint("TOPLEFT", self.mplusProgFrame, "TOPLEFT", 1, rowTop)
+        rowHover:SetPoint("TOPRIGHT", self.mplusProgFrame, "TOPRIGHT", -1, rowTop)
+        rowHover:SetHeight(rowHeight)
+        rowHover:EnableMouse(true)
+        rowHover:SetScript("OnEnter", function(hoverFrame)
+            self:ShowBestRunsTooltip(hoverFrame, mapID, dungName)
+        end)
+        rowHover:SetScript("OnLeave", function()
+            GameTooltip:Hide()
+        end)
     end
+end
+
+function Portals:ShowBestRunsTooltip(anchor, mapID, dungeonName)
+    local DataHandle = vesperTools:GetModule("DataHandle", true)
+    local runs = DataHandle and DataHandle:GetSeasonBestRunsForMap(mapID, 5) or {}
+
+    GameTooltip:SetOwner(anchor, "ANCHOR_RIGHT")
+    GameTooltip:SetText(dungeonName, 1, 1, 1)
+
+    if #runs == 0 then
+        GameTooltip:AddLine(L["BEST_KEYS_TOOLTIP_NO_RUNS"], 0.62, 0.62, 0.62)
+    else
+        for index = 1, #runs do
+            local run = runs[index]
+            local keyColor = DataHandle:GetKeyColor(run.level) or "|cff9d9d9d"
+            local leftText = keyColor .. "+" .. run.level .. "|r"
+
+            local rightParts = {}
+            if run.duration and run.duration > 0 then
+                local mins = math.floor(run.duration / 60)
+                local secs = run.duration % 60
+                local timeColor = run.inTime and "|cff81c784" or "|cffe57373"
+                rightParts[#rightParts + 1] = string.format("%s%d:%02d|r", timeColor, mins, secs)
+            end
+            if run.completedAt then
+                rightParts[#rightParts + 1] = "|cff9d9d9d" .. date("%b %d", run.completedAt) .. "|r"
+            end
+
+            local rightText = #rightParts > 0 and table.concat(rightParts, "  ") or "|cff9d9d9d-|r"
+            GameTooltip:AddDoubleLine(leftText, rightText, 1, 1, 1, 1, 1, 1)
+        end
+    end
+
+    GameTooltip:Show()
 end
 
 function Portals:HandleCloseRequest()

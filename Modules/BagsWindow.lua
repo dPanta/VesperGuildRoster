@@ -153,6 +153,7 @@ function BagsWindow:OnInitialize()
     self.guildLookupResultsContent = nil
     self.guildLookupResultRows = {}
     self.layoutEditButton = nil
+    self.closeButton = nil
     self.layoutEditMode = false
     self.layoutPreviewFrame = nil
     self.layoutPreviewTitle = nil
@@ -1185,6 +1186,29 @@ function BagsWindow:ToggleBagSlots()
     self:OpenBagSlotsMenu(self.bagSlotsButton)
 end
 
+function BagsWindow:ApplyTitlebarLayout()
+    local closeButton = self.closeButton
+    local titleText = self.titleText
+    local layoutEditButton = self.layoutEditButton
+    if not (closeButton and titleText and layoutEditButton) then
+        return
+    end
+
+    closeButton:ClearAllPoints()
+    titleText:ClearAllPoints()
+    layoutEditButton:ClearAllPoints()
+
+    if vesperTools:UseRoundedWindowCorners() then
+        closeButton:SetPoint("LEFT", 6, 0)
+        titleText:SetPoint("LEFT", closeButton, "RIGHT", 8, 0)
+        layoutEditButton:SetPoint("RIGHT", -6, 0)
+    else
+        closeButton:SetPoint("RIGHT", -6, 0)
+        titleText:SetPoint("LEFT", 10, 0)
+        layoutEditButton:SetPoint("RIGHT", closeButton, "LEFT", -TITLEBAR_BUTTON_GAP, 0)
+    end
+end
+
 function BagsWindow:ToggleCombineStacks()
     local bagsProfile = vesperTools:GetBagsProfile()
     if not bagsProfile then
@@ -1194,6 +1218,10 @@ function BagsWindow:ToggleCombineStacks()
     bagsProfile.display = bagsProfile.display or {}
     bagsProfile.display.combineStacks = not (bagsProfile.display.combineStacks and true or false)
     self:RefreshWindow()
+
+    if self.combineStacksButton and GameTooltip:IsOwned(self.combineStacksButton) then
+        self:ConfigureCombineStacksButtonTooltip(self.combineStacksButton, bagsProfile.display.combineStacks)
+    end
 end
 
 function BagsWindow:UpdateCombineStacksButtonVisual(isActive)
@@ -2320,6 +2348,7 @@ function BagsWindow:CreateWindow()
         pressedAlpha = 0.18,
     })
     closeButton:SetPoint("RIGHT", -6, 0)
+    self.closeButton = closeButton
 
     local layoutEditButton = vesperTools:CreateModernCloseButton(titlebar, function(_, mouseButton)
         if mouseButton == "RightButton" and IsShiftKeyDown and IsShiftKeyDown() then
@@ -2347,6 +2376,7 @@ function BagsWindow:CreateWindow()
     end)
     self.layoutEditButton = layoutEditButton
     self:UpdateLayoutEditButtonVisual(false)
+    self:ApplyTitlebarLayout()
 
     local navFrame = CreateFrame("Frame", nil, frame)
     navFrame:SetHeight(28)
@@ -4080,6 +4110,7 @@ function BagsWindow:RefreshWindow()
     end
 
     self:ApplyConfiguredFonts()
+    self:ApplyTitlebarLayout()
     wipe(self.newItemGlowKeysSeen)
     self.currentLayoutGroups = nil
     self.currentSectionLayout = nil

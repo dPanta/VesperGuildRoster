@@ -393,6 +393,97 @@ function DataHandle:GetBestRatingRunsByMap(summary)
     return bestRuns
 end
 
+-- Season-wide personal run history (all weeks, over-time runs included);
+-- same source and fallback pattern as the vault's weekly runs.
+local function getSeasonRunHistory()
+    if not C_MythicPlus or type(C_MythicPlus.GetRunHistory) ~= "function" then
+        return {}
+    end
+
+    local attempts = {
+        { true, true, true },
+        {},
+    }
+
+    for index = 1, #attempts do
+        local ok, runs = pcall(C_MythicPlus.GetRunHistory, unpack(attempts[index]))
+        if ok and type(runs) == "table" then
+            return runs
+        end
+    end
+
+    return {}
+end
+
+-- Mirrors VaultStore's completion-date math so both surfaces date runs identically.
+local function getRunCompletionTimestamp(completionDate)
+    if type(completionDate) ~= "table" then
+        return nil
+    end
+
+    local year = tonumber(completionDate.year)
+    local month = tonumber(completionDate.month)
+    local day = tonumber(completionDate.day)
+    if year == nil or month == nil or day == nil then
+        return nil
+    end
+
+    local timestamp = time({
+        year = year + 2000,
+        month = month + 1,
+        day = day + 1,
+        hour = 12,
+    })
+
+    local numeric = tonumber(timestamp)
+    if numeric and numeric > 0 then
+        return numeric
+    end
+
+    return nil
+end
+
+local function normalizeHistoryRun(run)
+    local normalized = normalizeRatingRun(run)
+    if not normalized then
+        return nil
+    end
+
+    -- Run-history entries carry the timed flag as `completed`.
+    if run.completed ~= nil then
+        normalized.inTime = run.completed and true or false
+    end
+    normalized.completedAt = getRunCompletionTimestamp(run.completionDate)
+    return normalized
+end
+
+-- Best recorded season runs for one dungeon, best first (score, level, timed,
+-- duration); feeds the Best Runs row tooltip.
+function DataHandle:GetSeasonBestRunsForMap(mapID, limit)
+    local resolvedMapID = tonumber(mapID)
+    if not resolvedMapID then
+        return {}
+    end
+
+    local resolvedLimit = math.max(1, math.floor(tonumber(limit) or 5))
+    local matching = {}
+    local history = getSeasonRunHistory()
+    for index = 1, #history do
+        local normalized = normalizeHistoryRun(history[index])
+        if normalized and normalized.mapID == resolvedMapID then
+            matching[#matching + 1] = normalized
+        end
+    end
+
+    table.sort(matching, isBetterRatingRun)
+
+    for index = #matching, resolvedLimit + 1, -1 do
+        matching[index] = nil
+    end
+
+    return matching
+end
+
 -- Best Keys Sync DB accessors (persistent via AceDB global)
 function DataHandle:GetBestKeysDB()
     return vesperTools.db.global.bestKeys

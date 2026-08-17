@@ -101,6 +101,7 @@ local defaults = {
     BEST_KEYS_HEADER_TIME = "Time",
     BEST_KEYS_STATUS_OVER = "over",
     BEST_KEYS_STATUS_TIMED = "timed",
+    BEST_KEYS_TOOLTIP_NO_RUNS = "No runs so far",
     BAGS_BUTTON_BLIZZARD = "Blizz",
     BAGS_LAYOUT_EDIT_TOOLTIP = "Arrange Categories",
     CLEANED_STALE_KEYSTONE_ENTRIES_FMT = "Cleaned up %d stale keystone entries",

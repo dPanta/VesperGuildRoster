@@ -1,3 +1,17 @@
+## 7.2.0 - 2026-08-17
+
+### Added
+- The Best Runs panel next to the portals window now shows a tooltip when hovering a dungeon row, listing your five best recorded runs of the season (key level, run time colored by timed/over, and completion date), best first. Dungeons without a recorded run show "No runs so far".
+
+### Changed
+- Apple Fan mode is no longer enabled by default. Rounded corners and the macOS-style header layout now require checking "Apple Fan" in the configuration window; users who never touched the setting will see the standard square style after updating.
+- Apple Fan mode now moves the close button to the left side of the header in the bags, bank, vault, and configuration windows, matching the roster window. The header title follows the button, and the change applies live when toggling the checkbox.
+
+### Fixed
+- The combine-stacks button tooltip in the bags and bank windows now updates its on/off line immediately when the button is clicked, instead of only after moving the mouse away and back.
+- Roster titlebar button labels (Sync, Conf, Bags, Blizz, Bank) no longer keep a stale font, or stay invisible for the whole session, when the configured shared-media font changes or only becomes available after the window was created. All roster labels now fall back to a stock font whenever the configured font fails to render, and fonts registered late by other addons are re-applied to open windows.
+- The Best Runs panel no longer lets the mouse pass through to windows underneath it, so bag item tooltips no longer appear while hovering the panel.
+
 ## 7.1.0 - 2026-08-17
 
 ### Added

@@ -1232,10 +1232,25 @@ function vesperTools:RegisterBundledSharedMediaFonts()
 end
 
 function vesperTools:RefreshSharedMediaFonts()
-    local Configuration = self:GetModule("Configuration", true)
-    if Configuration and Configuration.panel and Configuration.panel:IsShown() then
-        Configuration:RefreshControls()
+    -- Registrations arrive in bursts (one callback per font); coalesce to a
+    -- single refresh on the next frame.
+    if self._sharedMediaFontRefreshQueued then
+        return
     end
+    self._sharedMediaFontRefreshQueued = true
+
+    C_Timer.After(0, function()
+        self._sharedMediaFontRefreshQueued = false
+
+        local Configuration = self:GetModule("Configuration", true)
+        if Configuration and Configuration.panel and Configuration.panel:IsShown() then
+            Configuration:RefreshControls()
+        end
+
+        -- Re-apply fonts in open windows so a late-registered shared-media
+        -- font heals labels that were fonted before it existed.
+        self:SendMessage("VESPERTOOLS_CONFIG_CHANGED")
+    end)
 end
 
 function vesperTools:OnSharedMediaRegistered(_, mediatype)
@@ -3234,11 +3249,11 @@ function vesperTools:UseRoundedWindowCorners()
     local profile = self.db and self.db.profile
     local style = profile and profile.style or nil
     if not style then
-        return true
+        return false
     end
 
     if style.appleFanboy == nil then
-        style.appleFanboy = true
+        style.appleFanboy = false
     end
 
     return style.appleFanboy and true or false
@@ -3319,7 +3334,7 @@ function vesperTools:OnInitialize()
                     portals = 12,
                     bestKeys = 11,
                 },
-                appleFanboy = true,
+                appleFanboy = false,
                 backgroundOpacity = {
                     roster = 0.95,
                     portals = 0.95,

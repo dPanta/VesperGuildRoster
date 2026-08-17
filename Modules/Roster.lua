@@ -1064,19 +1064,25 @@ function Roster:ApplyRosterStyling()
     if self.titleText then
         self.titleText:SetText(GetGuildInfo("player") or L["ROSTER_TITLE_FALLBACK"])
         vesperTools:ApplyConfiguredFont(self.titleText, baseFontSize + 4, "")
+        vesperTools:EnsureFontStringRenders(self.titleText)
     end
 
     for i = 1, #(self.headerButtons or {}) do
         local button = self.headerButtons[i]
         if button and button.text then
             vesperTools:ApplyConfiguredFont(button.text, baseFontSize, "")
+            vesperTools:EnsureFontStringRenders(button.text)
         end
     end
 
-    -- Resize titlebar action buttons to fit text + current font.
+    -- Resize titlebar action buttons to fit text + current font. Re-apply the
+    -- font first: labels are fonted at creation and the configured font may
+    -- have changed or only become resolvable afterwards.
     for i = 1, #(self.titlebarActionButtons or {}) do
         local btn = self.titlebarActionButtons[i]
         if btn and btn.text then
+            vesperTools:ApplyConfiguredFont(btn.text, 11, "")
+            vesperTools:EnsureFontStringRenders(btn.text)
             local minWidth = btn.minWidth or 56
             local stringWidth = btn.text:GetStringWidth() or 0
             local desiredWidth = math.max(minWidth, math.floor(stringWidth + 16))
@@ -1386,6 +1392,7 @@ function Roster:UpdateHeaderLayout(columnLayout, fontSize)
             button:SetSize(layout.width, headerH)
             vesperTools:ApplyConfiguredFont(button.text, resolvedFontSize, "")
             button.text:SetText(layout.label)
+            vesperTools:EnsureFontStringRenders(button.text)
 
             -- Show / hide a separate sort-direction icon. Rendering it as a
             -- texture (instead of an inline |T...|t suffix on the label) keeps
@@ -1426,6 +1433,7 @@ function Roster:LayoutRowColumns(row, columnLayout, fontSize)
             text:SetPoint("TOPLEFT", row, "TOPLEFT", layout.offset + ROSTER_TEXT_INSET, -1)
             text:SetPoint("BOTTOMRIGHT", row, "TOPLEFT", layout.offset + layout.width - ROSTER_TEXT_INSET, -(rowH - 1))
             vesperTools:ApplyConfiguredFont(text, resolvedFontSize, "")
+            vesperTools:EnsureFontStringRenders(text)
         end
     end
 

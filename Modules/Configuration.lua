@@ -184,7 +184,7 @@ local function ensureProfile()
     profile.style.fontPath = vesperTools:GetConfiguredFontPath()
     profile.style.fontName = vesperTools:GetConfiguredFontKey()
     if profile.style.appleFanboy == nil then
-        profile.style.appleFanboy = true
+        profile.style.appleFanboy = false
     else
         profile.style.appleFanboy = profile.style.appleFanboy and true or false
     end
@@ -268,6 +268,9 @@ function Configuration:OnInitialize()
     self.tabButtons = {}
     self.tabFrames = {}
     self.contextMenuAnchor = nil
+    self.headerCloseButton = nil
+    self.headerTitleText = nil
+    self.headerDragHandle = nil
     self.fontDropdown = nil
     self.fontDropdownText = nil
     self.appleFanboyCheckbox = nil
@@ -318,6 +321,36 @@ end
 -- Broadcast a single "config changed" message consumed by UI modules.
 function Configuration:NotifyConfigChanged()
     vesperTools:SendMessage("VESPERTOOLS_CONFIG_CHANGED")
+end
+
+function Configuration:ApplyHeaderLayout()
+    local closeButton = self.headerCloseButton
+    local title = self.headerTitleText
+    local dragHandle = self.headerDragHandle
+    if not (closeButton and title and dragHandle) then
+        return
+    end
+
+    local panel = closeButton:GetParent()
+    if not panel then
+        return
+    end
+
+    closeButton:ClearAllPoints()
+    title:ClearAllPoints()
+    dragHandle:ClearAllPoints()
+
+    if vesperTools:UseRoundedWindowCorners() then
+        closeButton:SetPoint("TOPLEFT", panel, "TOPLEFT", 8, -6)
+        title:SetPoint("TOPLEFT", closeButton, "TOPRIGHT", 8, -4)
+        dragHandle:SetPoint("TOPLEFT", panel, "TOPLEFT", 38, -6)
+        dragHandle:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -10, -6)
+    else
+        closeButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -8, -6)
+        title:SetPoint("TOPLEFT", panel, "TOPLEFT", 16, -10)
+        dragHandle:SetPoint("TOPLEFT", panel, "TOPLEFT", 10, -6)
+        dragHandle:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -42, -6)
+    end
 end
 
 function Configuration:EnsureAppleFanConfetti()
@@ -2306,6 +2339,11 @@ function Configuration:BuildPanel()
     title:SetPoint("TOPLEFT", 16, -10)
     setFontStringTextSafe(title, "vesperTools", 24, "", GameFontHighlightLarge)
 
+    self.headerDragHandle = dragHandle
+    self.headerCloseButton = closeButton
+    self.headerTitleText = title
+    self:ApplyHeaderLayout()
+
     local subtitle = panel:CreateFontString(nil, "ARTWORK")
     subtitle:SetPoint("TOPLEFT", title, "BOTTOMLEFT", 0, -8)
     setFontStringTextSafe(subtitle, L["CONFIG_TITLE"], 12, "", GameFontHighlightSmall)
@@ -2800,6 +2838,7 @@ function Configuration:BuildPanel()
                 self:NotifyConfigChanged()
             end
             if fieldKey == "appleFanboy" then
+                self:ApplyHeaderLayout()
                 if enabled then
                     self:PlayAppleFanConfettiBurst()
                 else
@@ -3065,6 +3104,7 @@ function Configuration:RefreshControls()
     -- Guard prevents slider OnValueChanged handlers from rebroadcasting while we hydrate UI.
     self._isRefreshing = true
 
+    self:ApplyHeaderLayout()
     self:RefreshFontDropdownText()
     self:RefreshRosterOnlineBlacklistDropdownText()
     self:RefreshHearthstoneDropdownText()
