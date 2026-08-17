@@ -13,8 +13,10 @@ local TOP_UTILITY_FRAME_VERTICAL_PADDING = 20
 local TOY_FLYOUT_BUTTON_GAP = 8
 local TOY_FLYOUT_PADDING = 8
 local TOY_FLYOUT_COLUMN_GAP = 8
-local TOY_FLYOUT_ANCHOR_Y_OFFSET = 8
+local TOY_FLYOUT_ANCHOR_Y_OFFSET = 13
 local TOY_FLYOUT_SCREEN_MARGIN = 10
+-- Long enough to cross the gap between the anchor button and the flyout.
+local TOY_FLYOUT_HIDE_DELAY = 0.5
 local COOLDOWN_TEXT_UPDATE_INTERVAL = 0.1
 -- Coalesce window for SPELLS_CHANGED bursts (talents/spec/login fire many in a row).
 local SPELLS_CHANGED_COALESCE_DELAY = 0.15
@@ -328,7 +330,6 @@ function Portals:OnInitialize()
     self.portalButtons = {}
     self.portalButtonPool = {}
     self.toyFlyoutButtons = {}
-    self.toyFlyoutColumnBackgrounds = {}
     self.cooldownButtons = {}
     self.cooldownUpdateElapsed = 0
     self.spellsChangedRefreshTimer = nil
@@ -476,13 +477,7 @@ function Portals:ApplyBackdropOpacity()
         self.topUtilityFrame:SetBackdropColor(0.07, 0.07, 0.07, portalsOpacity)
     end
     if self.toyFlyoutFrame then
-        self.toyFlyoutFrame:SetBackdropColor(0.07, 0.07, 0.07, 0)
-    end
-    for i = 1, #(self.toyFlyoutColumnBackgrounds or {}) do
-        local background = self.toyFlyoutColumnBackgrounds[i]
-        if background then
-            background:SetBackdropColor(0.07, 0.07, 0.07, portalsOpacity)
-        end
+        self.toyFlyoutFrame:SetBackdropColor(0.07, 0.07, 0.07, portalsOpacity)
     end
     if self.mplusProgFrame then
         self.mplusProgFrame:SetBackdropColor(0.07, 0.07, 0.07, bestKeysOpacity)
@@ -1668,13 +1663,11 @@ function Portals:CreateToyFlyoutFrame()
     self.toyFlyoutFrame = CreateFrame("Frame", "vesperToolsToyFlyoutFrame", self.topUtilityFrame, "BackdropTemplate")
     self.toyFlyoutFrame:SetSize(buttonSize + (TOY_FLYOUT_PADDING * 2), buttonSize + (TOY_FLYOUT_PADDING * 2))
     vesperTools:ApplyAddonWindowLayer(self.toyFlyoutFrame, (self.topUtilityFrame:GetFrameLevel() or 0) + 2)
-    self.toyFlyoutFrame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    self.toyFlyoutFrame:SetBackdropColor(0.07, 0.07, 0.07, 0)
-    self.toyFlyoutFrame:SetBackdropBorderColor(0, 0, 0, 0)
+    vesperTools:ApplyRoundedWindowBackdrop(self.toyFlyoutFrame)
+    self.toyFlyoutFrame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("portals"))
+    if self.classColor then
+        self.toyFlyoutFrame:SetBackdropBorderColor(self.classColor.r, self.classColor.g, self.classColor.b, 1)
+    end
     self.toyFlyoutFrame:Hide()
 
     -- Keep flyout visible while hovered and hide once cursor leaves both anchor and flyout.
@@ -1684,61 +1677,6 @@ function Portals:CreateToyFlyoutFrame()
     self.toyFlyoutFrame:SetScript("OnLeave", function()
         self:ScheduleToyFlyoutHideCheck()
     end)
-end
-
-function Portals:CreateToyFlyoutColumnBackground(parent)
-    local frame = CreateFrame("Frame", nil, parent, "BackdropTemplate")
-    frame:SetBackdrop({
-        bgFile = "Interface\\Buttons\\WHITE8x8",
-        edgeFile = "Interface\\Buttons\\WHITE8x8",
-        edgeSize = 1,
-    })
-    frame:SetBackdropColor(0.07, 0.07, 0.07, vesperTools:GetConfiguredOpacity("portals"))
-    frame:SetBackdropBorderColor(0, 0, 0, 0)
-    frame:Hide()
-    return frame
-end
-
--- Draw per-column backdrops so overflow columns only get background behind rows they actually use.
-function Portals:RefreshToyFlyoutColumnBackgrounds(layout, toyCount, buttonSize)
-    local backgrounds = self.toyFlyoutColumnBackgrounds or {}
-    self.toyFlyoutColumnBackgrounds = backgrounds
-
-    for i = 1, #backgrounds do
-        backgrounds[i]:Hide()
-    end
-
-    if not self.toyFlyoutFrame or not layout or not toyCount or toyCount <= 0 then
-        return
-    end
-
-    local resolvedButtonSize = tonumber(buttonSize) or self:GetTopUtilityButtonSize()
-    for columnIndex = 0, math.max(0, layout.columns - 1) do
-        local firstToyIndex = (columnIndex * layout.rowsPerColumn) + 1
-        local remaining = toyCount - firstToyIndex + 1
-        local rowsInColumn = math.min(layout.rowsPerColumn, remaining)
-        if rowsInColumn > 0 then
-            local background = backgrounds[columnIndex + 1]
-            if not background then
-                background = self:CreateToyFlyoutColumnBackground(self.toyFlyoutFrame)
-                backgrounds[columnIndex + 1] = background
-            end
-
-            local columnHeight = (TOY_FLYOUT_PADDING * 2)
-                + (rowsInColumn * resolvedButtonSize)
-                + ((rowsInColumn - 1) * TOY_FLYOUT_BUTTON_GAP)
-            background:SetSize(resolvedButtonSize + (TOY_FLYOUT_PADDING * 2), columnHeight)
-            background:ClearAllPoints()
-            background:SetPoint(
-                "BOTTOMLEFT",
-                self.toyFlyoutFrame,
-                "BOTTOMLEFT",
-                columnIndex * (resolvedButtonSize + TOY_FLYOUT_COLUMN_GAP),
-                0
-            )
-            background:Show()
-        end
-    end
 end
 
 -- Return screen-safe toy flyout layout so tall lists wrap into columns before going off-screen.
@@ -1804,7 +1742,11 @@ function Portals:PositionToyFlyoutFrame(width, height)
     local uiRight = UIParent and (UIParent:GetRight() or (uiLeft + (UIParent:GetWidth() or 0))) or resolvedWidth
     local uiTop = UIParent and (UIParent:GetTop() or (uiBottom + (UIParent:GetHeight() or 0))) or resolvedHeight
 
-    local desiredLeft = (self.toyFlyoutButton:GetLeft() or uiLeft) + 0
+    local buttonLeft = self.toyFlyoutButton:GetLeft()
+    local buttonWidth = self.toyFlyoutButton:GetWidth() or 0
+    local desiredLeft = buttonLeft
+        and (buttonLeft + (buttonWidth / 2) - (resolvedWidth / 2))
+        or uiLeft
     local desiredBottom = (self.toyFlyoutButton:GetTop() or uiBottom) + TOY_FLYOUT_ANCHOR_Y_OFFSET
 
     local minLeft = uiLeft + TOY_FLYOUT_SCREEN_MARGIN
@@ -1880,7 +1822,7 @@ function Portals:ScheduleToyFlyoutHideCheck()
         return
     end
 
-    C_Timer.After(0.06, function()
+    C_Timer.After(TOY_FLYOUT_HIDE_DELAY, function()
         if self._toyFlyoutHideToken ~= token then
             return
         end
@@ -1963,14 +1905,12 @@ function Portals:RefreshToyFlyout()
         local emptySize = buttonSize + (TOY_FLYOUT_PADDING * 2)
         self.toyFlyoutFrame:SetSize(emptySize, emptySize)
         self:PositionToyFlyoutFrame(emptySize, emptySize)
-        self:RefreshToyFlyoutColumnBackgrounds(nil, 0, buttonSize)
         return
     end
 
     local layout = self:GetToyFlyoutLayout(#toys, buttonSize)
     self.toyFlyoutFrame:SetSize(layout.width, layout.height)
     self:PositionToyFlyoutFrame(layout.width, layout.height)
-    self:RefreshToyFlyoutColumnBackgrounds(layout, #toys, buttonSize)
 
     for i = 1, #toys do
         local option = toys[i]
@@ -2957,13 +2897,13 @@ function Portals:CreateMPlusProgFrame(curSeason)
 end
 
 function Portals:HandleCloseRequest()
-    if InCombatLockdown() then
-        -- Portal buttons use secure attributes; prevent show/hide rebuilds in combat lockdown.
-        vesperTools:Print(L["PORTALS_TOGGLE_IN_COMBAT"])
+    if not self.VesperPortalsUI or not self.VesperPortalsUI:IsShown() then
         return
     end
 
-    if not self.VesperPortalsUI or not self.VesperPortalsUI:IsShown() then
+    if InCombatLockdown() then
+        -- Portal buttons use secure attributes; prevent show/hide rebuilds in combat lockdown.
+        vesperTools:Print(L["PORTALS_TOGGLE_IN_COMBAT"])
         return
     end
 

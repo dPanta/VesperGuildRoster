@@ -227,6 +227,66 @@ local function getCurrentWeekStartTime()
     return nil
 end
 
+local function getCompletedDungeonRunCounts()
+    if not C_WeeklyRewards or type(C_WeeklyRewards.GetNumCompletedDungeonRuns) ~= "function" then
+        return nil
+    end
+
+    local ok, numHeroic, numMythic, numMythicPlus = pcall(C_WeeklyRewards.GetNumCompletedDungeonRuns)
+    if not ok then
+        return nil
+    end
+
+    return {
+        heroic = math.max(0, tonumber(numHeroic) or 0),
+        mythic = math.max(0, tonumber(numMythic) or 0),
+        mythicPlus = math.max(0, tonumber(numMythicPlus) or 0),
+    }
+end
+
+local function getWorldTierProgress()
+    local thresholdType = Enum and Enum.WeeklyRewardChestThresholdType or nil
+    if not thresholdType or not C_WeeklyRewards or type(C_WeeklyRewards.GetSortedProgressForActivity) ~= "function" then
+        return nil
+    end
+
+    local ok, progress = pcall(C_WeeklyRewards.GetSortedProgressForActivity, thresholdType.World, true)
+    if not ok or type(progress) ~= "table" then
+        return nil
+    end
+
+    -- Blizzard returns rows sorted by descending difficulty; difficulty is the
+    -- delve tier (>1) or generic world content (<=1), numPoints the completions.
+    local rows = {}
+    for index = 1, #progress do
+        local entry = progress[index]
+        local difficulty = tonumber(entry and entry.difficulty)
+        local numPoints = tonumber(entry and entry.numPoints)
+        if difficulty and numPoints and numPoints > 0 then
+            rows[#rows + 1] = {
+                difficulty = math.floor(difficulty + 0.5),
+                numPoints = math.floor(numPoints + 0.5),
+            }
+        end
+    end
+
+    return rows
+end
+
+local function getActivityTierDifficultyID(activityTierID)
+    local tierID = tonumber(activityTierID)
+    if not tierID or not C_WeeklyRewards or type(C_WeeklyRewards.GetDifficultyIDForActivityTier) ~= "function" then
+        return nil
+    end
+
+    local ok, difficultyID = pcall(C_WeeklyRewards.GetDifficultyIDForActivityTier, tierID)
+    if ok then
+        return tonumber(difficultyID)
+    end
+
+    return nil
+end
+
 local function getRunHistory()
     if not C_MythicPlus or type(C_MythicPlus.GetRunHistory) ~= "function" then
         return {}
@@ -637,6 +697,7 @@ function VaultStore:BuildActivitySnapshot(rewardType, activity, index)
         threshold = threshold,
         progress = tonumber(activity.progress) or 0,
         level = tonumber(activity.level) or 0,
+        tierDifficultyID = getActivityTierDifficultyID(activity.activityTierID),
         claimID = activity.claimID,
         raidString = type(activity.raidString) == "string" and activity.raidString or nil,
         sourceDifficultyID = sourceDifficultyID,
@@ -697,6 +758,8 @@ function VaultStore:CaptureCurrentCharacterSnapshot()
             and C_WeeklyRewards.HasGeneratedRewards() and true or false,
         activities = {},
         weeklyDungeonRuns = self:BuildCurrentCharacterWeeklyDungeonRuns(),
+        dungeonRunCounts = getCompletedDungeonRunCounts(),
+        worldTierProgress = getWorldTierProgress(),
     }
 
     local totalActivityCount = 0

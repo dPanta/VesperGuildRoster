@@ -4,12 +4,35 @@ local GroupActionButtons = vesperTools:NewModule("GroupActionButtons", "AceEvent
 local L = vesperTools.L
 local CombatGate = addonTable.CombatGate
 
+-- Base metrics at the default button height; configured sizes scale from these.
 local READY_BUTTON_WIDTH = 54
 local PULL_BUTTON_WIDTH = 46
 local BUTTON_HEIGHT = 20
 local BUTTON_GAP = 6
 local BAR_OFFSET_Y = 5
+local BASE_FONT_SIZE = 11
+local MIN_BUTTON_HEIGHT = 14
+local MAX_BUTTON_HEIGHT = 32
 local PULL_COUNTDOWN_SECONDS = 9
+
+-- First shown frame wins; addon group headers take priority over the Blizzard
+-- frames they replace. EllesmereUI's named container is a 1x1 positioning
+-- point, so its secure headers are the anchors instead.
+local PARTY_PARENT_FRAME_NAMES = {
+    "ERFPartyHeader", -- EllesmereUI
+    "ElvUF_PartyGroup1", -- ElvUI
+    "CompactPartyFrame",
+}
+local RAID_PARENT_FRAME_NAMES = {
+    "ERFGroupHeader1", -- EllesmereUI
+    "ERFPartyHeader", -- EllesmereUI running party-style frames in a raid
+    "ElvUF_Raid1Group1", -- ElvUI
+    "ElvUF_Raid2Group1",
+    "ElvUF_Raid3Group1",
+    "ElvUF_RaidGroup1",
+    "ElvUF_Raid40Group1",
+    "CompactRaidFrameContainer",
+}
 
 local READY_BACKGROUND_COLOR = { 0.06, 0.13, 0.08 }
 local READY_BORDER_COLOR = { 0.38, 0.88, 0.54 }
@@ -22,6 +45,37 @@ end
 
 local function isPlayerRaidAssistant()
     return UnitIsGroupAssistant and UnitIsGroupAssistant("player") or false
+end
+
+local function getConfiguredButtonMetrics()
+    local profile = vesperTools.db and vesperTools.db.profile or nil
+    local settings = profile and profile.groupActions or nil
+    local enabled = not settings or settings.enabled ~= false
+
+    local height = math.floor((tonumber(settings and settings.buttonHeight) or BUTTON_HEIGHT) + 0.5)
+    height = math.min(MAX_BUTTON_HEIGHT, math.max(MIN_BUTTON_HEIGHT, height))
+
+    local scale = height / BUTTON_HEIGHT
+    local readyWidth = math.floor((READY_BUTTON_WIDTH * scale) + 0.5)
+    local pullWidth = math.floor((PULL_BUTTON_WIDTH * scale) + 0.5)
+    local fontSize = math.max(8, math.min(18, math.floor((BASE_FONT_SIZE * scale) + 0.5)))
+
+    return enabled, height, readyWidth, pullWidth, fontSize
+end
+
+local function resolveParentFrame(candidateNames)
+    local firstExisting = nil
+    for index = 1, #candidateNames do
+        local frame = _G[candidateNames[index]]
+        if frame then
+            firstExisting = firstExisting or frame
+            if frame:IsShown() then
+                return frame
+            end
+        end
+    end
+
+    return firstExisting
 end
 
 local function canPlayerUseGroupActions()
@@ -75,8 +129,27 @@ local function createActionButton(parent, label, backgroundColor, borderColor, o
         hoverAlpha = 0.06,
         pressedAlpha = 0.10,
     })
+    button.vgLabelText = label
 
     return button
+end
+
+-- The configured font can fail to render at creation time (late-registered
+-- shared media); re-assert text and font on every refresh so the label heals
+-- without a reload.
+local function refreshButtonLabel(button, fontSize)
+    local fontString = button and button.vgModernTextLabel
+    if not fontString then
+        return
+    end
+
+    local currentText = fontString:GetText()
+    if button.vgLabelText and (currentText == nil or currentText == "") then
+        fontString:SetText(button.vgLabelText)
+    end
+
+    vesperTools:ApplyConfiguredFont(fontString, fontSize or BASE_FONT_SIZE, "")
+    vesperTools:EnsureFontStringRenders(fontString)
 end
 
 function GroupActionButtons:CreateActionBar(parent, kind)
@@ -143,7 +216,7 @@ function GroupActionButtons:CreateActionBar(parent, kind)
     return bar
 end
 
-function GroupActionButtons:LayoutActionBar(bar)
+function GroupActionButtons:LayoutActionBar(bar, buttonHeight, readyWidth, pullWidth)
     if not bar or not bar.parentFrame then
         return
     end
@@ -153,34 +226,62 @@ function GroupActionButtons:LayoutActionBar(bar)
     bar:SetFrameLevel((parent:GetFrameLevel() or 0) + 60)
     bar:ClearAllPoints()
     bar:SetPoint("BOTTOMLEFT", parent, "TOPLEFT", 0, BAR_OFFSET_Y)
-    bar:SetSize(READY_BUTTON_WIDTH + BUTTON_GAP + PULL_BUTTON_WIDTH, BUTTON_HEIGHT)
+    bar:SetSize(readyWidth + BUTTON_GAP + pullWidth, buttonHeight)
+    if bar.ReadyButton then
+        bar.ReadyButton:SetSize(readyWidth, buttonHeight)
+    end
+    if bar.PullButton then
+        bar.PullButton:SetSize(pullWidth, buttonHeight)
+    end
 end
 
-function GroupActionButtons:RefreshActionBar(bar, shouldShow)
-    if not bar then
+function GroupActionButtons:RefreshKindBar(kind, parent, shouldShow, buttonHeight, readyWidth, pullWidth, fontSize)
+    self.activeBars = self.activeBars or {}
+
+    -- The resolved parent can change (ElvUI headers appearing, layout swaps);
+    -- hide the bar left behind on the previous parent.
+    local previousBar = self.activeBars[kind]
+    if previousBar and previousBar.parentFrame ~= parent then
+        previousBar:Hide()
+        self.activeBars[kind] = nil
+    end
+
+    if not parent then
         return
     end
 
-    self:LayoutActionBar(bar)
-    bar:SetShown(shouldShow and true or false)
+    local bar = self:CreateActionBar(parent, kind)
+    if not bar then
+        return
+    end
+    self.activeBars[kind] = bar
+
+    self:LayoutActionBar(bar, buttonHeight, readyWidth, pullWidth)
+    refreshButtonLabel(bar.ReadyButton, fontSize)
+    refreshButtonLabel(bar.PullButton, fontSize)
+    bar:SetShown(shouldShow and parent:IsShown() and true or false)
 end
 
 function GroupActionButtons:RefreshBars()
     self.pendingRefresh = false
 
+    local enabled, buttonHeight, readyWidth, pullWidth, fontSize = getConfiguredButtonMetrics()
     local canUseActions = canPlayerUseGroupActions()
     local inRaid = IsInRaid()
     local inParty = IsInGroup() and not inRaid
 
-    if self.partyParent then
-        local partyBar = self:CreateActionBar(self.partyParent, "party")
-        self:RefreshActionBar(partyBar, inParty and canUseActions and self.partyParent:IsShown())
-    end
-
-    if self.raidParent then
-        local raidBar = self:CreateActionBar(self.raidParent, "raid")
-        self:RefreshActionBar(raidBar, inRaid and canUseActions and self.raidParent:IsShown())
-    end
+    self:RefreshKindBar(
+        "party",
+        resolveParentFrame(PARTY_PARENT_FRAME_NAMES),
+        enabled and inParty and canUseActions,
+        buttonHeight, readyWidth, pullWidth, fontSize
+    )
+    self:RefreshKindBar(
+        "raid",
+        resolveParentFrame(RAID_PARENT_FRAME_NAMES),
+        enabled and inRaid and canUseActions,
+        buttonHeight, readyWidth, pullWidth, fontSize
+    )
 end
 
 function GroupActionButtons:RequestRefresh()
@@ -200,47 +301,28 @@ function GroupActionButtons:RequestRefresh()
     self:RefreshBars()
 end
 
-function GroupActionButtons:TryAttachToGroupFrames()
-    self.partyParent = self.partyParent or _G.CompactPartyFrame
-    self.raidParent = self.raidParent or _G.CompactRaidFrameContainer
-
-    if self.partyParent then
-        self:CreateActionBar(self.partyParent, "party")
-    end
-
-    if self.raidParent then
-        self:CreateActionBar(self.raidParent, "raid")
-    end
-
-    self:RequestRefresh()
-end
-
 function GroupActionButtons:OnInitialize()
-    self.partyParent = nil
-    self.raidParent = nil
+    self.activeBars = {}
     self.pendingRefresh = false
 end
 
 function GroupActionButtons:OnEnable()
-    self:RegisterEvent("PLAYER_LOGIN")
+    self:RegisterEvent("PLAYER_LOGIN", "RequestRefresh")
     self:RegisterEvent("ADDON_LOADED")
     self:RegisterEvent("PLAYER_ENTERING_WORLD", "RequestRefresh")
     self:RegisterEvent("GROUP_ROSTER_UPDATE", "RequestRefresh")
     self:RegisterEvent("PARTY_LEADER_CHANGED", "RequestRefresh")
-
-    if _G.CompactPartyFrame or _G.CompactRaidFrameContainer then
-        self:TryAttachToGroupFrames()
-    end
-end
-
-function GroupActionButtons:PLAYER_LOGIN()
-    self:TryAttachToGroupFrames()
+    self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "RequestRefresh")
+    self:RequestRefresh()
 end
 
 function GroupActionButtons:ADDON_LOADED(_, addonName)
-    if addonName ~= "Blizzard_CompactRaidFrames" then
+    if addonName ~= "Blizzard_CompactRaidFrames"
+        and addonName ~= "ElvUI"
+        and addonName ~= "EllesmereUIRaidFrames"
+    then
         return
     end
 
-    self:TryAttachToGroupFrames()
+    self:RequestRefresh()
 end

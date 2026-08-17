@@ -212,6 +212,18 @@ local function ensureProfile()
         profile.roster.onlineCountBlacklist = {}
     end
 
+    profile.groupActions = profile.groupActions or {}
+    if profile.groupActions.enabled == nil then
+        profile.groupActions.enabled = true
+    else
+        profile.groupActions.enabled = profile.groupActions.enabled and true or false
+    end
+    profile.groupActions.buttonHeight = clamp(
+        math.floor((tonumber(profile.groupActions.buttonHeight) or 20) + 0.5),
+        14,
+        32
+    )
+
     profile.portals = profile.portals or {}
     if profile.portals.primaryHearthstoneItemID ~= nil then
         profile.portals.primaryHearthstoneItemID = tonumber(profile.portals.primaryHearthstoneItemID) or 6948
@@ -259,6 +271,8 @@ function Configuration:OnInitialize()
     self.fontDropdown = nil
     self.fontDropdownText = nil
     self.appleFanboyCheckbox = nil
+    self.groupActionsCheckbox = nil
+    self.groupActionsSizeSlider = nil
     self.appleFanConfettiOverlay = nil
     self.appleFanConfettiPieces = nil
     self.appleFanConfettiBurstToken = 0
@@ -2403,6 +2417,24 @@ function Configuration:BuildPanel()
     setFontStringTextSafe(rosterOnlineBlacklistHint, L["CONFIG_ROSTER_ONLINE_BLACKLIST_HINT"], 11, "", GameFontHighlightSmall)
     rosterOnlineBlacklistHint:SetTextColor(0.78, 0.82, 0.9, 1)
 
+    local groupActionsCheckbox = self:CreateCheckButton(
+        "vesperToolsConfigGroupActionsCheckbox",
+        rosterTab,
+        L["CONFIG_GROUP_ACTIONS_ENABLED"],
+        rosterOnlineBlacklistHint,
+        -14
+    )
+
+    local groupActionsSizeSlider = self:CreateIntegerSlider(
+        "vesperToolsConfigGroupActionsSizeSlider",
+        rosterTab,
+        L["CONFIG_GROUP_ACTIONS_SIZE"],
+        groupActionsCheckbox,
+        -30,
+        14,
+        32
+    )
+
     local portalsSectionTitle = portalsTab:CreateFontString(nil, "ARTWORK")
     portalsSectionTitle:SetPoint("TOPLEFT", 0, -2)
     setFontStringTextSafe(portalsSectionTitle, L["CONFIG_SECTION_PORTALS_FRAME"], 13, "OUTLINE", GameFontHighlight)
@@ -2777,6 +2809,41 @@ function Configuration:BuildPanel()
         end)
     end
 
+    -- Toggle + size for the ready-check/pull buttons above group frames.
+    local function bindGroupActionsCheckbox(checkbox)
+        checkbox:SetScript("OnClick", function(changedCheckbox)
+            local profile = ensureProfile()
+            if not profile then
+                return
+            end
+            profile.groupActions = profile.groupActions or {}
+            profile.groupActions.enabled = changedCheckbox:GetChecked() and true or false
+            if not self._isRefreshing then
+                self:NotifyConfigChanged()
+            end
+        end)
+    end
+
+    local function bindGroupActionsSizeSlider(slider)
+        slider:SetScript("OnValueChanged", function(changedSlider, value)
+            local profile = ensureProfile()
+            if not profile then
+                return
+            end
+            local normalized = clamp(math.floor((tonumber(value) or 20) + 0.5), 14, 32)
+            if math.abs(normalized - value) > 0.0001 then
+                changedSlider:SetValue(normalized)
+                return
+            end
+            profile.groupActions = profile.groupActions or {}
+            profile.groupActions.buttonHeight = normalized
+            self:UpdateIntegerSliderLabel(changedSlider)
+            if not self._isRefreshing then
+                self:NotifyConfigChanged()
+            end
+        end)
+    end
+
     -- Live-write top utility button size used by hearthstone/toy controls.
     local function bindUtilityButtonSizeSlider(slider)
         slider:SetScript("OnValueChanged", function(changedSlider, value)
@@ -2904,6 +2971,8 @@ function Configuration:BuildPanel()
     bindOpacitySlider(bestKeysOpacitySlider, "bestKeys")
 
     bindStyleCheckBox(appleFanboyCheckbox, "appleFanboy")
+    bindGroupActionsCheckbox(groupActionsCheckbox)
+    bindGroupActionsSizeSlider(groupActionsSizeSlider)
     bindFontSizeSlider(rosterFontSizeSlider, "roster")
     bindFontSizeSlider(portalsFontSizeSlider, "portals")
     bindFontSizeSlider(bestKeysFontSizeSlider, "bestKeys")
@@ -2949,6 +3018,8 @@ function Configuration:BuildPanel()
     self.fontDropdown = fontDropdown
     self.fontDropdownText = fontText
     self.appleFanboyCheckbox = appleFanboyCheckbox
+    self.groupActionsCheckbox = groupActionsCheckbox
+    self.groupActionsSizeSlider = groupActionsSizeSlider
     self.rosterOnlineBlacklistDropdown = rosterOnlineBlacklistDropdown
     self.rosterOnlineBlacklistDropdownText = rosterOnlineBlacklistText
     self.rosterOnlineBlacklistHint = rosterOnlineBlacklistHint
@@ -3058,6 +3129,18 @@ function Configuration:RefreshControls()
     if self.appleFanboyCheckbox then
         self.appleFanboyCheckbox:SetChecked(appleFanboy)
     end
+    if self.groupActionsCheckbox then
+        self.groupActionsCheckbox:SetChecked(profile.groupActions and profile.groupActions.enabled ~= false)
+    end
+    if self.groupActionsSizeSlider then
+        local groupActionsHeight = clamp(
+            math.floor((tonumber(profile.groupActions and profile.groupActions.buttonHeight) or 20) + 0.5),
+            14,
+            32
+        )
+        self.groupActionsSizeSlider:SetValue(groupActionsHeight)
+        self:UpdateIntegerSliderLabel(self.groupActionsSizeSlider)
+    end
     if self.utilityButtonSizeSlider then
         self.utilityButtonSizeSlider:SetValue(utilityButtonSize)
         self:UpdateUtilityButtonSizeSliderLabel(self.utilityButtonSizeSlider)
@@ -3159,4 +3242,10 @@ function Configuration:OpenConfig()
     self.panel:Show()
     self.panel:Raise()
     self:RefreshControls()
+end
+
+function Configuration:HandleCloseRequest()
+    if self.panel and self.panel:IsShown() then
+        self.panel:Hide()
+    end
 end

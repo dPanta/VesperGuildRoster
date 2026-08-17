@@ -24,6 +24,7 @@ local DROPDOWN_ARROW_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\DropdownA
 local FALLBACK_ICON_TEXTURE = "Interface\\Icons\\INV_Misc_QuestionMark"
 local LOCKED_CHEST_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\VaultClosedChest-64"
 local PREVIEW_CHEST_TEXTURE = "Interface\\AddOns\\vesperTools\\Media\\VaultPreviewChest-64"
+local WEEKLY_REWARDS_INTERACTION_TYPE = Enum and Enum.PlayerInteractionType and Enum.PlayerInteractionType.WeeklyRewards or 49
 local UPGRADE_TRACK_NAMES = {
     Explorer = "Explorer",
     Adventurer = "Adventurer",
@@ -74,12 +75,19 @@ local DELVE_VAULT_PREVIEW_BY_LEVEL = {
     [7] = { trackName = "Champion", step = 4, itemLevel = 302 },
     [8] = { trackName = "Hero", step = 1, itemLevel = 305 },
 }
+-- Midnight Season 2: the raid lane of the vault rewards gear from one
+-- difficulty above the completed one (Mythic kills cap at Myth 6/6).
 local RAID_DIFFICULTY_PREVIEW = {
-    [17] = { trackName = "Veteran" },
-    [14] = { trackName = "Champion" },
-    [15] = { trackName = "Hero" },
-    [16] = { trackName = "Myth" },
+    [17] = { trackName = "Champion", step = 1, itemLevel = 292 },
+    [14] = { trackName = "Hero", step = 1, itemLevel = 305 },
+    [15] = { trackName = "Myth", step = 1, itemLevel = 318 },
+    [16] = { trackName = "Myth", step = 6, itemLevel = 334 },
 }
+-- Blizzard reports activity.level 0 for both heroic- and M0-earned dungeon
+-- slots (WeeklyRewardsUtil uses -1/0 sentinels and the tier difficulty to
+-- tell them apart).
+local HEROIC_RUN_LEVEL = -1
+local DUNGEON_HEROIC_DIFFICULTY_ID = DifficultyUtil and DifficultyUtil.ID and DifficultyUtil.ID.DungeonHeroic or 2
 local RAID_DIFFICULTY_SOURCE_KEYS = {
     [17] = "VAULT_SOURCE_RAID_LFR",
     [14] = "VAULT_SOURCE_RAID_NORMAL",
@@ -259,10 +267,14 @@ local function extractUpgradeTrackInfo(text)
         return UPGRADE_TRACK_NAMES[prefixedMatch], fullTrackText
     end
 
+    fullTrackText, prefixedMatch = normalized:match("((%a+)%s+%d+/%d+)")
+    if prefixedMatch and UPGRADE_TRACK_NAMES[prefixedMatch] then
+        return UPGRADE_TRACK_NAMES[prefixedMatch], fullTrackText
+    end
+
     prefixedMatch = normalized:match("^Upgrade Level:%s*(%a+)$")
         or normalized:match("^Upgrade:%s*(%a+)$")
         or normalized:match("^Track:%s*(%a+)$")
-        or normalized:match("^(%a+)%s+%d+/%d+$")
         or normalized:match("^(%a+)$")
 
     if prefixedMatch and UPGRADE_TRACK_NAMES[prefixedMatch] then
@@ -274,9 +286,11 @@ local function extractUpgradeTrackInfo(text)
         return normalizedTrack, trackText or normalizedTrack
     end
 
+    -- Word-boundary match only: "Mythic 0" or "Mythic Keystone" must not read
+    -- as the Myth track.
     for index = 1, #UPGRADE_TRACK_ORDER do
         local trackName = UPGRADE_TRACK_ORDER[index]
-        if normalized:find(trackName, 1, true) then
+        if normalized:find("%f[%a]" .. trackName .. "%f[%A]") then
             return trackName, trackName
         end
     end
@@ -345,6 +359,9 @@ local function getUpgradeTrackInfo(link)
         return nil, nil
     end
 
+    -- A match carrying an explicit step ("Champion 4/6") anywhere in the
+    -- tooltip outranks a bare track-name hit on an earlier line.
+    local bareTrackName, bareTrackText = nil, nil
     for index = 1, #tooltipData.lines do
         local line = tooltipData.lines[index]
         if type(line) == "table" then
@@ -357,13 +374,18 @@ local function getUpgradeTrackInfo(link)
             for candidateIndex = 1, #textCandidates do
                 local trackName, trackText = extractUpgradeTrackInfo(textCandidates[candidateIndex])
                 if trackName then
-                    return trackName, trackText
+                    if trackText and trackText:find("%d+/%d+") then
+                        return trackName, trackText
+                    end
+                    if not bareTrackName then
+                        bareTrackName, bareTrackText = trackName, trackText
+                    end
                 end
             end
         end
     end
 
-    return nil, nil
+    return bareTrackName, bareTrackText
 end
 
 local function getActualRewardTrackInfo(activity)
@@ -371,9 +393,11 @@ local function getActualRewardTrackInfo(activity)
         return nil, nil
     end
 
+    -- The earned item first: the upgrade link describes the improved reward
+    -- from harder content, not the one this slot pays out.
     local links = {
-        activity.actualUpgradeItemLink,
         activity.actualItemLink,
+        activity.actualUpgradeItemLink,
     }
     local seen = {}
 
@@ -440,23 +464,130 @@ local function getRaidSourceLabel(sourceDifficultyID)
     return L["VAULT_SOURCE_RAID"]
 end
 
-local function getDungeonPreviewInfo(activity)
+local function getDungeonEntryForLevel(level)
+    if level >= 10 then
+        return DUNGEON_VAULT_PREVIEW_BY_LEVEL[10]
+    end
+    if level >= 2 then
+        return DUNGEON_VAULT_PREVIEW_BY_LEVEL[level]
+    end
+    if level <= HEROIC_RUN_LEVEL then
+        return DUNGEON_VAULT_PREVIEW_BY_LEVEL.heroic
+    end
+    return DUNGEON_VAULT_PREVIEW_BY_LEVEL.mythic0
+end
+
+local function getDungeonSourceLabelForLevel(level)
+    if level >= 2 then
+        return string.format(L["VAULT_SOURCE_DUNGEON_PLUS_FMT"], level)
+    end
+    if level <= HEROIC_RUN_LEVEL then
+        return L["VAULT_SOURCE_DUNGEON_HEROIC"]
+    end
+    return L["VAULT_SOURCE_DUNGEON_M0"]
+end
+
+-- Mirrors WeeklyRewardsUtil.GetLowestLevelInTopDungeonRuns: the level of the
+-- lowest run currently counting toward the slot, with heroic/M0 completions
+-- filling in when there are fewer M+ runs than the threshold.
+local function getLockedDungeonPaceLevel(snapshot, threshold)
+    if threshold <= 0 then
+        return nil
+    end
+
+    local counts = type(snapshot) == "table" and type(snapshot.dungeonRunCounts) == "table" and snapshot.dungeonRunCounts or nil
+    local runs = type(snapshot) == "table" and type(snapshot.weeklyDungeonRuns) == "table" and snapshot.weeklyDungeonRuns or nil
+    local numRuns = runs and #runs or 0
+    local numMythicPlus = math.max(tonumber(counts and counts.mythicPlus) or 0, numRuns)
+    local numMythic = math.max(0, tonumber(counts and counts.mythic) or 0)
+    local numHeroic = math.max(0, tonumber(counts and counts.heroic) or 0)
+
+    if threshold > numMythicPlus and (numHeroic + numMythic) > 0 then
+        if threshold > numMythicPlus + numMythic and numHeroic > 0 then
+            return HEROIC_RUN_LEVEL
+        end
+        return 0
+    end
+
+    if numRuns == 0 then
+        return nil
+    end
+
+    local run = runs and runs[math.min(threshold, numRuns)] or nil
+    local level = tonumber(run and run.level)
+    if level and level >= 2 then
+        return math.floor(level + 0.5)
+    end
+
+    return nil
+end
+
+local function getLockedWorldPaceLevel(snapshot, threshold)
+    local progressRows = type(snapshot) == "table" and type(snapshot.worldTierProgress) == "table" and snapshot.worldTierProgress or nil
+    if not progressRows or threshold <= 0 then
+        return nil
+    end
+
+    local remaining = threshold
+    local paceDifficulty = nil
+    for index = 1, #progressRows do
+        local row = progressRows[index]
+        local points = math.max(0, tonumber(row and row.numPoints) or 0)
+        if points > 0 then
+            paceDifficulty = tonumber(row.difficulty)
+            remaining = remaining - points
+            if remaining <= 0 then
+                break
+            end
+        end
+    end
+
+    return paceDifficulty
+end
+
+local function isHeroicDungeonActivity(activity, previewItemLevel)
+    local tierDifficultyID = tonumber(activity and activity.tierDifficultyID)
+    if tierDifficultyID then
+        return tierDifficultyID == DUNGEON_HEROIC_DIFFICULTY_ID
+    end
+
+    -- Legacy snapshots captured no tier difficulty; the preview item level is
+    -- the only remaining signal separating heroic from M0 slots.
+    local heroicEntry = DUNGEON_VAULT_PREVIEW_BY_LEVEL.heroic
+    return previewItemLevel ~= nil and heroicEntry ~= nil and previewItemLevel <= heroicEntry.itemLevel
+end
+
+local function getDungeonPreviewInfo(activity, snapshot, isLocked)
+    if isLocked then
+        local paceLevel = getLockedDungeonPaceLevel(snapshot, math.max(0, tonumber(activity and activity.threshold) or 0))
+        if not paceLevel then
+            return {
+                trackName = nil,
+                trackText = nil,
+                itemLevel = nil,
+                sourceLabel = nil,
+            }
+        end
+
+        local entry = getDungeonEntryForLevel(paceLevel)
+        return {
+            trackName = entry and entry.trackName or nil,
+            trackText = entry and buildTrackDisplayText(entry.trackName, entry.step) or nil,
+            itemLevel = entry and entry.itemLevel or nil,
+            sourceLabel = getDungeonSourceLabelForLevel(paceLevel),
+        }
+    end
+
     local level = math.max(0, tonumber(activity and activity.level) or 0)
     local previewItemLevel = getPreviewLinkItemLevel(activity)
     local previewTrackName, previewTrackText = getPreviewTrackInfo(activity)
     local entry
     local sourceLabel
 
-    if level >= 10 then
-        entry = DUNGEON_VAULT_PREVIEW_BY_LEVEL[10]
+    if level >= 2 then
+        entry = getDungeonEntryForLevel(level)
         sourceLabel = string.format(L["VAULT_SOURCE_DUNGEON_PLUS_FMT"], level)
-    elseif level >= 2 then
-        entry = DUNGEON_VAULT_PREVIEW_BY_LEVEL[level]
-        sourceLabel = string.format(L["VAULT_SOURCE_DUNGEON_PLUS_FMT"], level)
-    elseif level >= 1 then
-        entry = DUNGEON_VAULT_PREVIEW_BY_LEVEL.heroic
-        sourceLabel = L["VAULT_SOURCE_DUNGEON_HEROIC"]
-    elseif previewItemLevel and previewItemLevel <= DUNGEON_VAULT_PREVIEW_BY_LEVEL.heroic.itemLevel then
+    elseif isHeroicDungeonActivity(activity, previewItemLevel) then
         entry = DUNGEON_VAULT_PREVIEW_BY_LEVEL.heroic
         sourceLabel = L["VAULT_SOURCE_DUNGEON_HEROIC"]
     else
@@ -472,7 +603,29 @@ local function getDungeonPreviewInfo(activity)
     }
 end
 
-local function getDelvePreviewInfo(activity)
+local function getDelvePreviewInfo(activity, snapshot, isLocked)
+    if isLocked then
+        local paceLevel = getLockedWorldPaceLevel(snapshot, math.max(0, tonumber(activity and activity.threshold) or 0))
+        if not paceLevel then
+            return {
+                trackName = nil,
+                trackText = nil,
+                itemLevel = nil,
+                sourceLabel = nil,
+            }
+        end
+
+        -- Difficulty <=1 is non-delve world content whose vault values match
+        -- the tier-1 entry; tiers past 8 pay the same as tier 8.
+        local entry = DELVE_VAULT_PREVIEW_BY_LEVEL[math.min(math.max(1, paceLevel), 8)]
+        return {
+            trackName = entry and entry.trackName or nil,
+            trackText = entry and buildTrackDisplayText(entry.trackName, entry.step) or nil,
+            itemLevel = entry and entry.itemLevel or nil,
+            sourceLabel = paceLevel > 1 and string.format(L["VAULT_SOURCE_DELVE_FMT"], paceLevel) or nil,
+        }
+    end
+
     local level = math.max(1, tonumber(activity and activity.level) or 1)
     local entry = DELVE_VAULT_PREVIEW_BY_LEVEL[math.min(level, 8)] or DELVE_VAULT_PREVIEW_BY_LEVEL[8]
     local previewItemLevel = getPreviewLinkItemLevel(activity)
@@ -486,45 +639,42 @@ local function getDelvePreviewInfo(activity)
     }
 end
 
-local function getRaidPreviewInfo(activity)
+local function getRaidPreviewInfo(activity, isLocked)
     local difficultyID = tonumber(activity and activity.sourceDifficultyID)
     local preview = difficultyID and RAID_DIFFICULTY_PREVIEW[math.floor(difficultyID + 0.5)] or nil
-    local previewItemLevel = getPreviewLinkItemLevel(activity)
-    local previewTrackName, previewTrackText = getPreviewTrackInfo(activity)
+    local previewItemLevel = nil
+    local previewTrackName, previewTrackText = nil, nil
+    if not isLocked then
+        previewItemLevel = getPreviewLinkItemLevel(activity)
+        previewTrackName, previewTrackText = getPreviewTrackInfo(activity)
+    end
 
     return {
         trackName = previewTrackName or (preview and preview.trackName) or nil,
-        trackText = previewTrackText or (preview and buildTrackDisplayText(preview.trackName)) or nil,
-        itemLevel = previewItemLevel,
+        trackText = previewTrackText or (preview and buildTrackDisplayText(preview.trackName, preview.step)) or nil,
+        itemLevel = previewItemLevel or (preview and preview.itemLevel) or nil,
         sourceLabel = getRaidSourceLabel(difficultyID),
     }
 end
 
-local function getComputedPreviewInfo(rewardType, activity)
+local function getComputedPreviewInfo(rewardType, activity, snapshot, isLocked)
     local thresholdType = Enum and Enum.WeeklyRewardChestThresholdType or nil
-    if not thresholdType then
-        return {
-            trackName = nil,
-            trackText = nil,
-            itemLevel = getPreviewLinkItemLevel(activity),
-            sourceLabel = nil,
-        }
-    end
-
-    if rewardType == thresholdType.Activities then
-        return getDungeonPreviewInfo(activity)
-    end
-    if rewardType == thresholdType.World then
-        return getDelvePreviewInfo(activity)
-    end
-    if rewardType == thresholdType.Raid then
-        return getRaidPreviewInfo(activity)
+    if thresholdType then
+        if rewardType == thresholdType.Activities then
+            return getDungeonPreviewInfo(activity, snapshot, isLocked)
+        end
+        if rewardType == thresholdType.World then
+            return getDelvePreviewInfo(activity, snapshot, isLocked)
+        end
+        if rewardType == thresholdType.Raid then
+            return getRaidPreviewInfo(activity, isLocked)
+        end
     end
 
     return {
         trackName = nil,
         trackText = nil,
-        itemLevel = getPreviewLinkItemLevel(activity),
+        itemLevel = not isLocked and getPreviewLinkItemLevel(activity) or nil,
         sourceLabel = nil,
     }
 end
@@ -651,24 +801,21 @@ local function buildDungeonTooltipLines(snapshot, rewardType, activity)
     local runs = type(snapshot) == "table" and type(snapshot.weeklyDungeonRuns) == "table"
         and snapshot.weeklyDungeonRuns
         or nil
-    if not runs or #runs == 0 then
-        return {
-            wrapColorCode("ffd100", L["VAULT_WEEKLY_RUNS_NONE"]),
-        }
-    end
+    local counts = type(snapshot) == "table" and type(snapshot.dungeonRunCounts) == "table"
+        and snapshot.dungeonRunCounts
+        or nil
+    local numRuns = runs and #runs or 0
 
     local maxRuns = math.max(0, tonumber(activity and activity.threshold) or 0)
     if maxRuns <= 0 then
-        maxRuns = #runs
+        maxRuns = numRuns
     end
 
-    local limit = math.min(maxRuns, #runs)
-    local lines = {
-        wrapColorCode("ffd100", L["VAULT_WEEKLY_RUNS_HEADER"]),
-    }
+    local lines = {}
+    local limit = math.min(maxRuns, numRuns)
 
     for index = 1, limit do
-        local run = runs[index]
+        local run = runs and runs[index] or nil
         local dungeonName = getDungeonRunName(run and run.mapChallengeModeID)
         local keyText = formatDungeonRunLevel(run and run.level)
         if keyText then
@@ -678,6 +825,30 @@ local function buildDungeonTooltipLines(snapshot, rewardType, activity)
         end
     end
 
+    -- Heroic/M0 completions count toward the slot but never appear in the M+
+    -- run history; fill the remaining counted slots the way Blizzard does.
+    local countedMythicPlus = math.max(limit, math.min(tonumber(counts and counts.mythicPlus) or 0, maxRuns))
+    local missingRuns = maxRuns - countedMythicPlus
+    local numMythic = math.max(0, tonumber(counts and counts.mythic) or 0)
+    local numHeroic = math.max(0, tonumber(counts and counts.heroic) or 0)
+    while numMythic > 0 and missingRuns > 0 do
+        lines[#lines + 1] = L["VAULT_SOURCE_DUNGEON_M0"]
+        numMythic = numMythic - 1
+        missingRuns = missingRuns - 1
+    end
+    while numHeroic > 0 and missingRuns > 0 do
+        lines[#lines + 1] = L["VAULT_SOURCE_DUNGEON_HEROIC"]
+        numHeroic = numHeroic - 1
+        missingRuns = missingRuns - 1
+    end
+
+    if #lines == 0 then
+        return {
+            wrapColorCode("ffd100", L["VAULT_WEEKLY_RUNS_NONE"]),
+        }
+    end
+
+    table.insert(lines, 1, wrapColorCode("ffd100", L["VAULT_WEEKLY_RUNS_HEADER"]))
     return lines
 end
 
@@ -715,6 +886,7 @@ function VaultWindow:OnInitialize()
     self.currentDisplayCharacter = nil
     self.currentSnapshot = nil
     self.currentDelveMapState = nil
+    self.blizzardVaultHooked = false
 end
 
 function VaultWindow:OnEnable()
@@ -722,6 +894,43 @@ function VaultWindow:OnEnable()
     self:RegisterMessage("VESPERTOOLS_VAULT_CHARACTER_UPDATED", "OnVaultDataChanged")
     self:RegisterMessage("VESPERTOOLS_CONFIG_CHANGED", "OnConfigChanged")
     self:RegisterEvent("GET_ITEM_INFO_RECEIVED")
+    self:RegisterEvent("PLAYER_INTERACTION_MANAGER_FRAME_SHOW")
+    self:RegisterEvent("ADDON_LOADED")
+    self:EnsureBlizzardVaultHook()
+end
+
+-- Whenever Blizzard's own vault opens (pedestal, our Open Live button, or
+-- another addon), every addon window gets out of the way.
+function VaultWindow:EnsureBlizzardVaultHook()
+    if self.blizzardVaultHooked then
+        return
+    end
+
+    local blizzardFrame = _G.WeeklyRewardsFrame
+    if not blizzardFrame or type(blizzardFrame.HookScript) ~= "function" then
+        return
+    end
+
+    self.blizzardVaultHooked = true
+    self:UnregisterEvent("ADDON_LOADED")
+    blizzardFrame:HookScript("OnShow", function()
+        vesperTools:CloseAllAddonWindows()
+    end)
+end
+
+function VaultWindow:ADDON_LOADED(_, addonName)
+    if addonName == "Blizzard_WeeklyRewards" then
+        self:EnsureBlizzardVaultHook()
+    end
+end
+
+function VaultWindow:PLAYER_INTERACTION_MANAGER_FRAME_SHOW(_, interactionType)
+    if interactionType ~= WEEKLY_REWARDS_INTERACTION_TYPE then
+        return
+    end
+
+    self:EnsureBlizzardVaultHook()
+    vesperTools:CloseAllAddonWindows()
 end
 
 function VaultWindow:GetStore()
@@ -1043,6 +1252,8 @@ function VaultWindow:OpenLiveVault()
     if UIParentLoadAddOn and not WeeklyRewards_ShowUI then
         UIParentLoadAddOn("Blizzard_WeeklyRewards")
     end
+
+    self:EnsureBlizzardVaultHook()
 
     if WeeklyRewards_ShowUI then
         WeeklyRewards_ShowUI()
@@ -1391,17 +1602,26 @@ function VaultWindow:RefreshActivityRow(row, rewardType, activity, contentWidth)
     local actualLink = getActualRewardLink(activity)
     local previewLink = getRewardDisplayLink(activity)
     local displayName = getDisplayItemName(actualLink)
-    local previewInfo = getComputedPreviewInfo(rewardType, activity)
-    local actualTrackName, actualTrackText = getActualRewardTrackInfo(activity)
-    local trackName = actualTrackName or previewInfo.trackName
-    local trackText = actualTrackText or previewInfo.trackText
-    local formattedTrackLabel = formatTrackLabel(trackName, trackText)
     local slotIndex = math.max(1, tonumber(activity and activity.index) or 1)
     local progress = math.max(0, tonumber(activity and activity.progress) or 0)
     local threshold = math.max(0, tonumber(activity and activity.threshold) or 0)
     local isLocked = threshold > 0 and progress < threshold
+    local previewInfo = getComputedPreviewInfo(rewardType, activity, self.currentSnapshot, isLocked)
+    local actualTrackName, actualTrackText = getActualRewardTrackInfo(activity)
+    local trackName = actualTrackName or previewInfo.trackName
+    local trackText = actualTrackText or previewInfo.trackText
+    if trackName and trackText and not trackText:find("%d+/%d+")
+        and previewInfo.trackName == trackName
+        and previewInfo.trackText and previewInfo.trackText:find("%d+/%d+")
+    then
+        trackText = previewInfo.trackText
+    end
+    local formattedTrackLabel = formatTrackLabel(trackName, trackText)
     local hasActualReward = actualLink ~= nil
-    local itemLevel = (hasActualReward and getDetailedItemLevel(actualLink)) or previewInfo.itemLevel or getDetailedItemLevel(previewLink)
+    local itemLevel = (hasActualReward and getDetailedItemLevel(actualLink))
+        or previewInfo.itemLevel
+        or (not isLocked and getDetailedItemLevel(previewLink))
+        or nil
     local sourceLabel = previewInfo.sourceLabel
     local titleText = string.format(L["VAULT_SLOT_FMT"], slotIndex)
 

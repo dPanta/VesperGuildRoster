@@ -2272,6 +2272,7 @@ function vesperTools:ApplyModernTextButtonStyle(button, options)
         styleFrame.vgLabel:SetText(text)
     end
     self:ApplyConfiguredFont(styleFrame.vgLabel, fontSize, fontFlags)
+    self:EnsureFontStringRenders(styleFrame.vgLabel)
 
     if button.vgModernTextStyleRefresh then
         button.vgModernTextStyleRefresh(button)
@@ -3092,6 +3093,30 @@ function vesperTools:GetFontLabelByPath(path)
     return path or L["UNKNOWN_LABEL"]
 end
 
+-- A font can claim success from SetFont yet render nothing (late-registered
+-- or stale shared-media file). When laid-out text has no width, fall back to a
+-- stock font object that always renders.
+function vesperTools:EnsureFontStringRenders(fontString)
+    if not fontString or type(fontString.GetStringWidth) ~= "function" then
+        return false
+    end
+
+    local text = fontString.GetText and fontString:GetText() or nil
+    if type(text) ~= "string" or text == "" then
+        return true
+    end
+
+    if (fontString:GetStringWidth() or 0) > 0 then
+        return true
+    end
+
+    if fontString.SetFontObject then
+        fontString:SetFontObject("GameFontHighlightSmall")
+    end
+
+    return (fontString:GetStringWidth() or 0) > 0
+end
+
 -- Apply current configured font to a FontString with defensive fallbacks.
 -- Fallback order: configured font -> addon default -> Blizzard standard font.
 function vesperTools:ApplyConfiguredFont(fontString, size, flags)
@@ -3303,6 +3328,11 @@ function vesperTools:OnInitialize()
             },
             roster = {
                 onlineCountBlacklist = {},
+            },
+            groupActions = {
+                -- Ready-check / pull-timer buttons anchored above group frames.
+                enabled = true,
+                buttonHeight = 20,
             },
             portals = {
                 -- Toy IDs shown in the utility flyout button above portals.
@@ -4100,6 +4130,28 @@ function vesperTools:AreLauncherWindowsShown()
     return isFrameShown(rosterFrame), isFrameShown(portalsFrame)
 end
 
+-- Closing the addon means closing every window it owns, not just the two
+-- launcher windows.
+local ADDON_WINDOW_MODULE_NAMES = {
+    "Roster",
+    "Portals",
+    "VaultWindow",
+    "BagsWindow",
+    "BankWindow",
+    "Configuration",
+}
+
+function vesperTools:CloseAllAddonWindows()
+    for index = 1, #ADDON_WINDOW_MODULE_NAMES do
+        local module = self:GetModule(ADDON_WINDOW_MODULE_NAMES[index], true)
+        if module and type(module.HandleCloseRequest) == "function" then
+            module:HandleCloseRequest()
+        end
+    end
+
+    self:HideSearchOverlay()
+end
+
 function vesperTools:ToggleLauncherWindows()
     local Roster = self:GetModule("Roster", true)
     local Portals = self:GetModule("Portals", true)
@@ -4110,23 +4162,7 @@ function vesperTools:ToggleLauncherWindows()
 
     local rosterShown, portalsShown = self:AreLauncherWindowsShown()
     if rosterShown or portalsShown then
-        if rosterShown then
-            if type(Roster.HandleCloseRequest) == "function" then
-                Roster:HandleCloseRequest()
-            elseif type(Roster.Toggle) == "function" then
-                Roster:Toggle()
-            end
-        end
-
-        if portalsShown then
-            if type(Portals.HandleCloseRequest) == "function" then
-                Portals:HandleCloseRequest()
-            elseif type(Portals.Toggle) == "function" then
-                Portals:Toggle()
-            end
-        end
-
-        self:HideSearchOverlay()
+        self:CloseAllAddonWindows()
         return true
     end
 

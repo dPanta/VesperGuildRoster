@@ -1,3 +1,22 @@
+## 7.1.0 - 2026-08-17
+
+### Added
+- Ready check / pull timer buttons now attach to ElvUI and EllesmereUI group frames in addition to Blizzard's compact frames, anchoring to whichever UI's frames are actually shown.
+- New options at the bottom of the configuration window's roster section: a checkbox to enable or disable the group action buttons and a size slider (14-32 px). Both apply live.
+
+### Changed
+- Great Vault locked slots now preview the reward you are on pace for, derived from your actual runs this week (mirroring Blizzard's own logic with heroic/M0 completions filling missing slots), instead of always assuming a Mythic 0 reward. Slots with no counted runs show progress only.
+- The raid vault fallback now matches Season 2's structure where the vault rewards gear from one difficulty above the kill (LFR to Champion 1/6, Normal to Hero 1/6, Heroic to Myth 1/6, Mythic to Myth 6/6).
+- Vault snapshots additionally capture dungeon run counts, delve tier progress, and the activity tier difficulty, so locked-slot previews work for offline characters too.
+- The vault window's weekly runs tooltip now lists heroic and Mythic 0 completions that count toward a slot instead of claiming no runs were recorded.
+- The addon vault window closes when Blizzard's Great Vault opens, and opening Blizzard's vault (or closing the addon via `/vg` or the floating icon) now closes every addon window, including vault, bags, bank, and configuration.
+- The portals toy flyout got the standard rounded class-colored window border, is horizontally centered above its button with a slightly larger gap, and stays open for half a second so the cursor can cross the gap without the flyout closing.
+
+### Fixed
+- Great Vault ready slots no longer show the wrong upgrade track (such as "Myth" on a Mythic 0 reward). The tooltip track parser no longer misreads words like "Mythic 0" as the Myth track, prefers lines carrying an explicit step, and reads the earned item before the upgrade preview item. Active slots now always show the upgrade step (for example Champion 4/6).
+- Group action button labels could render invisible until a reload when the configured font was not ready; labels now fall back to a stock font when they fail to render and re-assert themselves on every refresh.
+- Closing the addon while the portals window was already closed no longer prints a spurious in-combat warning.
+
 ## 7.0.0 - 2026-08-07
 
 ### Added
