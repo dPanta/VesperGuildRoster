@@ -171,7 +171,7 @@ function GroupActionButtons:CreateActionBar(parent, kind)
 
     local readyButton = createActionButton(
         bar,
-        READY_CHECK or L["GROUP_ACTION_READY"],
+        L["GROUP_ACTION_READY"],
         READY_BACKGROUND_COLOR,
         READY_BORDER_COLOR,
         function()
@@ -222,10 +222,27 @@ function GroupActionButtons:LayoutActionBar(bar, buttonHeight, readyWidth, pullW
     end
 
     local parent = bar.parentFrame
+
+    -- EllesmereUI "Show Self First" (default on) pulls the player's frame out
+    -- of ERFPartyHeader into a static ERFPartySelfButton one slot above the
+    -- header, so the header's top is not the top of the visible stack. Anchor
+    -- above the self button whenever it sits higher than the header.
+    local anchor = parent
+    if parent == _G.ERFPartyHeader then
+        local selfButton = _G.ERFPartySelfButton
+        if selfButton and selfButton:IsShown() then
+            local selfTop = selfButton:GetTop()
+            local parentTop = parent:GetTop()
+            if selfTop and parentTop and selfTop > parentTop then
+                anchor = selfButton
+            end
+        end
+    end
+
     bar:SetFrameStrata(parent:GetFrameStrata())
     bar:SetFrameLevel((parent:GetFrameLevel() or 0) + 60)
     bar:ClearAllPoints()
-    bar:SetPoint("BOTTOMLEFT", parent, "TOPLEFT", 0, BAR_OFFSET_Y)
+    bar:SetPoint("BOTTOMLEFT", anchor, "TOPLEFT", 0, BAR_OFFSET_Y)
     bar:SetSize(readyWidth + BUTTON_GAP + pullWidth, buttonHeight)
     if bar.ReadyButton then
         bar.ReadyButton:SetSize(readyWidth, buttonHeight)

@@ -1,3 +1,11 @@
+## 7.3.0 - 2026-08-17
+
+### Changed
+- The ready-check button above group frames now shows the short label "Ready" instead of Blizzard's longer "Ready Check" text.
+
+### Fixed
+- Ready/pull buttons no longer overlap the bottom of the player's own unit frame for EllesmereUI users with "Show Self First" enabled (its default). That mode places the player's frame above the party header the buttons were anchored to; the bar now anchors above the player's frame whenever it is the top of the visible stack, re-checked on every roster or layout refresh.
+
 ## 7.2.1 - 2026-08-17
 
 ### Added
