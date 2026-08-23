@@ -1953,7 +1953,7 @@ function Configuration:RefreshCurrencyBarMenu()
         return
     end
 
-    local options = vesperTools:GetCurrencyBarSelectionOptions()
+    local options = vesperTools:GetCurrencyBarSelectionOptions(true)
     local hasOptions = type(options) == "table" and #options > 0
     local selectedIDs = vesperTools:GetConfiguredBagCurrencyIDs()
     local selectedMap = {}

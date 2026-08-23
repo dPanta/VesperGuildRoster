@@ -52,6 +52,15 @@ local CURRENCY_BAR_BUTTON_MIN_WIDTH = 46
 local CURRENCY_BAR_BUTTON_MAX_WIDTH = 96
 local CURRENCY_BAR_ICON_SIZE = 16
 local CURRENCY_BAR_ICON_GAP = 6
+-- Seasonal upgrade-crest currencies; update alongside the vault season tables.
+-- Selected crests render as one contiguous group ordered by ascending tier.
+local CURRENCY_BAR_CREST_TIERS = {
+    [3442] = 1, -- Adventurer Mistcrest
+    [3443] = 2, -- Veteran Mistcrest
+    [3444] = 3, -- Champion Mistcrest
+    [3445] = 4, -- Hero Mistcrest
+    [3446] = 5, -- Myth Mistcrest
+}
 local LAYOUT_EDIT_SECTION_BACKGROUND_ALPHA = 0.14
 local LAYOUT_EDIT_SECTION_BORDER_ALPHA = 0.32
 local EQUIPPED_BAG_IDS = {}
@@ -102,6 +111,36 @@ local function formatCurrencyQuantity(quantity)
         return BreakUpLargeNumbers(numericQuantity)
     end
     return tostring(numericQuantity)
+end
+
+-- Pulls crest entries out of the bar and reinserts them as one block at the
+-- position of the leftmost crest, sorted by tier; non-crest order is untouched.
+local function groupCrestCurrencyEntries(entries)
+    local crests = {}
+    local groupIndex
+
+    for index = #entries, 1, -1 do
+        local entry = entries[index]
+        if entry and entry.currencyID and CURRENCY_BAR_CREST_TIERS[entry.currencyID] then
+            groupIndex = index
+            table.remove(entries, index)
+            crests[#crests + 1] = entry
+        end
+    end
+
+    if #crests == 0 then
+        return entries
+    end
+
+    table.sort(crests, function(a, b)
+        return CURRENCY_BAR_CREST_TIERS[a.currencyID] < CURRENCY_BAR_CREST_TIERS[b.currencyID]
+    end)
+
+    for i = #crests, 1, -1 do
+        table.insert(entries, groupIndex, crests[i])
+    end
+
+    return entries
 end
 
 local function formatGoldQuantity(copperAmount)
@@ -1016,7 +1055,7 @@ function BagsWindow:GetCurrencyBarEntries(selectedCharacter)
                 entries[#entries + 1] = info
             end
         end
-        return entries
+        return groupCrestCurrencyEntries(entries)
     end
 
     local trackedOptions = vesperTools:GetTrackedBagCurrencyOptions()
@@ -1026,7 +1065,7 @@ function BagsWindow:GetCurrencyBarEntries(selectedCharacter)
         end
     end
 
-    return entries
+    return groupCrestCurrencyEntries(entries)
 end
 
 function BagsWindow:GetCurrencyBarMeasureText()

@@ -53,6 +53,10 @@ local SEASON_SPECIAL_ITEM_IDS = {
     [235628] = true, -- Delver's Bounty with upgrade data
     [264414] = true, -- Midnight Delver's Flare Gun
     [253342] = true, -- Beacon of Hope
+    [279382] = true, -- Venom-Cursed Fragment
+    [273000] = true, -- Corrosive Soul
+    [265714] = true, -- Trovehunter's Bounty
+    [274374] = true, -- Trovehunter's Bounty (12.1 variant)
 }
 local SEASON_NAME_MARKERS = {
     "mythic keystone",

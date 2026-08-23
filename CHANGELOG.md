@@ -1,3 +1,15 @@
+## 7.4.0 - 2026-08-24
+
+### Added
+- Four more Midnight Season 2 items now sort into the bags window's Season category: Venom-Cursed Fragment, Corrosive Soul, and both Trovehunter's Bounty variants.
+
+### Changed
+- Upgrade crests selected for the bag window's currency bar now always display as one group, ordered lowest to highest tier (Adventurer, Veteran, Champion, Hero, Myth Mistcrest), regardless of the order they were selected in. Other currencies keep their selection order around the crest group.
+
+### Fixed
+- The currency picker in the configuration window now lists currencies hidden under collapsed headers in Blizzard's currency list. Headers are expanded only for the scan and the player's collapsed/expanded state is restored afterwards, instead of being permanently expanded.
+- Background currency snapshots no longer expand currency list headers at all, preventing them from firing CURRENCY_DISPLAY_UPDATE and retriggering themselves.
+
 ## 7.3.0 - 2026-08-17
 
 ### Changed

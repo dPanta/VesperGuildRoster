@@ -805,6 +805,24 @@ local function getCurrencyListSize()
     return 0
 end
 
+local function expandCurrencyListEntry(index, shouldExpand)
+    if C_CurrencyInfo and type(C_CurrencyInfo.ExpandCurrencyList) == "function" then
+        local ok = pcall(C_CurrencyInfo.ExpandCurrencyList, index, shouldExpand and true or false)
+        if ok then
+            return true
+        end
+    end
+
+    if type(ExpandCurrencyList) == "function" then
+        local ok = pcall(ExpandCurrencyList, index, shouldExpand and 1 or 0)
+        if ok then
+            return true
+        end
+    end
+
+    return false
+end
+
 local function extractCurrencyIDFromLink(link)
     if type(link) ~= "string" or link == "" then
         return nil
@@ -3692,7 +3710,12 @@ function vesperTools:SetBagCurrencySelected(currencyID, shouldSelect)
     return true
 end
 
-function vesperTools:GetCurrencyBarSelectionOptions()
+-- allowHeaderExpansion temporarily expands collapsed currency list headers so
+-- hidden sections can be scanned; the player's collapsed state is restored
+-- afterwards. Expanding fires CURRENCY_DISPLAY_UPDATE, so only interactive
+-- paths (the configuration menu) may pass true — event-driven callers such as
+-- the BagsStore currency snapshot must not, or they would retrigger themselves.
+function vesperTools:GetCurrencyBarSelectionOptions(allowHeaderExpansion)
     local options = {}
     local strictOptions = {}
     local priorityOptions = {}
@@ -3708,13 +3731,19 @@ function vesperTools:GetCurrencyBarSelectionOptions()
     local professionNameSet = getProfessionNameSet()
     local inCurrentExpansionSection = currentExpansionName == nil
     local inProfessionSection = false
+    local expandedHeaderNames = allowHeaderExpansion and {} or nil
 
     while index <= count do
         local info = getCurrencyListInfo(index)
-        if info and info.isHeader and not info.isHeaderExpanded and type(ExpandCurrencyList) == "function" then
-            pcall(ExpandCurrencyList, index, 1)
-            count = getCurrencyListSize()
-            info = getCurrencyListInfo(index) or info
+        if info and info.isHeader and not info.isHeaderExpanded and expandedHeaderNames
+            and expandCurrencyListEntry(index, true)
+        then
+            local refreshedInfo = getCurrencyListInfo(index)
+            if refreshedInfo and refreshedInfo.isHeaderExpanded then
+                expandedHeaderNames[#expandedHeaderNames + 1] = info.name
+                count = getCurrencyListSize()
+                info = refreshedInfo
+            end
         end
 
         if info and info.isHeader then
@@ -3775,6 +3804,30 @@ function vesperTools:GetCurrencyBarSelectionOptions()
         end
 
         index = index + 1
+    end
+
+    -- Re-collapse the headers this scan expanded, walking backward so child
+    -- sections collapse before their parents and earlier indices stay valid.
+    if expandedHeaderNames and #expandedHeaderNames > 0 then
+        local collapseCounts = {}
+        for i = 1, #expandedHeaderNames do
+            local headerName = expandedHeaderNames[i]
+            if headerName then
+                collapseCounts[headerName] = (collapseCounts[headerName] or 0) + 1
+            end
+        end
+
+        for i = getCurrencyListSize(), 1, -1 do
+            local info = getCurrencyListInfo(i)
+            if info
+                and info.isHeader
+                and info.isHeaderExpanded
+                and (collapseCounts[info.name] or 0) > 0
+                and expandCurrencyListEntry(i, false)
+            then
+                collapseCounts[info.name] = collapseCounts[info.name] - 1
+            end
+        end
     end
 
     if #strictOptions > 0 then
